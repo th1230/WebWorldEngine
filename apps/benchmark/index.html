@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 空的 favicon：否則瀏覽器會發出 /favicon.ico 請求，404 會被 runner 記成頁面錯誤 -->
+    <link rel="icon" href="data:," />
+    <title>WebWorld Engine — Benchmark</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0d1117;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        /* safe + overflow:auto：內容比視窗高時，place-content:center 會把頂端切掉
+           而且捲不到。safe 讓它在溢出時退回靠起點對齊。 */
+        place-content: safe center;
+        gap: 8px;
+        color: #e6edf3;
+        font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        text-align: center;
+        background: #0d1117;
+        z-index: 10;
+        overflow: auto;
+      }
+      #boot[hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="viewport"></canvas>
+    <div id="boot">啟動中…</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

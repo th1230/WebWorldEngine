@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>WW.InstancedMesh — 換一個字</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0d1117;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+      #hud {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        padding: 12px 16px;
+        border-radius: 6px;
+        background: #0d1117d9;
+        color: #e6edf3;
+        font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        white-space: pre;
+        pointer-events: none;
+      }
+      #hud b {
+        color: #7ee787;
+      }
+      #hud .off {
+        color: #f0883e;
+      }
+      #hud a {
+        color: #58a6ff;
+        pointer-events: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="viewport"></canvas>
+    <div id="hud">啟動中…</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
