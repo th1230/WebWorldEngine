@@ -677,10 +677,16 @@ describe('InstancedMesh — 物件層級的視錐剔除', () => {
 });
 
 describe('InstancedMesh — 靜態是宣告出來的，不是猜出來的', () => {
-  /** 相機在正上方看整片 —— 全部都在視錐裡，所以格子省不到走訪。 */
+  /**
+   * 相機在正上方**看得到整片** —— 一格都剔不掉，所以格子省下的走訪是 0。
+   *
+   * 高度必須夠高。只高一點的話有些 cell 會被剔掉，於是「省下的走訪」不是 0，
+   * 而暫停與否就變成一場「累計成本贏不贏得過累計節省」的賽跑 —— 那種測試
+   * 在快的機器上會偶爾過、偶爾不過。
+   */
   const overhead = (): PerspectiveCamera => {
     const camera = makeCamera();
-    camera.position.set(0, 40, 0);
+    camera.position.set(0, 400, 0);
     camera.lookAt(0, 0, 0);
     return camera;
   };

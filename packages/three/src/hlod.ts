@@ -67,11 +67,31 @@ export function placeholderLike(source: BufferGeometry): BufferGeometry {
 export function mergedSize(
   source: BufferGeometry,
   instances: number,
-): { vertices: number; indices: number } {
+): { vertices: number; indices: number; bytesPerVertex: number } {
   const vertices = source.getAttribute('position')?.count ?? 0;
   // 非索引時每個頂點就是一個索引。
   const indices = source.getIndex()?.count ?? vertices;
-  return { vertices: vertices * instances, indices: indices * instances };
+  return {
+    vertices: vertices * instances,
+    indices: indices * instances,
+    bytesPerVertex: bytesPerVertex(source),
+  };
+}
+
+/**
+ * 一個頂點在批次緩衝裡實際佔幾個位元組。
+ *
+ * **要把每一個屬性都算進去，不只 position。** 只算位置（3 × 4 = 12 B）會把
+ * 一份帶法線、UV、tangent 的幾何低估三到四倍 —— 而低估記憶體估算的後果是
+ * 預算「看起來還很寬」，於是配下去的量是預算的好幾倍。那個錯誤犯過：
+ * `apps/example` 的 JS heap 曾經到 **1,005 MB**，而預算以為自己花得很省。
+ */
+function bytesPerVertex(source: BufferGeometry): number {
+  let bytes = 0;
+  for (const attribute of Object.values(source.attributes)) {
+    bytes += attribute.itemSize * attribute.array.BYTES_PER_ELEMENT;
+  }
+  return bytes;
 }
 
 /**

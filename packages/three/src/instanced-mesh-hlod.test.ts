@@ -33,10 +33,20 @@ function fakeRenderer(height = 900): WebGLRenderer {
   } as unknown as WebGLRenderer;
 }
 
-/** 一片鋪在 XZ 平面上的 instance。 */
+/**
+ * 一片鋪在 XZ 平面上的 instance。
+ *
+ * **刻意給一個寬鬆的記憶體預算。** 這裡的最粗階是 `IcosahedronGeometry(1, 1)`
+ * —— 80 個三角形而且**非索引**，也就是 240 個頂點；cook 過的真實資產是 4 個
+ * 三角形、12 個頂點。所以同一個預算在這份內容上只放得下二十分之一的槽位。
+ *
+ * 這幾個測試要驗的是合併的**機制**（有沒有生效、會不會太早、會不會畫兩次），
+ * 不是預設預算夠不夠。預算本身由 `hlodBudgetMB` 那兩個測試單獨驗。
+ */
 function build(count: number, spread: number, options = {}): InstancedMesh {
   const mesh = new InstancedMesh({ lods: LODS, errors: ERRORS }, new MeshBasicMaterial(), count, {
     instancesPerCell: 64,
+    hlodBudgetMB: 256,
     ...options,
   });
   const matrix = new Matrix4();
@@ -223,7 +233,9 @@ describe('遠景合併', () => {
     const full = build(4096, 400);
     renderFrom(full, 6000, WARM);
 
-    const partial = build(4096, 400, { hlodBudgetMB: 0.5 });
+    // 4 MB：這份內容一個槽位 0.54 MB（最粗階 80 個三角形、非索引，
+    // 64 個 instance 一格），所以放得下幾個但放不下全部 64 個。
+    const partial = build(4096, 400, { hlodBudgetMB: 4 });
     renderFrom(partial, 6000, WARM);
 
     // 部分合併：比完整的少，但**不是零**。

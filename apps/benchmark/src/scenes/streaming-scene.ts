@@ -163,6 +163,7 @@ export const streamingScene: SceneDefinition = {
     let countOn = 0;
     let gridOn = 0;
     let collectOn = 0;
+    let hlodBuildOn = 0;
 
     // 折返點刻意不是 cell 邊界的倍數（×3.7），否則會停在邊界上反覆載入卸載。
     const legFrames = Math.max(Math.round((cellSize * 3.7 * 8) / speed), 2);
@@ -187,6 +188,7 @@ export const streamingScene: SceneDefinition = {
             countOn += rocks.count;
             gridOn += stats.cpuParts.grid;
             collectOn += stats.cpuParts.collect;
+            hlodBuildOn += stats.hlod.buildMs;
           }
           visibleSum += stats.visible;
           testedSum += stats.tested;
@@ -212,7 +214,8 @@ export const streamingScene: SceneDefinition = {
           `平均可見 ${avgVisible}，逐一測試 ${avgTested} / 常駐 ${avgCount}，` +
           `空間格 ${(gridSum / Math.max(frames, 1)).toFixed(3)}ms + 走訪 ${(collectSum / Math.max(frames, 1)).toFixed(3)}ms，` +
           `[有格子時] 走訪 ${Math.round(testedOn / Math.max(spatialFrames, 1))} / ${Math.round(countOn / Math.max(spatialFrames, 1))}，` +
-          `空間格 ${(gridOn / Math.max(spatialFrames, 1)).toFixed(3)}ms + 走訪 ${(collectOn / Math.max(spatialFrames, 1)).toFixed(3)}ms，` +
+          `空間格 ${(gridOn / Math.max(spatialFrames, 1)).toFixed(3)}ms（其中 HLOD 分組 ${(hlodBuildOn / Math.max(spatialFrames, 1)).toFixed(3)}）` +
+          ` + 走訪 ${(collectOn / Math.max(spatialFrames, 1)).toFixed(3)}ms，` +
           `載入 ${s.totalLoads} 卸載 ${s.totalUnloads} 常駐 ${s.resident} 佇列峰值 ${pendingPeak}`;
 
         // 內容沒進來的話所有數字都是零，而場景會顯得非常快。

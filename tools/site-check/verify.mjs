@@ -37,6 +37,23 @@ const FIRST_FRAME_BUDGET_MS = 3000;
 /** 主套件（不含延遲抓取的 chunk）的下載上限，位元組。 */
 const MAIN_BUNDLE_BUDGET = 800 * 1024;
 
+/**
+ * JS heap 的上限，MB。
+ *
+ * ## 為什麼非要有這一條
+ *
+ * 這個數字原本只被印出來，沒有人擋它。於是遠景合併的記憶體預算從
+ * 「要多少給多少」改過去之後，heap 從 165 MB 漲到 **1,005 MB** ——
+ * 三個檢查全綠，因為沒有一個在看它。
+ *
+ * 網站上的 3D 通常只是頁面的一塊，而手機的分頁記憶體上限是幾百 MB。
+ * 一個 demo 用掉 1 GB 代表它在真實裝置上會被作業系統殺掉。
+ *
+ * 150 是一個網站預算，不是引擎常數（引擎的上限是 `hlodBudgetMB`，
+ * 由開發者決定）。它的工作只有一件：讓上面那種退步當場失敗。
+ */
+const HEAP_BUDGET_MB = 150;
+
 async function main() {
   console.log('建置 example app…');
   execFileSync('pnpm', ['--filter', './apps/example', 'build'], {
@@ -121,6 +138,15 @@ async function measureLoad(browser, url) {
       `主 script ${(main / 1024).toFixed(1)} kB 超過 ${MAIN_BUNDLE_BUDGET / 1024} kB 的預算`,
     );
   }
+  // performance.memory 只有 Chromium 有。拿不到時是 0 —— 那時不擋，
+  // 但也不能假裝檢查過了。
+  if (memory.heapMB > HEAP_BUDGET_MB) {
+    throw new Error(
+      `JS heap ${memory.heapMB.toFixed(1)} MB 超過 ${HEAP_BUDGET_MB} MB 的預算。` +
+        '最可能的來源是遠景合併的槽位池（hlodBudgetMB）。',
+    );
+  }
+  if (memory.heapMB === 0) console.log('  （這個瀏覽器沒有 performance.memory，heap 沒有被檢查）');
   await page.close();
 }
 
