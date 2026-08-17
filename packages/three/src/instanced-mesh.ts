@@ -260,6 +260,8 @@ export class InstancedMesh extends BatchedMesh {
   /** 這一幀想合併但還沒烘好的格子。 */
   private hlodWanted: number[] = [];
   private frameIndex = 0;
+  /** 找可回收槽位的旋轉游標。見 。 */
+  private slotCursor = 0;
   private readonly hlodEnabled: boolean;
   private readonly hlodBudgetBytes: number | null;
   private readonly hlodSlotInstances: number | null;
@@ -961,28 +963,9 @@ export class InstancedMesh extends BatchedMesh {
     this._mergeMs = 0;
     this._uploadMs = 0;
 
-    // 可用的槽位**一幀只找一次**。
-    //
-    // 原本是每要烘一格就掃過全部槽位找最舊的那一個。一百萬個 instance 有
-    // 15,876 個槽位，而每幀想烘的格子有上千個 —— 那是幾百萬次迭代。
-    //
     // 實測：烘焙那一段花 1.742 ms，其中合併運算 **0.00 ms**、上傳 0.10 ms。
-    // 剩下的 1.64 ms 全是這個搜尋，而且穩態下幾乎沒有東西要烘 —— 純浪費。
-    //
-    // 這也是「先量再做」擋下的一次錯誤決定：我原本要把合併運算搬進 worker，
-    // 而那一段根本不花時間。
-    const available: number[] = [];
-    for (const [i, slot] of slots.entries()) {
-      // 這一幀已經畫到的槽位不能搶 —— 搶了就會把正在用的內容換掉。
-      if (slot.group < 0 || slot.lastUsed !== this.frameIndex) available.push(i);
-    }
-    if (available.length === 0) {
-      this.hlodWanted.length = 0;
-      return;
-    }
-    // 空的先用，其餘照「最久沒畫到」排 —— pop 取尾端，所以升冪排。
-    available.sort((a, b) => (slots[a]!.lastUsed - slots[b]!.lastUsed) * -1);
-
+    // 剩下的全在找槽位。這也是「先量再做」擋下的一次錯誤決定 —— 我原本要把
+    // 合併運算搬進 worker，而那一段根本不花時間。
     const order = this.grid.order;
     const deadline = performance.now() + HLOD_BAKE_BUDGET_MS;
     for (const index of this.hlodWanted) {
@@ -990,10 +973,27 @@ export class InstancedMesh extends BatchedMesh {
       const group = groups[index];
       if (group === undefined || group.slot >= 0) continue;
 
-      const pick = available.pop();
-      if (pick === undefined) break;
-      const slot = slots[pick];
-      if (slot === undefined) break;
+      // 從上次停的地方往前找一個「這一幀沒畫到」的槽位。
+      //
+      // 走過一圈都沒有就是真的沒有 —— 那時停手，下一幀再說。這比掃全部
+      // 找最舊的便宜得多，而且**任何沒畫到的槽位都是合法的回收對象**，
+      // 不必是最舊的那一個。
+      //
+      // 走過兩個錯的版本：掃全部再排序（穩態下每幀 1.5 ms 純浪費），以及
+      // 「最多收集 32 個候選」（那等於每幀最多烘 32 格，把暖機節流成好幾倍
+      // 慢：幀 25.30 → 38.05 ms）。
+      let pick = -1;
+      for (let probe = 0; probe < slots.length; probe++) {
+        const at = (this.slotCursor + probe) % slots.length;
+        const candidate = slots[at]!;
+        if (candidate.group < 0 || candidate.lastUsed !== this.frameIndex) {
+          pick = at;
+          this.slotCursor = (at + 1) % slots.length;
+          break;
+        }
+      }
+      if (pick < 0) break;
+      const slot = slots[pick]!;
 
       const mergeStarted = performance.now();
       const merged = mergeInstances(coarsest, this.matricesArray, order, group.from, group.to);
