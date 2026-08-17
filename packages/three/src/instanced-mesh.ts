@@ -224,6 +224,14 @@ const HLOD_BAKE_BUDGET_MS = 2;
  */
 const HLOD_DEFAULT_BUDGET_BYTES = 32 * 1048576;
 
+/**
+ * 包圍球快取最多追蹤幾段髒區間。
+ *
+ * 超過就退回「整份重算」—— 那永遠是正確的，只是慢。段數多到這個程度時
+ * 逐段重算本來也接近整份，所以不必為了省最後一點而讓資料結構變複雜。
+ */
+const SPHERE_DIRTY_RANGES = 8;
+
 /** 自動 LOD 待補時，批次幾何要預留幾倍的空間。 */
 const LOD_RESERVE = 2;
 
@@ -323,12 +331,23 @@ export class InstancedMesh extends BatchedMesh {
   private _hlodSlotCount = 0;
   private _hlodGroupCount = 0;
   private _hlodCellMax = 0;
+  private _spheresMs = 0;
   private _hlodBuildMs = 0;
   private _mergeMs = 0;
   private _uploadMs = 0;
   /** 每個 instance 的世界空間包圍球：cx, cy, cz, radius。 */
   private spheres = new Float32Array(0);
-  private spheresDirty = true;
+  /** 整份包圍球快取都要重算。追蹤不下去時也退到這裡。 */
+  private spheresAllDirty = true;
+  /**
+   * 改過矩陣的 instance 編號區間，最多 `SPHERE_DIRTY_RANGES` 段。
+   *
+   * 用區間而不是逐個編號：串流的每一次寫入都是一段連續的編號
+   * （`writeMatrices` 一次寫一格的內容，`moveInstances` 一次搬一塊）。
+   */
+  private readonly dirtyLo = new Int32Array(SPHERE_DIRTY_RANGES);
+  private readonly dirtyHi = new Int32Array(SPHERE_DIRTY_RANGES);
+  private dirtyCount = 0;
   private spheresCount = -1;
   /** 快取是照走訪順序排的嗎。格子停用時退回照編號排。 */
   private spheresByOrder = false;
@@ -614,7 +633,7 @@ export class InstancedMesh extends BatchedMesh {
      *
      * 分開報是必要的：三項的優化方向完全不同，加在一起看會修錯地方。
      */
-    cpuParts: { grid: number; collect: number; bake: number };
+    cpuParts: { grid: number; collect: number; bake: number; spheres: number };
     /**
      * 遠景合併的槽位數、可合併的格數、最大一格有幾個 instance。
      *
@@ -641,7 +660,12 @@ export class InstancedMesh extends BatchedMesh {
       cpuMs: this._cpuMs,
       merged: this._mergedDraws,
       mergedInstances: this._mergedInstances,
-      cpuParts: { grid: this._gridMs, collect: this._collectMs, bake: this._bakeMs },
+      cpuParts: {
+        grid: this._gridMs,
+        collect: this._collectMs,
+        bake: this._bakeMs,
+        spheres: this._spheresMs,
+      },
       hlod: {
         slots: this._hlodSlotCount,
         groups: this._hlodGroupCount,
@@ -686,7 +710,7 @@ export class InstancedMesh extends BatchedMesh {
 
   override setMatrixAt(instanceId: number, matrix: Matrix4): this {
     super.setMatrixAt(instanceId, matrix);
-    this.invalidateInstances();
+    this.invalidateInstances(instanceId, instanceId + 1);
     return this;
   }
 
@@ -755,7 +779,7 @@ export class InstancedMesh extends BatchedMesh {
     this.matricesArray.set(elements, start * 16);
     this.internals._matricesTexture.needsUpdate = true;
     this.lastMatrixVersion = this._instanceMatrix.version;
-    this.invalidateInstances();
+    this.invalidateInstances(start, start + Math.floor(elements.length / 16));
   }
 
   /**
@@ -774,7 +798,9 @@ export class InstancedMesh extends BatchedMesh {
     this.matricesArray.copyWithin(to * 16, from * 16, (from + length) * 16);
     this.internals._matricesTexture.needsUpdate = true;
     this.lastMatrixVersion = this._instanceMatrix.version;
-    this.invalidateInstances();
+    // 只有目的地那一段的內容變了。來源那一段還留著同樣的位元組，但它會被
+    // 縮小的 count 排除在外，所以不必標。
+    this.invalidateInstances(to, to + length);
   }
 
   override onBeforeRender(
@@ -809,7 +835,10 @@ export class InstancedMesh extends BatchedMesh {
     if (clamped !== this.count) this.count = clamped;
     if (clamped !== this.lastCount) {
       this.lastCount = clamped;
-      this.invalidateInstances();
+      // **只有格子過期，包圍球沒有。** 改 count 不會改任何一個矩陣，變多的
+      // 那一段由 `ensureSpheres` 自己補上。這裡若照一般的失效走，串流就會
+      // 每一幀把整份快取標髒（count 每載入一格就變一次）—— 增量等於沒做。
+      this.invalidateGridOnly();
     }
 
     _inverse.copy(this.matrixWorld).invert();
@@ -1359,15 +1388,66 @@ export class InstancedMesh extends BatchedMesh {
    * 所以只靠版本號判斷快取的話，用 `setMatrixAt` 的人會永遠拿到舊的包圍球
    * —— 物件搬走了，剔除與選階卻還在看原本的位置。
    */
-  private invalidateInstances(): void {
+  /** 只有空間格過期。矩陣沒動，所以包圍球快取照用。 */
+  private invalidateGridOnly(): void {
     this.grid.invalidate();
-    this.spheresDirty = true;
     this.moveCount++;
+  }
+
+  private invalidateInstances(lo = 0, hi = Number.MAX_SAFE_INTEGER): void {
+    this.invalidateGridOnly();
+    if (this.spheresAllDirty) return;
+    if (lo <= 0 && hi >= this._capacity) {
+      this.spheresAllDirty = true;
+      this.dirtyCount = 0;
+      return;
+    }
+
+    // 與既有的區間合併。碰到就併，併完再看併出來的有沒有跟別人重疊 ——
+    // 段數上限是 8，所以這個 O(n²) 的合併每次最多 64 步。
+    let at = -1;
+    for (let i = 0; i < this.dirtyCount; i++) {
+      if (lo <= this.dirtyHi[i]! && hi >= this.dirtyLo[i]!) {
+        this.dirtyLo[i] = Math.min(this.dirtyLo[i]!, lo);
+        this.dirtyHi[i] = Math.max(this.dirtyHi[i]!, hi);
+        at = i;
+        break;
+      }
+    }
+    if (at < 0) {
+      if (this.dirtyCount >= SPHERE_DIRTY_RANGES) {
+        this.spheresAllDirty = true;
+        this.dirtyCount = 0;
+        return;
+      }
+      this.dirtyLo[this.dirtyCount] = lo;
+      this.dirtyHi[this.dirtyCount] = hi;
+      this.dirtyCount++;
+      return;
+    }
+    for (let i = this.dirtyCount - 1; i >= 0; i--) {
+      if (i === at) continue;
+      if (this.dirtyLo[at]! <= this.dirtyHi[i]! && this.dirtyHi[at]! >= this.dirtyLo[i]!) {
+        this.dirtyLo[at] = Math.min(this.dirtyLo[at]!, this.dirtyLo[i]!);
+        this.dirtyHi[at] = Math.max(this.dirtyHi[at]!, this.dirtyHi[i]!);
+        this.dirtyCount--;
+        this.dirtyLo[i] = this.dirtyLo[this.dirtyCount]!;
+        this.dirtyHi[i] = this.dirtyHi[this.dirtyCount]!;
+        if (at === this.dirtyCount) at = i;
+      }
+    }
   }
 
   private ensureSpheres(): void {
     const needed = this.count * 4;
-    if (this.spheres.length < needed) this.spheres = new Float32Array(needed);
+    if (this.spheres.length < needed) {
+      // **要把舊的搬過去。** 增量重算只算改過的那幾段，其餘的靠快取裡原本
+      // 的值 —— 換一個空陣列等於把它們全部歸零，而歸零的包圍球半徑是 0，
+      // 症狀是那些 instance 靜靜地被剔掉。
+      const grown = new Float32Array(Math.max(needed, this.spheres.length * 2));
+      grown.set(this.spheres);
+      this.spheres = grown;
+    }
     // **依走訪順序存，不是依 instance 編號。**
     //
     // 走訪是照空間格的順序走的（`grid.order`），所以用編號當索引時每一次
@@ -1378,10 +1458,50 @@ export class InstancedMesh extends BatchedMesh {
     // 排成走訪順序之後就是循序讀。代價是格子重建時要跟著重排，而那本來
     // 就是同一個時機。
     const byOrder = this.gridActive && this.grid.order.length >= this.count;
-    if (!this.spheresDirty && this.spheresCount === this.count && this.spheresByOrder === byOrder) {
+    const previousCount = this.spheresCount;
+
+    // ## 只重算真的改過的那幾個
+    //
+    // 串流每幀寫進幾百個矩陣，而整份快取是幾十萬個。實測 490,000 個常駐
+    // instance：走訪 11.93 ms 裡有 **6.76 ms 是在重算包圍球**，而那一幀
+    // 真正改過的不到千分之一。
+    //
+    // **依編號排的時候才做得到增量。** 依走訪順序排時，「第幾號髒了」對不到
+    // 「快取的第幾格」—— 那需要一張反向表，是另一件事。而依編號排正好就是
+    // 格子暫停時的情形，也就是串流載入中，也就是這件事最貴的時候。
+    //
+    // 走訪順序換人時（格子剛重建、或剛恢復）就整份重算 —— 那時每一格對應
+    // 到的 instance 都變了。
+    const sameLayout = this.spheresByOrder === byOrder;
+    if (sameLayout && !this.spheresAllDirty && this.dirtyCount === 0 && previousCount === this.count) {
+      return;
+    }
+    const incremental = sameLayout && !byOrder && !this.spheresAllDirty;
+
+    this.spheresByOrder = byOrder;
+    this.spheresCount = this.count;
+
+    if (incremental) {
+      // **count 變大時，多出來的那一段本來就沒算過。** 那一段通常已經在髒
+      // 區間裡（串流是先寫矩陣再加 count），但不能靠那個假設。
+      if (this.count > previousCount) this.computeSpheres(previousCount, this.count, false);
+      if (this.dirtyCount === 0) return;
+      for (let i = 0; i < this.dirtyCount; i++) {
+        const from = Math.max(this.dirtyLo[i]!, 0);
+        const to = Math.min(this.dirtyHi[i]!, this.count);
+        if (to > from) this.computeSpheres(from, to, false);
+      }
+      this.dirtyCount = 0;
       return;
     }
 
+    this.computeSpheres(0, this.count, byOrder);
+    this.dirtyCount = 0;
+    this.spheresAllDirty = false;
+  }
+
+  /** `[from, to)` 這幾格快取重算。`byOrder` 決定第 s 格對應哪個 instance。 */
+  private computeSpheres(from: number, to: number, byOrder: boolean): void {
     const m = this.matricesArray;
     const spheres = this.spheres;
     const order = this.grid.order;
@@ -1390,7 +1510,7 @@ export class InstancedMesh extends BatchedMesh {
     const bcz = this.boundsCenter.z;
     const baseRadius = this.boundsRadius;
 
-    for (let slot = 0; slot < this.count; slot++) {
+    for (let slot = from; slot < to; slot++) {
       const id = byOrder ? order[slot]! : slot;
       const b = id * 16;
       const m0 = m[b]!;
@@ -1421,10 +1541,6 @@ export class InstancedMesh extends BatchedMesh {
       spheres[s + 2] = m2 * bcx + m6 * bcy + m10 * bcz + m[b + 14]!;
       spheres[s + 3] = baseRadius * scale;
     }
-
-    this.spheresDirty = false;
-    this.spheresCount = this.count;
-    this.spheresByOrder = byOrder;
   }
 
   /**
@@ -1440,7 +1556,9 @@ export class InstancedMesh extends BatchedMesh {
     bytesPerElement: number,
     multiplier: number,
   ): void {
+    const spheresStarted = performance.now();
     this.ensureSpheres();
+    this._spheresMs = performance.now() - spheresStarted;
     const spheres = this.spheres;
     const invBaseRadius = this.boundsRadius > 0 ? 1 / this.boundsRadius : 1;
     const order = this.grid.order;

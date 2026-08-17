@@ -635,6 +635,95 @@ describe('InstancedMesh — 資產不再是門檻（W2）', () => {
   });
 });
 
+describe('InstancedMesh — 包圍球快取的增量更新', () => {
+  /**
+   * 快取只重算改過的那幾段，所以**漏標一段的症狀是那些 instance 用舊的
+   * 位置做剔除** —— 畫面破洞，而所有數字都正常。
+   *
+   * 所以這裡不驗「有沒有增量」，驗的是**每一次變動之後，該看得見的都還在**，
+   * 而且是拿一份完全獨立的實作（Three.js 自己的 Frustum + Sphere，走世界
+   * 座標）去比。
+   */
+  const check = (mesh: InstancedMesh, camera: PerspectiveCamera, geometry: BufferGeometry): void => {
+    draw(mesh, camera);
+    const drawn = new Set(Array.from(mesh.drawnInstances));
+    const lost = [...referenceVisible(mesh, camera, geometry)].filter((id) => !drawn.has(id));
+    expect(lost).toEqual([]);
+  };
+
+  it('宣告動態時，逐段更新的結果與整份重算一致', () => {
+    const geometry = unitBox();
+    // 宣告動態 → 沒有空間格 → 快取依編號排 → 走增量那條路。
+    const mesh = new InstancedMesh(geometry, material(), 900, { dynamic: true, autoLod: false });
+    fillGrid(mesh, 30, 6);
+    const camera = makeCamera();
+    camera.position.set(0, 12, 40);
+    camera.lookAt(0, 0, -30);
+    check(mesh, camera, geometry);
+
+    const m = new Matrix4();
+    const block = new Float32Array(16 * 12);
+    // 決定性的偽亂數 —— 破洞必須每次都在同一個地方才查得下去。
+    let seed = 20260817;
+    const rnd = (): number => ((seed = (seed * 1664525 + 1013904223) >>> 0), seed / 4294967296);
+
+    for (let round = 0; round < 40; round++) {
+      const kind = round % 4;
+      if (kind === 0) {
+        mesh.setMatrixAt(Math.floor(rnd() * 900), m.makeTranslation(rnd() * 60 - 30, 0, -rnd() * 60));
+      } else if (kind === 1) {
+        const start = Math.floor(rnd() * 800);
+        for (let i = 0; i < 12; i++) {
+          m.makeTranslation(rnd() * 80 - 40, 0, -rnd() * 80).toArray(block, i * 16);
+        }
+        mesh.writeMatrices(start, block);
+      } else if (kind === 2) {
+        mesh.moveInstances(Math.floor(rnd() * 400) + 400, Math.floor(rnd() * 300), 20);
+      } else {
+        mesh.count = 700 + Math.floor(rnd() * 200);
+      }
+      check(mesh, camera, geometry);
+    }
+  });
+
+  it('髒區間超過上限就整份重算，不是靜靜漏掉', () => {
+    const geometry = unitBox();
+    const mesh = new InstancedMesh(geometry, material(), 400, { dynamic: true, autoLod: false });
+    fillGrid(mesh, 20, 6);
+    const camera = makeCamera();
+    camera.position.set(0, 10, 30);
+    camera.lookAt(0, 0, -20);
+    draw(mesh, camera);
+
+    // 散開的單點改動遠多於追蹤得下的段數。合併不了就必須退回整份重算。
+    const m = new Matrix4();
+    for (let i = 0; i < 400; i += 7) {
+      mesh.setMatrixAt(i, m.makeTranslation((i % 20) * 3 - 30, 0, -(Math.floor(i / 20) * 3)));
+    }
+    check(mesh, camera, geometry);
+  });
+
+  it('容量長大時舊的快取不會被清成零', () => {
+    const geometry = unitBox();
+    const mesh = new InstancedMesh(geometry, material(), 64, { dynamic: true, autoLod: false });
+    fillGrid(mesh, 8, 6);
+    const camera = makeCamera();
+    camera.position.set(0, 8, 30);
+    camera.lookAt(0, 0, 0);
+    check(mesh, camera, geometry);
+
+    // 長大會換一塊新的快取陣列。沒把舊的搬過去的話，前 64 個的半徑會變成
+    // 0 —— 症狀是它們靜靜地被剔掉，而不是報錯。
+    mesh.ensureCapacity(300);
+    const block = new Float32Array(16 * 8);
+    const m = new Matrix4();
+    for (let i = 0; i < 8; i++) m.makeTranslation(i * 4 - 16, 0, -10).toArray(block, i * 16);
+    mesh.writeMatrices(64, block);
+    mesh.count = 72;
+    check(mesh, camera, geometry);
+  });
+});
+
 describe('InstancedMesh — 物件層級的視錐剔除', () => {
   it('晚一點才寫進來的矩陣不會讓整個物件被剔掉', () => {
     // 這是串流的形狀：建構時是空的，內容之後才進來，而且離原點很遠。
