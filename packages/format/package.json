@@ -1,0 +1,41 @@
+{
+  "name": "@webworld/format",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "description": "@webworld/three 與 @webworld/cook 之間的資產格式契約（只有型別與常數）。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thomasYeh/WebWorldEngine.git",
+    "directory": "packages/format"
+  },
+  "bugs": "https://github.com/thomasYeh/WebWorldEngine/issues",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vite build && node tools/flatten-types.mjs",
+    "prepack": "pnpm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "types": "./dist/index.d.ts"
+  },
+  "devDependencies": {
+    "vite-plugin-dts": "^4.5.4",
+    "@ww/core": "workspace:*"
+  }
+}

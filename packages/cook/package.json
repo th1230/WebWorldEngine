@@ -1,0 +1,71 @@
+{
+  "name": "@webworld/cook",
+  "version": "0.1.0",
+  "description": "把 glTF 烘焙成 @webworld/three 吃的格式：LOD 鏈、切線、BC 壓縮貼圖。",
+  "keywords": [
+    "gltf",
+    "lod",
+    "meshoptimizer",
+    "texture-compression",
+    "asset-pipeline",
+    "three"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thomasYeh/WebWorldEngine.git",
+    "directory": "packages/cook"
+  },
+  "bugs": "https://github.com/thomasYeh/WebWorldEngine/issues",
+  "homepage": "https://github.com/thomasYeh/WebWorldEngine/tree/main/packages/cook#readme",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "bin": {
+    "ww-cook": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./texture": "./src/texture/index.ts"
+  },
+  "types": "./src/index.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vite build && node tools/flatten-types.mjs",
+    "prepack": "pnpm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./texture": {
+        "types": "./dist/texture.d.ts",
+        "default": "./dist/texture.js"
+      }
+    },
+    "types": "./dist/index.d.ts"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "^4.4.2",
+    "@gltf-transform/extensions": "^4.4.2",
+    "@gltf-transform/functions": "^4.4.2",
+    "ktx-parse": "^1.1.0",
+    "meshoptimizer": "^1.2.0",
+    "mikktspace": "^1.1.1",
+    "sharp": "^0.35.3",
+    "@webworld/format": "workspace:*"
+  },
+  "devDependencies": {
+    "@ww/core": "workspace:*",
+    "draco3d": "^1.5.7",
+    "vite-plugin-dts": "^4.5.4"
+  }
+}
