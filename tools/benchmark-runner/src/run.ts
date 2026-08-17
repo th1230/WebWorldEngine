@@ -193,7 +193,13 @@ export const DEFAULT_RUNS: readonly SceneRun[] = [
   },
   {
     id: 'ab-ww-real',
-    warmup: 120,
+    // **900 幀，不是 120。** 遠景合併是惰性烘的（每幀 2 ms 的預算），
+    // 一百萬個 instance 有 15,876 格要烘 —— 暖機不足時量到的是暖機途中，
+    // 而那個差是兩倍：120 幀量到 40.20 ms，900 幀量到 **23.90 ms**。
+    //
+    // 兩個數字都是真的，但問的是不同問題。這裡要問穩態，所以暖機拉長。
+    // 「暖機要多久」本身是產品問題，由 site-check 那一側負責。
+    warmup: 900,
     frames: 600,
     profiles: ['hardware'],
   },
