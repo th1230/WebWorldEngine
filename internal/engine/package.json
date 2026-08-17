@@ -1,0 +1,15 @@
+{
+  "name": "@ww/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@ww/core": "workspace:*",
+    "@ww/diagnostics": "workspace:*",
+    "@ww/render-core": "workspace:*"
+  }
+}
