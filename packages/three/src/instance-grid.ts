@@ -39,6 +39,15 @@ export class InstanceGrid {
   private _cellCount = 0;
   private _cellRanges = new Int32Array(0);
   private dirty = true;
+  /**
+   * 重建時的暫存，**跨重建重用**。
+   *
+   * 每次 `new Uint32Array(count)` 在串流下就是每幀配置一份幾十萬位元組。
+   * 這三個的大小都只跟 instance 數與 cell 數有關，所以留著重用就好。
+   */
+  private slots = new Uint32Array(0);
+  private cursors = new Int32Array(0);
+  private ranges = new Int32Array(0);
 
   get order(): Uint32Array {
     return this._order;
@@ -155,43 +164,75 @@ export class InstanceGrid {
       Math.min(gridX * gridZ + 2, 1 << 16),
     );
 
-    // 依 cell 分組。先算每個 instance 的 slot，再依 slot 排序 —— 排序後
-    // 同一個 cell 的 id 自然連續，於是可以登記成一段列範圍。
+    // ## 依 cell 分組是**計數排序**，不是比較排序
+    //
+    // 要的不是一個全序，是「同一個 cell 的 id 連續」。而 cell 數遠小於
+    // instance 數（34,000 個 instance 只有 576 格），所以桶排一趟就夠。
+    //
+    // 原本用 `order.sort((a, b) => slots[a] - slots[b])`，實測那一行就是
+    // 重建成本的四分之三：
+    //
+    // | instance 數 | 整個重建 | 其中 sort |
+    // | ---: | ---: | ---: |
+    // | 10,000 | 1.752 ms | 1.159 ms |
+    // | 34,000 | 6.047 ms | 4.546 ms |
+    // | 160,000 | 33.306 ms | 24.487 ms |
+    //
+    // 貴的不是排序本身，是**每一次比較都要呼叫一次 JS 函式**（34,000 個
+    // 要五十萬次）。計數排序連比較都沒有。
+    //
+    // 順便也不需要 `Set` 去數有幾格了 —— 計數陣列本來就知道（那是另外
+    // 0.471 ms）。
     if (this._order.length < count) this._order = new Uint32Array(count);
+    if (this.slots.length < count) this.slots = new Uint32Array(count);
     const order = this._order;
-    const slots = new Uint32Array(count);
-    const distinct = new Set<number>();
+    const slots = this.slots;
+    let maxSlot = 0;
     for (let i = 0; i < count; i++) {
       const base = i * 16;
       const slot = visibility.slotAt(matrices[base + 12]!, matrices[base + 14]!);
       slots[i] = slot;
-      distinct.add(slot);
-      order[i] = i;
+      if (slot > maxSlot) maxSlot = slot;
     }
 
-    const view = order.subarray(0, count);
-    view.sort((a, b) => slots[a]! - slots[b]!);
+    // slot 是 `CellVisibility` 從 1 開始密集發的，所以直接當桶的索引用。
+    if (this.cursors.length < maxSlot + 2) this.cursors = new Int32Array(maxSlot + 2);
+    const cursors = this.cursors;
+    cursors.fill(0, 0, maxSlot + 2);
+    for (let i = 0; i < count; i++) cursors[slots[i]! + 1]!++;
+
+    let cells = 0;
+    let running = 0;
+    for (let slot = 1; slot <= maxSlot; slot++) {
+      const n = cursors[slot + 1]!;
+      if (n > 0) cells++;
+      cursors[slot] = running;
+      running += n;
+    }
 
     // 順便把每一格的 [start, end) 留下來。HLOD 要以「一整格」為單位烘合併
-    // 幾何，而這裡是唯一知道格子邊界在哪的地方 —— 再算一次等於重做排序。
-    const ranges = new Int32Array(distinct.size * 2);
-    let cells = 0;
-    let runStart = 0;
-    let runSlot = slots[view[0]!]!;
-    for (let i = 1; i <= count; i++) {
-      const slot = i < count ? slots[view[i]!]! : -1;
-      if (slot !== runSlot) {
-        visibility.setRowRange(runSlot, runStart, i);
-        ranges[cells * 2] = runStart;
-        ranges[cells * 2 + 1] = i;
-        cells++;
-        runStart = i;
-        runSlot = slot;
-      }
+    // 幾何，而這裡是唯一知道格子邊界在哪的地方。
+    if (this.ranges.length < cells * 2) this.ranges = new Int32Array(cells * 2);
+    const ranges = this.ranges;
+    let at = 0;
+    for (let slot = 1; slot <= maxSlot; slot++) {
+      const start = cursors[slot]!;
+      // 前綴和跑完之後 `cursors[slot + 1]` 就是下一格的起點，也就是這一格的
+      // 終點。最後一格沒有下一格，用總數。
+      const end = slot === maxSlot ? running : cursors[slot + 1]!;
+      if (end === start) continue;
+      visibility.setRowRange(slot, start, end);
+      ranges[at * 2] = start;
+      ranges[at * 2 + 1] = end;
+      at++;
     }
 
+    // 放進去。同一格內 id 保持遞增 —— 走訪順序與矩陣的排列順序一致，
+    // 那是包圍球快取的區域性所依賴的性質（見 `ensureSpheres`）。
+    for (let i = 0; i < count; i++) order[cursors[slots[i]!]!++] = i;
+
     this.visibility = visibility;
-    this._cellCount = distinct.size;
+    this._cellCount = cells;
     this._cellRanges = ranges.subarray(0, cells * 2);
   }
 
