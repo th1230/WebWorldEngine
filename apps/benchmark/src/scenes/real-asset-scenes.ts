@@ -277,7 +277,7 @@ export const wwRealAssetScene: SceneDefinition = {
         const detail =
           `${describeMaterial(material)}，` +
           `平均可見 ${avgVisible} / ${count}，平均逐一測試 ${avgTested}，` +
-          `合併 ${stats.merged} 格，` +
+          `合併 ${stats.merged} 格（槽位 ${stats.hlod.slots} / 可合併 ${stats.hlod.groups}，最大一格 ${stats.hlod.cellMax} 個），` +
           `LOD 分佈 ${Array.from(stats.levels).join('/')}，` +
           `CPU ${avgCpu.toFixed(3)}ms` +
           `（空間格 ${(gridSum / Math.max(frames, 1)).toFixed(3)}` +

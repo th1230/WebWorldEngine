@@ -237,6 +237,9 @@ export class InstancedMesh extends BatchedMesh {
   private readonly hlodBudgetBytes: number;
   private _mergedDraws = 0;
   private _mergedInstances = 0;
+  private _hlodSlotCount = 0;
+  private _hlodGroupCount = 0;
+  private _hlodCellMax = 0;
   /** 每個 instance 的世界空間包圍球：cx, cy, cz, radius。 */
   private spheres = new Float32Array(0);
   private spheresDirty = true;
@@ -494,6 +497,13 @@ export class InstancedMesh extends BatchedMesh {
      * 分開報是必要的：三項的優化方向完全不同，加在一起看會修錯地方。
      */
     cpuParts: { grid: number; collect: number; bake: number };
+    /**
+     * 遠景合併的槽位數、可合併的格數、最大一格有幾個 instance。
+     *
+     * `slots` 接近 `groups` 代表預算夠；遠小於它代表調高 `hlodBudgetMB`
+     * 會讓更多遠景變成一次繪製。
+     */
+    hlod: { slots: number; groups: number; cellMax: number };
   } {
     return {
       visible: this._visibleInstances,
@@ -506,6 +516,11 @@ export class InstancedMesh extends BatchedMesh {
       merged: this._mergedDraws,
       mergedInstances: this._mergedInstances,
       cpuParts: { grid: this._gridMs, collect: this._collectMs, bake: this._bakeMs },
+      hlod: {
+        slots: this._hlodSlotCount,
+        groups: this._hlodGroupCount,
+        cellMax: this._hlodCellMax,
+      },
     };
   }
 
@@ -804,6 +819,11 @@ export class InstancedMesh extends BatchedMesh {
     const slotIndices = maxCellInstances * perInstance.indices;
     const slotBytes = slotVertices * 12 + slotIndices * 4;
     const slotCount = Math.min(groups.length, Math.floor(this.hlodBudgetBytes / slotBytes));
+    // 交出去給開發者判斷：槽位滿載代表「調高 hlodBudgetMB 會有用」，而
+    // 那是政策不是引擎該自己決定的。
+    this._hlodSlotCount = slotCount;
+    this._hlodGroupCount = groups.length;
+    this._hlodCellMax = maxCellInstances;
 
     if (slotCount === 0) {
       console.info(
