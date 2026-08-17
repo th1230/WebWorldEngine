@@ -223,6 +223,8 @@ export const wwRealAssetScene: SceneDefinition = {
     const hlod = (ctx.params.get('hlod') ?? '1') !== '0';
     // 0 = 預設（槽位大小 = 最大那一格）。其他值 = 槽位裝得下幾個 instance。
     const hlodSlot = numberParam(ctx.params, 'hlodSlot', 0, 0, 100_000);
+    // 0 = 不指定，讓套件由內容決定。
+    const hlodBudgetMB = numberParam(ctx.params, 'hlodBudgetMB', 0, 0, 8192);
     const meshId = ctx.params.get('mesh') ?? DEFAULT_MESH;
 
     const { chain, material } = await loadAsset(meshId);
@@ -232,6 +234,7 @@ export const wwRealAssetScene: SceneDefinition = {
     const mesh = new WWInstancedMesh(chain, material, count, {
       errorPixels,
       hlod,
+      ...(hlodBudgetMB > 0 ? { hlodBudgetMB } : {}),
       ...(hlodSlot > 0 ? { hlodSlotInstances: hlodSlot } : {}),
     });
     place(mesh, count, spread, scale);

@@ -72,10 +72,13 @@ export interface InstancedMeshOptions {
    */
   hlod?: boolean;
   /**
-   * 遠景合併的記憶體預算，MB。預設 64。
+   * 遠景合併的記憶體預算，MB。**省略的話要多少給多少**（上限 512 MB）。
    *
-   * 超過就不啟用，並且在 console 說明為什麼。**這是旋鈕不是自動判斷** ——
-   * 「多少記憶體算多」取決於這個網站還要放什麼，引擎不知道。
+   * 需要的量在執行時就知道：可合併的格數 × 一格的大小。所以預設不是一個
+   * 我訂的數字。給定值只在「這個網站的記憶體要留給別的東西」時才有意義，
+   * 而那是政策，引擎不知道。
+   *
+   * 預算不夠時涵蓋的格數會減少（平順降級），並且在 console 說明涵蓋了多少。
    */
   hlodBudgetMB?: number;
   /**
@@ -162,6 +165,23 @@ const HLOD_MIN_INSTANCES = 4;
  */
 const HLOD_BAKE_BUDGET_MS = 2;
 
+/**
+ * 沒有指定 `hlodBudgetMB` 時，遠景合併最多配置多少。
+ *
+ * **這不是調過的值，是安全護欄。** 預設行為是「要多少給多少」—— 需要的
+ * 槽位數等於可合併的格數，而那在執行時就知道，不必猜。這個上限唯一的工作
+ * 是攔下荒謬的配置：最粗階很重的內容（3,000 個三角形而不是 4 個）乘上幾十
+ * 萬個 instance 會要到幾 GB。
+ *
+ * 引擎沒辦法知道這台裝置還有多少記憶體可用，所以「多少算多」是政策，
+ * 屬於開發者 —— 撞到這個上限時會在 console 說出需要多少，讓他自己決定。
+ *
+ * 曾經試過「每個 instance 幾個位元組」的比例式預設。那在最粗階很小的內容
+ * 上剛好，但測試用的最粗階是 80 個三角形（Avocado 是 4 個），於是同一個
+ * 比例只給得出 4 個槽位 —— **比例式的預設等於假設所有內容的最粗階一樣小**。
+ */
+const HLOD_MAX_BUDGET_BYTES = 512 * 1048576;
+
 /** 自動 LOD 待補時，批次幾何要預留幾倍的空間。 */
 const LOD_RESERVE = 2;
 
@@ -241,7 +261,7 @@ export class InstancedMesh extends BatchedMesh {
   private hlodWanted: number[] = [];
   private frameIndex = 0;
   private readonly hlodEnabled: boolean;
-  private readonly hlodBudgetBytes: number;
+  private readonly hlodBudgetBytes: number | null;
   private readonly hlodSlotInstances: number | null;
   private _mergedDraws = 0;
   private _mergedInstances = 0;
@@ -337,7 +357,8 @@ export class InstancedMesh extends BatchedMesh {
     this.errorPixels = options.errorPixels ?? 2;
     this.instancesPerCell = options.instancesPerCell ?? 64;
     this.hlodEnabled = options.hlod !== false;
-    this.hlodBudgetBytes = (options.hlodBudgetMB ?? 64) * 1048576;
+    this.hlodBudgetBytes =
+      options.hlodBudgetMB === undefined ? null : options.hlodBudgetMB * 1048576;
     this.hlodSlotInstances = options.hlodSlotInstances ?? null;
     this._capacity = count;
     this.count = count;
@@ -838,7 +859,20 @@ export class InstancedMesh extends BatchedMesh {
     const slotVertices = chunk * perInstance.vertices;
     const slotIndices = chunk * perInstance.indices;
     const slotBytes = slotVertices * 12 + slotIndices * 4;
-    const slotCount = Math.min(groups.length, Math.floor(this.hlodBudgetBytes / slotBytes));
+    // ## 預設是「內容需要多少就要多少」，不是一個我訂的位元組數
+    //
+    // 需要的槽位數 = 可合併的格數，而那在執行時就知道，不必猜。實測一百萬
+    // 個 instance：64 MB 只給 5,295 個槽位（需要 15,876），幀 46.35 ms；
+    // 給滿之後 41.20 ms。而 64 那個數字沒有任何依據 —— 準則說套件裡的常數
+    // 只有三種合法來源，「作者隨手訂」不是其中之一。
+    //
+    // 所以預設是**要多少給多少**：可合併的格數 × 一格的大小。
+    //
+    // 上限只是安全護欄，不是調過的值 —— 它唯一的工作是攔下荒謬的配置
+    // （最粗階很重的內容會要很多）。撞到它的時候會說出來。
+    const needed = groups.length * slotBytes;
+    const budget = this.hlodBudgetBytes ?? Math.min(needed, HLOD_MAX_BUDGET_BYTES);
+    const slotCount = Math.min(groups.length, Math.floor(budget / slotBytes));
     // 交出去給開發者判斷：槽位滿載代表「調高 hlodBudgetMB 會有用」，而
     // 那是政策不是引擎該自己決定的。
     this._hlodSlotCount = slotCount;
@@ -850,7 +884,7 @@ export class InstancedMesh extends BatchedMesh {
         'WW.InstancedMesh: 沒有啟用遠景合併 —— 最粗階有 ' +
           `${Math.round((coarsest.getIndex()?.count ?? coarsest.getAttribute('position')!.count) / 3)} 個三角形，` +
           `一格要 ${(slotBytes / 1048576).toFixed(1)} MB，放不進 ` +
-          `${(this.hlodBudgetBytes / 1048576).toFixed(0)} MB 的預算。\n` +
+          `${(budget / 1048576).toFixed(0)} MB 的預算。\n` +
           '剔除與 LOD 照常運作。要啟用的話把 hlodBudgetMB 調高，或讓 cook 產生更粗的階。',
       );
       return;
