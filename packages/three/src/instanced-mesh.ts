@@ -399,6 +399,10 @@ export class InstancedMesh extends BatchedMesh {
   /** 每幀重建那段期間累計的重建成本與省下的走訪，毫秒。見 `weighGrid`。 */
   private gridCostMs = 0;
   private gridSavedMs = 0;
+  /** 暫停期間累積的「多花的走訪」。累到超過 gridCostMs 就值得再建一次。 */
+  private gridPaybackMs = 0;
+  /** 格子真的在用時，剔掉了多少比例的 instance。回本的估算要用它。 */
+  private gridSkipRatio = 0;
   private warnedMoving = false;
   private warnedSingleLevel = false;
   private lastMatrixVersion = -1;
@@ -886,13 +890,36 @@ export class InstancedMesh extends BatchedMesh {
     this.moveCountSeen = this.moveCount;
 
     if (moving) {
+      // **動了就把回本的帳歸零。** 回本估的是「靜下來之後不用格子每幀多花
+      // 多少」，而那筆錢只有在重建出來的格子**撐得住**時才拿得回來。串流是
+      // 動一幀、靜一幀交錯，累計下去就會得出「該重建了」，然後那次重建只
+      // 用了一幀就作廢 —— 實測每次 30 ms，換到一幀 6.9 ms 的節省。
+      if (this.gridPaused) this.gridPaybackMs = 0;
       this.weighGrid();
+    } else if (this.gridPaused) {
+      // ## 恢復要先把暫停時欠下的帳還完
+      //
+      // 原本是「有一幀沒動就立刻恢復」。串流不是每一幀都在寫矩陣（載入本身
+      // 有幀預算），所以那條規則會**恢復 → 重建 → 又不划算 → 再暫停**，來回
+      // 震盪。實測 490,000 個常駐：每一次重建 32 ms，而它馬上就被丟掉 ——
+      // 幀 p95 **31.93 ms**，尖峰的形狀正好是一次重建。
+      //
+      // 恢復是要付一次重建的（暫停期間的變動讓格子過期了），所以只有在
+      // 「不用格子多花的走訪」累積到超過那次重建之後才划算。兩邊都是量到的，
+      // 不是幀數門檻 —— 而且真的靜下來的內容仍然會恢復，只是要等回本。
+      // 從沒量到格子剔掉過任何東西時就沒有帳可算 —— 那時照舊，停下來就恢復。
+      // （那也是格子本來就沒價值的情形，恢復一次的代價有限。）
+      this.gridPaybackMs += this.pausedExtraMs();
+      if (this.gridSkipRatio <= 0 || this.gridPaybackMs >= this.gridCostMs) {
+        this.gridPaused = false;
+        this.gridCostMs = 0;
+        this.gridSavedMs = 0;
+        this.gridPaybackMs = 0;
+      }
     } else {
-      // 停下來了 —— 帳歸零，格子重新划算。暫停是可恢復的：載入時抖動幾幀
-      // 的內容不該永遠失去空間分割。
       this.gridCostMs = 0;
       this.gridSavedMs = 0;
-      this.gridPaused = false;
+      this.gridPaybackMs = 0;
     }
 
     if (this.gridPaused) return null;
@@ -911,6 +938,23 @@ export class InstancedMesh extends BatchedMesh {
     }
 
     return this.grid.update(this.frustum, _cameraLocal.x, _cameraLocal.y, _cameraLocal.z);
+  }
+
+  /**
+   * 暫停期間，這一幀因為沒有格子而多走訪掉多少時間。
+   *
+   * 「多走訪了幾個」用**最後一次格子真的在用時量到的剔除比例**推。那是這份
+   * 內容在這台機器上的實測值，只是稍微舊了一點 —— 而它唯一的用途是決定
+   * 「什麼時候值得再建一次」，不影響任何一幀的畫面。
+   *
+   * 沒量過（一開始就暫停）時回傳 0：那時無從得知格子有沒有用，而回本永遠
+   * 不會發生反而是安全的一邊 —— 內容真的停下來時 `moving` 會是 false，
+   * 那條路照樣會走到這裡，只是要等到有過一次實測。
+   */
+  private pausedExtraMs(): number {
+    const tested = this._testedInstances;
+    if (tested <= 0 || this.gridSkipRatio <= 0) return 0;
+    return tested * this.gridSkipRatio * (this._collectMs / tested);
   }
 
   /**
@@ -965,7 +1009,8 @@ export class InstancedMesh extends BatchedMesh {
     console.warn(
       `WW.InstancedMesh: 已暫停空間分割剔除 —— ${cost}。\n` +
         '這批 instance 沒有宣告 `dynamic`，預設當靜態。' +
-        '\n逐 instance 的視錐剔除與 LOD 仍然照常運作，矩陣停止變動後格子會自己恢復（`stats.spatial` 讀得到）。' +
+        '\n逐 instance 的視錐剔除與 LOD 仍然照常運作。矩陣**持續**停止變動、' +
+        '而且不用格子多花的走訪累積到超過一次重建之後，格子會自己恢復（`stats.spatial` 讀得到）。' +
         advice,
     );
   }
@@ -1693,6 +1738,11 @@ export class InstancedMesh extends BatchedMesh {
     this._testedInstances = tested;
     this._mergedDraws = merged;
     this._mergedInstances = mergedInstances;
+    // 格子真的在用的那幾幀才量得到「它剔掉了多少」。暫停之後要靠這個數字
+    // 估算欠了多少帳（見 `pausedExtraMs`）。
+    if (ranges !== null && this.count > 0) {
+      this.gridSkipRatio = Math.max(this.count - tested, 0) / this.count;
+    }
     this.internals._indirectTexture.needsUpdate = true;
     this.internals._multiDrawCount = drawCount;
     this.internals._visibilityChanged = false;
