@@ -221,13 +221,19 @@ export const wwRealAssetScene: SceneDefinition = {
     const errorPixels = numberParam(ctx.params, 'errorPixels', 2, 1, 64);
     // 遠景合併的 A/B。預設開，--param hlod=0 關掉當對照組。
     const hlod = (ctx.params.get('hlod') ?? '1') !== '0';
+    // 0 = 預設（槽位大小 = 最大那一格）。其他值 = 槽位裝得下幾個 instance。
+    const hlodSlot = numberParam(ctx.params, 'hlodSlot', 0, 0, 100_000);
     const meshId = ctx.params.get('mesh') ?? DEFAULT_MESH;
 
     const { chain, material } = await loadAsset(meshId);
     const { scene, camera } = buildCommon(ctx.aspect, spread);
 
     const scale = normalizingScale(chain);
-    const mesh = new WWInstancedMesh(chain, material, count, { errorPixels, hlod });
+    const mesh = new WWInstancedMesh(chain, material, count, {
+      errorPixels,
+      hlod,
+      ...(hlodSlot > 0 ? { hlodSlotInstances: hlodSlot } : {}),
+    });
     place(mesh, count, spread, scale);
     scene.add(mesh);
 

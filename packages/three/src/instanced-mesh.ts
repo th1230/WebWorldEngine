@@ -78,6 +78,13 @@ export interface InstancedMeshOptions {
    * 「多少記憶體算多」取決於這個網站還要放什麼，引擎不知道。
    */
   hlodBudgetMB?: number;
+  /**
+   * 一個合併槽位裝得下幾個 instance。預設是**最大那一格**（一格一個槽位）。
+   *
+   * 調小會得到更多槽位（同樣預算），代價是大格子被拆成幾次繪製。值不值得
+   * 取決於格子大小的分佈 —— 一個離群的大格子會把每個槽位都撐大。
+   */
+  hlodSlotInstances?: number;
 }
 
 /**
@@ -235,6 +242,7 @@ export class InstancedMesh extends BatchedMesh {
   private frameIndex = 0;
   private readonly hlodEnabled: boolean;
   private readonly hlodBudgetBytes: number;
+  private readonly hlodSlotInstances: number | null;
   private _mergedDraws = 0;
   private _mergedInstances = 0;
   private _hlodSlotCount = 0;
@@ -330,6 +338,7 @@ export class InstancedMesh extends BatchedMesh {
     this.instancesPerCell = options.instancesPerCell ?? 64;
     this.hlodEnabled = options.hlod !== false;
     this.hlodBudgetBytes = (options.hlodBudgetMB ?? 64) * 1048576;
+    this.hlodSlotInstances = options.hlodSlotInstances ?? null;
     this._capacity = count;
     this.count = count;
     this._levelCounts = new Int32Array(prepared.length);
@@ -761,14 +770,24 @@ export class InstancedMesh extends BatchedMesh {
     const spheres = this.spheres;
     const invBaseRadius = this.boundsRadius > 0 ? 1 / this.boundsRadius : 1;
 
-    const groups: HlodGroup[] = [];
+    // 槽位一律一樣大 —— 大小不一的話回收之後就換不進去，池子會碎掉。
+    // 預設是「最大那一格」，一格一個槽位。
     let maxCellInstances = 0;
     for (let cell = 0; cell < cells; cell++) {
-      const from = ranges[cell * 2]!;
-      const to = ranges[cell * 2 + 1]!;
-      // 一格只有一兩個 instance 的話，合併省不到什麼，卻照樣佔一個槽位。
+      const size = ranges[cell * 2 + 1]! - ranges[cell * 2]!;
+      if (size >= HLOD_MIN_INSTANCES && size > maxCellInstances) maxCellInstances = size;
+    }
+    if (maxCellInstances === 0) return;
+    const chunk = Math.max(this.hlodSlotInstances ?? maxCellInstances, HLOD_MIN_INSTANCES);
+
+    const groups: HlodGroup[] = [];
+    for (let cell = 0; cell < cells; cell++) {
+      const cellFrom = ranges[cell * 2]!;
+      const cellTo = ranges[cell * 2 + 1]!;
+      for (let from = cellFrom; from < cellTo; from += chunk) {
+      const to = Math.min(from + chunk, cellTo);
+      // 一份只有一兩個 instance 的話，合併省不到什麼，卻照樣佔一個槽位。
       if (to - from < HLOD_MIN_INSTANCES) continue;
-      if (to - from > maxCellInstances) maxCellInstances = to - from;
 
       let cx = 0;
       let cy = 0;
@@ -810,13 +829,14 @@ export class InstancedMesh extends BatchedMesh {
         radius,
         maxScale: maxScale * invBaseRadius,
       });
+      }
     }
     if (groups.length === 0) return;
 
     // 槽位一律保留「最大那一格」的空間，所以任何一格都放得進任何一個槽位
     // —— 大小不一的話回收之後就換不進去，池子會碎掉。
-    const slotVertices = maxCellInstances * perInstance.vertices;
-    const slotIndices = maxCellInstances * perInstance.indices;
+    const slotVertices = chunk * perInstance.vertices;
+    const slotIndices = chunk * perInstance.indices;
     const slotBytes = slotVertices * 12 + slotIndices * 4;
     const slotCount = Math.min(groups.length, Math.floor(this.hlodBudgetBytes / slotBytes));
     // 交出去給開發者判斷：槽位滿載代表「調高 hlodBudgetMB 會有用」，而
