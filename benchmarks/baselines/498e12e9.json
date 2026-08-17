@@ -1,0 +1,2825 @@
+{
+  "schemaVersion": 1,
+  "profile": "hardware",
+  "performanceMeaningful": true,
+  "capturedAt": "2026-08-16T12:51:46.270Z",
+  "machineId": "498e12e9",
+  "reports": [
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "baseline-empty",
+      "params": {
+        "warmupFrames": 60,
+        "measureFrames": 300
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.8,
+      "memoryReferenceMs": 24.7,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 1,
+        "tierReasons": [
+          "微量測合成分數 0.249（compute 0.28 / fill 0.22）→ Tier 1",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 1 = min(門檻 3, 效能 1)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": null,
+      "notes": [
+        "3 次交錯執行取中位數；frame p95 範圍 6.60–6.70ms（±1.5%）；開頭 30 幀 176–176ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:49:12.955Z",
+      "frames": 300,
+      "timing": {
+        "deltaMs": {
+          "count": 300,
+          "mean": 6.038666666696469,
+          "min": 0,
+          "max": 7,
+          "p50": 6.0999999940395355,
+          "p95": 6.600000008940697,
+          "p99": 6.799999997019768,
+          "stddev": 0.5220600649264452
+        },
+        "cpuFrameMs": {
+          "count": 300,
+          "mean": 0.29733333349227903,
+          "min": 0.09999999403953552,
+          "max": 0.7000000029802322,
+          "p50": 0.29999999701976776,
+          "p95": 0.5,
+          "p99": 0.5,
+          "stddev": 0.09176578191415345
+        },
+        "gpuRenderMs": {
+          "count": 75,
+          "mean": 0.44751108000000006,
+          "min": 0.369529,
+          "max": 0.831558,
+          "p50": 0.379164,
+          "p95": 0.8200265,
+          "p99": 0.8238879000000001,
+          "stddev": 0.15470501445573853
+        },
+        "gpuSampleCount": 75,
+        "fpsP50": 163.93442638969267,
+        "fpsP1Low": 147.05882359386317
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 300,
+          "mean": 1,
+          "min": 1,
+          "max": 1,
+          "p50": 1,
+          "p95": 1,
+          "p99": 1,
+          "stddev": 0
+        },
+        "triangles": {
+          "count": 300,
+          "mean": 1,
+          "min": 1,
+          "max": 1,
+          "p50": 1,
+          "p95": 1,
+          "p99": 1,
+          "stddev": 0
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 176.1000000089407,
+        "worstMs": 6.799999997019768,
+        "worstCpuMs": 0.5999999940395355
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 300,
+          "mean": 11062338,
+          "min": 11062338,
+          "max": 11062338,
+          "p50": 11062338,
+          "p95": 11062338,
+          "p99": 11062338,
+          "stddev": 0
+        },
+        "peakTotalBytes": 11062338,
+        "jsHeapPeakBytes": 41965723,
+        "driftBytes": 0
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 0,
+        "longTaskMs": 0
+      }
+    },
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "shader-compile-cold",
+      "params": {
+        "warmupFrames": 0,
+        "measureFrames": 200,
+        "count": 128,
+        "precompile": false,
+        "minChain": 32,
+        "chainSpread": 48
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.8,
+      "memoryReferenceMs": 22,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 1,
+        "tierReasons": [
+          "微量測合成分數 0.205（compute 0.12 / fill 0.29）→ Tier 1",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 1 = min(門檻 3, 效能 1)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": null,
+      "notes": [
+        "未預先編譯：前幾幀包含 shader 編譯成本",
+        "3 次交錯執行取中位數；frame p95 範圍 6.20–6.40ms（±3.2%）；開頭 30 幀 1631–1664ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:49:16.282Z",
+      "frames": 200,
+      "timing": {
+        "deltaMs": {
+          "count": 200,
+          "mean": 13.468000000044704,
+          "min": 0,
+          "max": 1136.2999999970198,
+          "p50": 6.0999999940395355,
+          "p95": 6.299999997019768,
+          "p99": 10.244999994185232,
+          "stddev": 83.86947490057975
+        },
+        "cpuFrameMs": {
+          "count": 200,
+          "mean": 2.550999999642372,
+          "min": 0.5,
+          "max": 365.1000000089407,
+          "p50": 0.7000000029802322,
+          "p95": 1.0999999947845935,
+          "p99": 2.213000002950418,
+          "stddev": 25.76642860875822
+        },
+        "gpuRenderMs": {
+          "count": 50,
+          "mean": 2.42844636,
+          "min": 2.273268,
+          "max": 4.643461,
+          "p50": 2.3443604999999996,
+          "p95": 2.70199365,
+          "p99": 3.939702909999997,
+          "stddev": 0.35343574524938787
+        },
+        "gpuSampleCount": 50,
+        "fpsP50": 163.93442638969267,
+        "fpsP1Low": 97.60858961128075
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 200,
+          "mean": 129,
+          "min": 129,
+          "max": 129,
+          "p50": 129,
+          "p95": 129,
+          "p99": 129,
+          "stddev": 0
+        },
+        "triangles": {
+          "count": 200,
+          "mean": 257,
+          "min": 257,
+          "max": 257,
+          "p50": 257,
+          "p95": 257,
+          "p99": 257,
+          "stddev": 0
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 1663.800000011921,
+        "worstMs": 1136.2999999970198,
+        "worstCpuMs": 365.1000000089407
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 200,
+          "mean": 11452708,
+          "min": 11452708,
+          "max": 11452708,
+          "p50": 11452708,
+          "p95": 11452708,
+          "p99": 11452708,
+          "stddev": 0
+        },
+        "peakTotalBytes": 11452708,
+        "jsHeapPeakBytes": 83152823,
+        "driftBytes": 0
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 2,
+        "longTaskMs": 532
+      }
+    },
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "shader-compile-precompiled",
+      "params": {
+        "warmupFrames": 0,
+        "measureFrames": 200,
+        "count": 128,
+        "precompile": true,
+        "minChain": 32,
+        "chainSpread": 48
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.8,
+      "memoryReferenceMs": 24.7,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 0,
+        "tierReasons": [
+          "微量測合成分數 0.149（compute 0.10 / fill 0.19）→ Tier 0",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 0 = min(門檻 3, 效能 0)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": null,
+      "notes": [
+        "已於量測前執行 compileAsync()",
+        "3 次交錯執行取中位數；frame p95 範圍 6.40–6.40ms（±0.0%）；開頭 30 幀 192–196ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:49:19.656Z",
+      "frames": 200,
+      "timing": {
+        "deltaMs": {
+          "count": 200,
+          "mean": 6.107999999970198,
+          "min": 0,
+          "max": 20.900000005960464,
+          "p50": 6.0999999940395355,
+          "p95": 6.3999999918043615,
+          "p99": 6.860999996960108,
+          "stddev": 1.2809136187326156
+        },
+        "cpuFrameMs": {
+          "count": 200,
+          "mean": 0.7744999998807907,
+          "min": 0.5,
+          "max": 9.399999991059303,
+          "p50": 0.7000000029802322,
+          "p95": 0.9000000059604645,
+          "p99": 1.6019999942183476,
+          "stddev": 0.6339631659878489
+        },
+        "gpuRenderMs": {
+          "count": 50,
+          "mean": 2.44178698,
+          "min": 2.320611,
+          "max": 4.674191,
+          "p50": 2.373735,
+          "p95": 2.5969975499999993,
+          "p99": 3.712852159999996,
+          "stddev": 0.3308180903632869
+        },
+        "gpuSampleCount": 50,
+        "fpsP50": 163.93442638969267,
+        "fpsP1Low": 145.75134826454865
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 200,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 200,
+          "mean": 129,
+          "min": 129,
+          "max": 129,
+          "p50": 129,
+          "p95": 129,
+          "p99": 129,
+          "stddev": 0
+        },
+        "triangles": {
+          "count": 200,
+          "mean": 257,
+          "min": 257,
+          "max": 257,
+          "p50": 257,
+          "p95": 257,
+          "p99": 257,
+          "stddev": 0
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 191.59999999403954,
+        "worstMs": 20.900000005960464,
+        "worstCpuMs": 9.399999991059303
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 200,
+          "mean": 11452708,
+          "min": 11452708,
+          "max": 11452708,
+          "p50": 11452708,
+          "p95": 11452708,
+          "p99": 11452708,
+          "stddev": 0
+        },
+        "peakTotalBytes": 11452708,
+        "jsHeapPeakBytes": 57685858,
+        "driftBytes": 0
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 1,
+        "longTaskMs": 170
+      }
+    },
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "texture-load",
+      "params": {
+        "warmupFrames": 60,
+        "measureFrames": 300,
+        "count": 48,
+        "size": 512,
+        "approxTextureMB": 64
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.9,
+      "memoryReferenceMs": 25.1,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 1,
+        "tierReasons": [
+          "微量測合成分數 0.270（compute 0.26 / fill 0.28）→ Tier 1",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 1 = min(門檻 3, 效能 1)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": null,
+      "notes": [
+        "3 次交錯執行取中位數；frame p95 範圍 6.60–6.60ms（±0.0%）；開頭 30 幀 176–176ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:49:22.971Z",
+      "frames": 300,
+      "timing": {
+        "deltaMs": {
+          "count": 300,
+          "mean": 6.038000000019868,
+          "min": 0,
+          "max": 6.9000000059604645,
+          "p50": 6.0999999940395355,
+          "p95": 6.5999999940395355,
+          "p99": 6.700000002980232,
+          "stddev": 0.4726881776564956
+        },
+        "cpuFrameMs": {
+          "count": 300,
+          "mean": 0.43100000018874807,
+          "min": 0.20000000298023224,
+          "max": 0.7000000029802322,
+          "p50": 0.4000000059604645,
+          "p95": 0.5999999940395355,
+          "p99": 0.6010000088810912,
+          "stddev": 0.087356187940534
+        },
+        "gpuRenderMs": {
+          "count": 75,
+          "mean": 0.5220481599999999,
+          "min": 0.47635099999999997,
+          "max": 0.877286,
+          "p50": 0.512861,
+          "p95": 0.5770848999999998,
+          "p99": 0.8124982600000005,
+          "stddev": 0.06296042575559195
+        },
+        "gpuSampleCount": 75,
+        "fpsP50": 163.93442638969267,
+        "fpsP1Low": 149.25373127689392
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 300,
+          "mean": 49,
+          "min": 49,
+          "max": 49,
+          "p50": 49,
+          "p95": 49,
+          "p99": 49,
+          "stddev": 0
+        },
+        "triangles": {
+          "count": 300,
+          "mean": 97,
+          "min": 97,
+          "max": 97,
+          "p50": 97,
+          "p95": 97,
+          "p99": 97,
+          "stddev": 0
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 176,
+        "worstMs": 6.700000002980232,
+        "worstCpuMs": 0.7000000029802322
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 300,
+          "mean": 78164658,
+          "min": 78164658,
+          "max": 78164658,
+          "p50": 78164658,
+          "p95": 78164658,
+          "p99": 78164658,
+          "stddev": 0
+        },
+        "peakTotalBytes": 78164658,
+        "jsHeapPeakBytes": 94261463,
+        "driftBytes": 0
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 0,
+        "longTaskMs": 0
+      }
+    },
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "device-loss-soak",
+      "params": {
+        "warmupFrames": 30,
+        "measureFrames": 900,
+        "interval": 40,
+        "requestedLosses": 20,
+        "triggeredLosses": 0,
+        "recoveredLosses": 0,
+        "duplicateNotifications": 0,
+        "finalState": "running"
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.8,
+      "memoryReferenceMs": 26.6,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 1,
+        "tierReasons": [
+          "微量測合成分數 0.230（compute 0.22 / fill 0.24）→ Tier 1",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 1 = min(門檻 3, 效能 1)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": {
+        "ok": true,
+        "detail": "20 次遺失全部恢復（去重 0 則重複通報）"
+      },
+      "notes": [
+        "console: THREE.Error resolving queries: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was resolved.\n    at oF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:588:34098)\n    at uF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:79:59239)\n    at hF.disposeRenderer (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41468)\n    at hF.recreate (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41290)\n    at Object.reacquire (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1750)\n    at Te.reacquireWithRetry (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4680)\n    at Te.notifyLost (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4181)\n    at v (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1920)\n    at Object.onDeviceLost (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1611)\n    at http://localhost:4173/assets/index-ZKn_0K1b.js:588:38281",
+        "console: THREE.Error resolving queries: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was resolved.\n    at oF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:588:34098)\n    at uF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:79:59239)\n    at hF.disposeRenderer (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41468)\n    at hF.recreate (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41290)\n    at Object.reacquire (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1750)\n    at Te.reacquireWithRetry (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4680)\n    at Te.notifyLost (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4181)\n    at v (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1920)\n    at Object.onDeviceLost (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1611)\n    at http://localhost:4173/assets/index-ZKn_0K1b.js:588:38281",
+        "console: THREE.Error resolving queries: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was resolved.\n    at oF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:588:34098)\n    at uF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:79:59239)\n    at hF.disposeRenderer (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41468)\n    at hF.recreate (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41290)\n    at Object.reacquire (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1750)\n    at Te.reacquireWithRetry (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4680)\n    at Te.notifyLost (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4181)\n    at v (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1920)\n    at Object.onDeviceLost (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1611)\n    at http://localhost:4173/assets/index-ZKn_0K1b.js:588:38281",
+        "console: THREE.Error resolving queries: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was resolved.\n    at oF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:588:34098)\n    at uF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:79:59239)\n    at hF.disposeRenderer (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41468)\n    at hF.recreate (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41290)\n    at Object.reacquire (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1750)\n    at Te.reacquireWithRetry (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4680)\n    at Te.notifyLost (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4181)\n    at v (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1920)\n    at Object.onDeviceLost (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1611)\n    at http://localhost:4173/assets/index-ZKn_0K1b.js:588:38281",
+        "console: THREE.Error resolving queries: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was resolved.\n    at oF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:588:34098)\n    at uF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:79:59239)\n    at hF.disposeRenderer (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41468)\n    at hF.recreate (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41290)\n    at Object.reacquire (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1750)\n    at Te.reacquireWithRetry (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4680)\n    at Te.notifyLost (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4181)\n    at v (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1920)\n    at Object.onDeviceLost (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1611)\n    at http://localhost:4173/assets/index-ZKn_0K1b.js:588:38281",
+        "console: THREE.Error resolving queries: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was resolved.\n    at oF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:588:34098)\n    at uF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:79:59239)\n    at hF.disposeRenderer (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41468)\n    at hF.recreate (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41290)\n    at Object.reacquire (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1750)\n    at Te.reacquireWithRetry (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4680)\n    at Te.notifyLost (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4181)\n    at v (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1920)\n    at Object.onDeviceLost (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1611)\n    at http://localhost:4173/assets/index-ZKn_0K1b.js:588:38281",
+        "console: THREE.Error resolving queries: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was resolved.\n    at oF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:588:34098)\n    at uF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:79:59239)\n    at hF.disposeRenderer (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41468)\n    at hF.recreate (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41290)\n    at Object.reacquire (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1750)\n    at Te.reacquireWithRetry (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4680)\n    at Te.notifyLost (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4181)\n    at v (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1920)\n    at Object.onDeviceLost (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1611)\n    at http://localhost:4173/assets/index-ZKn_0K1b.js:588:38281",
+        "console: THREE.Error resolving queries: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was resolved.\n    at oF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:588:34098)\n    at uF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:79:59239)\n    at hF.disposeRenderer (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41468)\n    at hF.recreate (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41290)\n    at Object.reacquire (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1750)\n    at Te.reacquireWithRetry (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4680)\n    at Te.notifyLost (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4181)\n    at v (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1920)\n    at Object.onDeviceLost (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1611)\n    at http://localhost:4173/assets/index-ZKn_0K1b.js:588:38281",
+        "console: THREE.Error resolving queries: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was resolved.\n    at oF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:588:34098)\n    at uF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:79:59239)\n    at hF.disposeRenderer (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41468)\n    at hF.recreate (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41290)\n    at Object.reacquire (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1750)\n    at Te.reacquireWithRetry (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4680)\n    at Te.notifyLost (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4181)\n    at v (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1920)\n    at Object.onDeviceLost (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1611)\n    at http://localhost:4173/assets/index-ZKn_0K1b.js:588:38281",
+        "console: THREE.Error resolving queries: AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was resolved.\n    at oF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:588:34098)\n    at uF.dispose (http://localhost:4173/assets/index-ZKn_0K1b.js:79:59239)\n    at hF.disposeRenderer (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41468)\n    at hF.recreate (http://localhost:4173/assets/index-ZKn_0K1b.js:588:41290)\n    at Object.reacquire (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1750)\n    at Te.reacquireWithRetry (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4680)\n    at Te.notifyLost (http://localhost:4173/assets/index-ZKn_0K1b.js:10:4181)\n    at v (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1920)\n    at Object.onDeviceLost (http://localhost:4173/assets/index-ZKn_0K1b.js:608:1611)\n    at http://localhost:4173/assets/index-ZKn_0K1b.js:588:38281",
+        "3 次交錯執行取中位數；frame p95 範圍 6.60–6.81ms（±3.1%）；開頭 30 幀 176–176ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:49:29.496Z",
+      "frames": 900,
+      "timing": {
+        "deltaMs": {
+          "count": 900,
+          "mean": 6.099222222218911,
+          "min": 0,
+          "max": 17.400000005960464,
+          "p50": 6.0999999940395355,
+          "p95": 6.799999997019768,
+          "p99": 10.300999997109175,
+          "stddev": 1.2191599142021812
+        },
+        "cpuFrameMs": {
+          "count": 900,
+          "mean": 0.9037777776519458,
+          "min": 0,
+          "max": 15.299999997019768,
+          "p50": 0.7000000029802322,
+          "p95": 0.9000000059604645,
+          "p99": 9.801999997049569,
+          "stddev": 1.4557267355636025
+        },
+        "gpuRenderMs": {
+          "count": 225,
+          "mean": 0.8953478488888893,
+          "min": 0.866557,
+          "max": 0.9671810000000001,
+          "p50": 0.8949940000000001,
+          "p95": 0.930286,
+          "p99": 0.94766404,
+          "stddev": 0.018505253890408857
+        },
+        "gpuSampleCount": 225,
+        "fpsP50": 163.93442638969267,
+        "fpsP1Low": 97.07795362398168
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 900,
+          "mean": 196.53333333333333,
+          "min": 0,
+          "max": 201,
+          "p50": 201,
+          "p95": 201,
+          "p99": 201,
+          "stddev": 29.644988809456137
+        },
+        "triangles": {
+          "count": 900,
+          "mean": 2347.6444444444446,
+          "min": 0,
+          "max": 2401,
+          "p50": 2401,
+          "p95": 2401,
+          "p99": 2401,
+          "stddev": 354.1175031418177
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 176,
+        "worstMs": 6.799999997019768,
+        "worstCpuMs": 1
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 900,
+          "mean": 10865487.111111112,
+          "min": 0,
+          "max": 11112430,
+          "p50": 11112430,
+          "p95": 11112430,
+          "p99": 11112430,
+          "stddev": 1638944.5920192418
+        },
+        "peakTotalBytes": 11112430,
+        "jsHeapPeakBytes": 68596414,
+        "driftBytes": 49388.57777777778
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 0,
+        "longTaskMs": 0
+      }
+    },
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "compute-indirect",
+      "params": {
+        "warmupFrames": 120,
+        "measureFrames": 600,
+        "count": 50000,
+        "spread": 300,
+        "indirectEnabled": true
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.8,
+      "memoryReferenceMs": 25.8,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 1,
+        "tierReasons": [
+          "微量測合成分數 0.316（compute 0.34 / fill 0.29）→ Tier 1",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 1 = min(門檻 3, 效能 1)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": {
+        "ok": true,
+        "detail": "compute → indirect draw 正常運作"
+      },
+      "notes": [
+        "indirect draw 已啟用：instanceCount 由 compute shader 寫入",
+        "3 次交錯執行取中位數；frame p95 範圍 11.90–16.40ms（±37.8%）；開頭 30 幀 201–206ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:44:39.596Z",
+      "frames": 600,
+      "timing": {
+        "deltaMs": {
+          "count": 600,
+          "mean": 6.916166666671634,
+          "min": 0,
+          "max": 18.099999994039536,
+          "p50": 6.100000008940697,
+          "p95": 16.11000000834464,
+          "p99": 17.700000002980232,
+          "stddev": 3.039421893578232
+        },
+        "cpuFrameMs": {
+          "count": 600,
+          "mean": 0.34133333367606006,
+          "min": 0.09999999403953552,
+          "max": 1.1000000089406967,
+          "p50": 0.29999999701976776,
+          "p95": 0.5,
+          "p99": 0.6999999882280826,
+          "stddev": 0.10867953331061751
+        },
+        "gpuRenderMs": {
+          "count": 54,
+          "mean": 4.4991326111111105,
+          "min": 4.401534,
+          "max": 4.603773,
+          "p50": 4.499138,
+          "p95": 4.56038355,
+          "p99": 4.58814913,
+          "stddev": 0.039677001434183186
+        },
+        "gpuSampleCount": 54,
+        "fpsP50": 163.93442598923147,
+        "fpsP1Low": 56.497175131730245
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 600,
+          "mean": 2,
+          "min": 2,
+          "max": 2,
+          "p50": 2,
+          "p95": 2,
+          "p99": 2,
+          "stddev": 0
+        },
+        "triangles": {
+          "count": 600,
+          "mean": 600001,
+          "min": 600001,
+          "max": 600001,
+          "p50": 600001,
+          "p95": 600001,
+          "p99": 600001,
+          "stddev": 0
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 205.5,
+        "worstMs": 17.400000005960464,
+        "worstCpuMs": 0.8999999910593033
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 600,
+          "mean": 23882844,
+          "min": 23882844,
+          "max": 23882844,
+          "p50": 23882844,
+          "p95": 23882844,
+          "p99": 23882844,
+          "stddev": 0
+        },
+        "peakTotalBytes": 23882844,
+        "jsHeapPeakBytes": 47213587,
+        "driftBytes": 0
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 0,
+        "longTaskMs": 0
+      }
+    },
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "batching",
+      "params": {
+        "warmupFrames": 120,
+        "measureFrames": 600,
+        "count": 20000,
+        "shapes": 5,
+        "spread": 300
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.8,
+      "memoryReferenceMs": 25.7,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 1,
+        "tierReasons": [
+          "微量測合成分數 0.257（compute 0.25 / fill 0.26）→ Tier 1",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 1 = min(門檻 3, 效能 1)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": null,
+      "notes": [
+        "3 次交錯執行取中位數；frame p95 範圍 14.60–14.70ms（±0.7%）；開頭 30 幀 226–243ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:47:14.302Z",
+      "frames": 600,
+      "timing": {
+        "deltaMs": {
+          "count": 600,
+          "mean": 8.205833333333333,
+          "min": 0,
+          "max": 21,
+          "p50": 8.100000008940697,
+          "p95": 14.699999988824128,
+          "p99": 19.700000002980232,
+          "stddev": 3.0794514132871815
+        },
+        "cpuFrameMs": {
+          "count": 600,
+          "mean": 4.587166667108734,
+          "min": 4,
+          "max": 5.5,
+          "p50": 4.5999999940395355,
+          "p95": 5,
+          "p99": 5.200000002980232,
+          "stddev": 0.23461396346480304
+        },
+        "gpuRenderMs": {
+          "count": 80,
+          "mean": 5.645327375000002,
+          "min": 5.4286639999999995,
+          "max": 5.844703000000001,
+          "p50": 5.6391055,
+          "p95": 5.787601249999999,
+          "p99": 5.81713595,
+          "stddev": 0.08741804745123694
+        },
+        "gpuSampleCount": 80,
+        "fpsP50": 123.45678998718645,
+        "fpsP1Low": 50.761421312117726
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 600,
+          "mean": 12972.075,
+          "min": 12502,
+          "max": 13381,
+          "p50": 13043.5,
+          "p95": 13325.05,
+          "p99": 13372.01,
+          "stddev": 264.79217801431116
+        },
+        "triangles": {
+          "count": 600,
+          "mean": 674216.8733333333,
+          "min": 646621,
+          "max": 693473,
+          "p50": 678393,
+          "p95": 692413.6000000001,
+          "p99": 693053.12,
+          "stddev": 13881.374594217865
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 226.40000000596046,
+        "worstMs": 20.099999994039536,
+        "worstCpuMs": 5.100000008940697
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 600,
+          "mean": 12462203,
+          "min": 12462203,
+          "max": 12462203,
+          "p50": 12462203,
+          "p95": 12462203,
+          "p99": 12462203,
+          "stddev": 0
+        },
+        "peakTotalBytes": 12462203,
+        "jsHeapPeakBytes": 59551383,
+        "driftBytes": 0
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 0,
+        "longTaskMs": 0
+      }
+    },
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "cooked-assets",
+      "params": {
+        "warmupFrames": 120,
+        "measureFrames": 600,
+        "count": 40000,
+        "spread": 400,
+        "errorPixels": 2,
+        "hysteresis": 1,
+        "cellCulling": 1,
+        "cellSize": 259.1320393661897,
+        "cellDivisions": 32,
+        "lookAway": 0,
+        "rowRanges": 1,
+        "visibleSpans": 1,
+        "visibleCells": 16,
+        "testedCells": 16,
+        "cellCulled": 0,
+        "meshes": 18,
+        "lodLevels": 109,
+        "batches": 47,
+        "visibleInstances": 27441,
+        "culled": 12559,
+        "culledPct": 31.4,
+        "unbounded": 0,
+        "lodSwitches": 136081,
+        "lodReversals": 33113,
+        "cacheHits": 0,
+        "workerDecodes": 3,
+        "workerMs": 2.5,
+        "residentKB": 10579,
+        "ms.LodSelection": 1.533,
+        "ms.TransformHierarchy": 0.005,
+        "ms.RenderExtraction": 2.395
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.8,
+      "memoryReferenceMs": 25.4,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 1,
+        "tierReasons": [
+          "微量測合成分數 0.296（compute 0.29 / fill 0.31）→ Tier 1",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 1 = min(門檻 3, 效能 1)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": {
+        "ok": true,
+        "detail": "40000 個 instance → 畫 27441、剔除 12559（31.4%）、46 批、136191 次 LOD 切換（109 個 LOD 可用）"
+      },
+      "notes": [
+        "貼圖：bc1-rgb-srgb(albedo) + bc5-rg(normal) + bc5-rg(AO/roughness)，各 7 mip，worker 解碼",
+        "切線由 MikkTSpace 在 cook 時產生，未使用螢幕空間導數推導",
+        "載入 18 個 mesh、共 109 個 LOD（manifest 80c82865）",
+        "3 次交錯執行取中位數；frame p95 範圍 115.70–123.21ms（±6.5%）；開頭 30 幀 3003–3049ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:45:52.340Z",
+      "frames": 600,
+      "timing": {
+        "deltaMs": {
+          "count": 600,
+          "mean": 87.70166666666667,
+          "min": 0,
+          "max": 135.3999999910593,
+          "p50": 85.85000000149012,
+          "p95": 117.32999999672172,
+          "p99": 127.50700000002979,
+          "stddev": 18.73368130513311
+        },
+        "cpuFrameMs": {
+          "count": 600,
+          "mean": 4.541333333551884,
+          "min": 2.5,
+          "max": 13.099999994039536,
+          "p50": 4.5,
+          "p95": 5.905000005662437,
+          "p99": 6.79999999716878,
+          "stddev": 1.0355733881936415
+        },
+        "gpuRenderMs": {
+          "count": 75,
+          "mean": 86.56555475999998,
+          "min": 67.15791300000001,
+          "max": 110.84680800000001,
+          "p50": 83.99536,
+          "p95": 109.42120729999999,
+          "p99": 110.52999697999999,
+          "stddev": 15.310024715964484
+        },
+        "gpuSampleCount": 75,
+        "fpsP50": 11.64822364569182,
+        "fpsP1Low": 7.842706674925819
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 600,
+          "mean": 48.685,
+          "min": 44,
+          "max": 53,
+          "p50": 49,
+          "p95": 51.049999999999955,
+          "p99": 53,
+          "stddev": 1.7751131544736287
+        },
+        "triangles": {
+          "count": 600,
+          "mean": 23284292.301666666,
+          "min": 18041238,
+          "max": 30065501,
+          "p50": 22379755,
+          "p95": 29743296.6,
+          "p99": 30026447.11,
+          "stddev": 4257551.540544903
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 3002.7000000029802,
+        "worstMs": 121.3999999910593,
+        "worstCpuMs": 6.399999991059303
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 600,
+          "mean": 105276729.55,
+          "min": 104105148,
+          "max": 107511724,
+          "p50": 105684630,
+          "p95": 107511724,
+          "p99": 107511724,
+          "stddev": 1038548.1529242983
+        },
+        "peakTotalBytes": 107511724,
+        "jsHeapPeakBytes": 102738693,
+        "driftBytes": 2305583.6333333333
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 0,
+        "longTaskMs": 0
+      }
+    },
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "world-streaming",
+      "params": {
+        "warmupFrames": 60,
+        "measureFrames": 900,
+        "cellSize": 200,
+        "loadRadius": 700,
+        "perCell": 500,
+        "speed": 24,
+        "originZ": 0,
+        "hysteresis": 1,
+        "residentCells": 44,
+        "residentEntities": 22000,
+        "rowUtilisation": 0.917,
+        "rowHighWater": 24000,
+        "peakEntities": 23000,
+        "totalLoads": 730,
+        "totalUnloads": 686,
+        "cancelledLoads": 0,
+        "failedLoads": 0,
+        "visibleInstances": 4389,
+        "culled": 3611,
+        "lodSwitches": 989431,
+        "lodReversals": 65612,
+        "realAssets": 0,
+        "meshKinds": 3,
+        "materialKinds": 1,
+        "batches": 18,
+        "cellCulling": 1,
+        "visibleCells": 16,
+        "testedCells": 44,
+        "cellCulled": 16000,
+        "proxyRadius": 0,
+        "frameBudgetMs": 0,
+        "loadRate": 2,
+        "maxConcurrentLoads": 2,
+        "proxyCells": 0,
+        "pendingCells": 0,
+        "loadingCells": 0,
+        "tierChanges": 0,
+        "hlodVisibleCells": 16,
+        "hlodBeyond2": 8,
+        "hlodBeyond4": 0,
+        "hlodBeyond8": 0,
+        "hlodBeyond16": 0,
+        "rowRanges": 1,
+        "ms.zStreamerUpdate": 0.661,
+        "ms.zLoadFrame": 1.774,
+        "ms.zIdleFrame": 1.28,
+        "loadingFrames": 365,
+        "ms.zStream_evict": 0.187,
+        "ms.zStream_enqueue": 0.004,
+        "ms.zStream_admit": 0.001,
+        "ms.zCellSourceLoad": 0.467,
+        "ms.zKernelUpdate": 0.718,
+        "ms.zBackendSubmit": 0.553,
+        "visibleSpans": 7,
+        "ms.LodSelection": 0.315,
+        "ms.TransformHierarchy": 0.074,
+        "ms.RenderExtraction": 0.451
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.8,
+      "memoryReferenceMs": 25.5,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 1,
+        "tierReasons": [
+          "微量測合成分數 0.276（compute 0.27 / fill 0.28）→ Tier 1",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 1 = min(門檻 3, 效能 1)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": {
+        "ok": true,
+        "detail": "載入 730 / 卸載 686 個 cell；常駐 44 cell、22000 entity（峰值 23000）；畫 4389、剔除 3611"
+      },
+      "notes": [
+        "manifest 80c82865",
+        "3 次交錯執行取中位數；frame p95 範圍 6.20–6.80ms（±9.7%）；開頭 30 幀 181–182ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:48:27.850Z",
+      "frames": 900,
+      "timing": {
+        "deltaMs": {
+          "count": 900,
+          "mean": 6.058222222228845,
+          "min": 0,
+          "max": 14.200000002980232,
+          "p50": 6.0999999940395355,
+          "p95": 6.200000002980232,
+          "p99": 6.4000000059604645,
+          "stddev": 0.37655004912379086
+        },
+        "cpuFrameMs": {
+          "count": 900,
+          "mean": 1.9533333335320155,
+          "min": 0.7999999970197678,
+          "max": 13.900000005960464,
+          "p50": 1.7000000029802322,
+          "p95": 3.1000000089406967,
+          "p99": 3.5009999999403942,
+          "stddev": 0.8139359050684175
+        },
+        "gpuRenderMs": {
+          "count": 224,
+          "mean": 2.1462698214285703,
+          "min": 1.091868,
+          "max": 11.713417,
+          "p50": 1.4101735,
+          "p95": 7.977283249999999,
+          "p99": 11.523154610000006,
+          "stddev": 2.1198923489815584
+        },
+        "gpuSampleCount": 224,
+        "fpsP50": 163.93442638969267,
+        "fpsP1Low": 156.24999985448085
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 900,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 900,
+          "mean": 19.142222222222223,
+          "min": 17,
+          "max": 20,
+          "p50": 19,
+          "p95": 20,
+          "p99": 20,
+          "stddev": 0.5228861842560214
+        },
+        "triangles": {
+          "count": 900,
+          "mean": 876122.3466666667,
+          "min": 385465,
+          "max": 4307031,
+          "p50": 532755,
+          "p95": 4257326.3,
+          "p99": 4286183.84,
+          "stddev": 1047256.1135934485
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 181.29999999701977,
+        "worstMs": 14.200000002980232,
+        "worstCpuMs": 13.900000005960464
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 900,
+          "mean": 20386201,
+          "min": 20386201,
+          "max": 20386201,
+          "p50": 20386201,
+          "p95": 20386201,
+          "p99": 20386201,
+          "stddev": 0
+        },
+        "peakTotalBytes": 20386201,
+        "jsHeapPeakBytes": 96049402,
+        "driftBytes": 0
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 0,
+        "longTaskMs": 0
+      }
+    },
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "ecs-instancing",
+      "params": {
+        "warmupFrames": 120,
+        "measureFrames": 600,
+        "count": 100000,
+        "children": 0,
+        "totalEntities": 100000,
+        "spread": 400,
+        "ticks": 480,
+        "droppedSteps": 0,
+        "ms.SpinSimulation": 3.408,
+        "ms.TransformHierarchy": 3.653,
+        "ms.RenderExtraction": 6.476
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.8,
+      "memoryReferenceMs": 25.2,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 1,
+        "tierReasons": [
+          "微量測合成分數 0.310（compute 0.32 / fill 0.30）→ Tier 1",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 1 = min(門檻 3, 效能 1)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": {
+        "ok": true,
+        "detail": "100000 個 instance 分成 1 批，481 個 tick"
+      },
+      "notes": [
+        "3 次交錯執行取中位數；frame p95 範圍 15.50–29.71ms（±91.7%）；開頭 30 幀 371–383ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:46:10.017Z",
+      "frames": 600,
+      "timing": {
+        "deltaMs": {
+          "count": 600,
+          "mean": 12.636500000009933,
+          "min": 0,
+          "max": 17,
+          "p50": 14.700000002980232,
+          "p95": 15.600000008940697,
+          "p99": 16.001000000089405,
+          "stddev": 3.3857875023164974
+        },
+        "cpuFrameMs": {
+          "count": 600,
+          "mean": 12.377500000173846,
+          "min": 7.100000008940697,
+          "max": 16.700000002980232,
+          "p50": 14.400000005960464,
+          "p95": 15.299999997019768,
+          "p99": 15.601000008881092,
+          "stddev": 3.3268940654411323
+        },
+        "gpuRenderMs": {
+          "count": 150,
+          "mean": 6.472517166666665,
+          "min": 5.664861,
+          "max": 7.920836,
+          "p50": 6.126654,
+          "p95": 7.5528302499999995,
+          "p99": 7.8294672699999985,
+          "stddev": 0.6607821107462333
+        },
+        "gpuSampleCount": 150,
+        "fpsP50": 68.02721087056212,
+        "fpsP1Low": 62.49609399377617
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 600,
+          "mean": 2,
+          "min": 2,
+          "max": 2,
+          "p50": 2,
+          "p95": 2,
+          "p99": 2,
+          "stddev": 0
+        },
+        "triangles": {
+          "count": 600,
+          "mean": 1200001,
+          "min": 1200001,
+          "max": 1200001,
+          "p50": 1200001,
+          "p95": 1200001,
+          "p99": 1200001,
+          "stddev": 0
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 383.29999999701977,
+        "worstMs": 16.5,
+        "worstCpuMs": 16.400000005960464
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 600,
+          "mean": 44636216,
+          "min": 44636216,
+          "max": 44636216,
+          "p50": 44636216,
+          "p95": 44636216,
+          "p99": 44636216,
+          "stddev": 0
+        },
+        "peakTotalBytes": 44636216,
+        "jsHeapPeakBytes": 91998618,
+        "driftBytes": 0
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 0,
+        "longTaskMs": 0
+      }
+    },
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "instancing",
+      "params": {
+        "warmupFrames": 120,
+        "measureFrames": 600,
+        "count": 200000,
+        "spread": 600
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.8,
+      "memoryReferenceMs": 25.2,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 1,
+        "tierReasons": [
+          "微量測合成分數 0.218（compute 0.13 / fill 0.30）→ Tier 1",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 1 = min(門檻 3, 效能 1)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": null,
+      "notes": [
+        "3 次交錯執行取中位數；frame p95 範圍 30.60–31.00ms（±1.3%）；開頭 30 幀 472–483ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:48:50.691Z",
+      "frames": 600,
+      "timing": {
+        "deltaMs": {
+          "count": 600,
+          "mean": 16.746666666666666,
+          "min": 0,
+          "max": 45,
+          "p50": 16.5,
+          "p95": 30.799999997019768,
+          "p99": 32.0009999999404,
+          "stddev": 7.86504208755518
+        },
+        "cpuFrameMs": {
+          "count": 600,
+          "mean": 0.332166666885217,
+          "min": 0.09999999403953552,
+          "max": 0.800000011920929,
+          "p50": 0.29999999701976776,
+          "p95": 0.5,
+          "p99": 0.699999988079071,
+          "stddev": 0.10614809448305715
+        },
+        "gpuRenderMs": {
+          "count": 80,
+          "mean": 13.7805244875,
+          "min": 12.835493,
+          "max": 16.947291,
+          "p50": 13.213172,
+          "p95": 16.77734855,
+          "p99": 16.8728572,
+          "stddev": 1.335230935640154
+        },
+        "gpuSampleCount": 80,
+        "fpsP50": 60.60606060606061,
+        "fpsP1Low": 31.249023468074828
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 600,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 600,
+          "mean": 2,
+          "min": 2,
+          "max": 2,
+          "p50": 2,
+          "p95": 2,
+          "p99": 2,
+          "stddev": 0
+        },
+        "triangles": {
+          "count": 600,
+          "mean": 2400001,
+          "min": 2400001,
+          "max": 2400001,
+          "p50": 2400001,
+          "p95": 2400001,
+          "p99": 2400001,
+          "stddev": 0
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 472.40000000596046,
+        "worstMs": 30.600000008940697,
+        "worstCpuMs": 0.7000000029802322
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 600,
+          "mean": 62281783,
+          "min": 62281783,
+          "max": 62281783,
+          "p50": 62281783,
+          "p95": 62281783,
+          "p99": 62281783,
+          "stddev": 0
+        },
+        "peakTotalBytes": 62281783,
+        "jsHeapPeakBytes": 56804078,
+        "driftBytes": 0
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 0,
+        "longTaskMs": 0
+      }
+    },
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "material-complexity",
+      "params": {
+        "warmupFrames": 60,
+        "measureFrames": 300,
+        "iterations": 48,
+        "layers": 8
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.9,
+      "memoryReferenceMs": 25.4,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 1,
+        "tierReasons": [
+          "微量測合成分數 0.230（compute 0.17 / fill 0.29）→ Tier 1",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 1 = min(門檻 3, 效能 1)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": null,
+      "notes": [
+        "3 次交錯執行取中位數；frame p95 範圍 96.90–97.00ms（±0.1%）；開頭 30 幀 1390–1439ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:49:09.072Z",
+      "frames": 300,
+      "timing": {
+        "deltaMs": {
+          "count": 300,
+          "mean": 49.3613333333532,
+          "min": 0,
+          "max": 141.6000000089407,
+          "p50": 49.5,
+          "p95": 96.90000000596046,
+          "p99": 97.9019999910891,
+          "stddev": 25.212260877046006
+        },
+        "cpuFrameMs": {
+          "count": 300,
+          "mean": 0.4456666672229767,
+          "min": 0.19999998807907104,
+          "max": 1.0999999940395355,
+          "p50": 0.4000000059604645,
+          "p95": 0.7000000029802322,
+          "p99": 1,
+          "stddev": 0.14794429388683578
+        },
+        "gpuRenderMs": {
+          "count": 38,
+          "mean": 47.67658534210528,
+          "min": 47.6284,
+          "max": 47.95496,
+          "p50": 47.6684,
+          "p95": 47.69577635,
+          "p99": 47.862191010000004,
+          "stddev": 0.048639520529773966
+        },
+        "gpuSampleCount": 38,
+        "fpsP50": 20.2020202020202,
+        "fpsP1Low": 10.214295929511334
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 300,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 300,
+          "mean": 17,
+          "min": 17,
+          "max": 17,
+          "p50": 17,
+          "p95": 17,
+          "p99": 17,
+          "stddev": 0
+        },
+        "triangles": {
+          "count": 300,
+          "mean": 33,
+          "min": 33,
+          "max": 33,
+          "p50": 33,
+          "p95": 33,
+          "p99": 33,
+          "stddev": 0
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 1389.7000000029802,
+        "worstMs": 141.6000000089407,
+        "worstCpuMs": 0.7000000029802322
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 300,
+          "mean": 11072169,
+          "min": 11072169,
+          "max": 11072169,
+          "p50": 11072169,
+          "p95": 11072169,
+          "p99": 11072169,
+          "stddev": 0
+        },
+        "peakTotalBytes": 11072169,
+        "jsHeapPeakBytes": 43649156,
+        "driftBytes": 0
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 0,
+        "longTaskMs": 0
+      }
+    },
+    {
+      "engineVersion": "0.0.0-m1",
+      "scene": "texture-conformance",
+      "params": {
+        "warmupFrames": 0,
+        "measureFrames": 30,
+        "formatsPassed": 4,
+        "formatsFailed": 0,
+        "formatsSkipped": 0
+      },
+      "machineId": "498e12e9",
+      "cpuReferenceMs": 3.8,
+      "memoryReferenceMs": 26.6,
+      "platform": {
+        "backend": "webgpu",
+        "tier": 1,
+        "tierReasons": [
+          "微量測合成分數 0.272（compute 0.26 / fill 0.29）→ Tier 1",
+          "硬性門檻上限 Tier 3",
+          "最終 Tier 1 = min(門檻 3, 效能 1)"
+        ],
+        "adapter": {
+          "vendor": "intel",
+          "architecture": "gen-12lp",
+          "device": "",
+          "description": "",
+          "isFallbackAdapter": false
+        },
+        "timestampsAvailable": true,
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1.0000000149011612,
+        "viewportWidth": 1280,
+        "viewportHeight": 720
+      },
+      "verdict": {
+        "ok": true,
+        "detail": "4 個格式與硬體解碼器一致（bc1 7.81、bc4 0.95、bc5 0.82、bc7 6.46，數字為對原圖的平均誤差）"
+      },
+      "notes": [
+        "裝置支援：texture-compression-bc",
+        "bc1：pass —— GPU vs 自寫解碼：最大差 1、有差異的通道 1208/12288；對原圖誤差 7.81（上限 11）",
+        "bc4：pass —— GPU vs 自寫解碼：最大差 1、有差異的通道 756/4096；對原圖誤差 0.95（上限 1.5）",
+        "bc5：pass —— GPU vs 自寫解碼：最大差 1、有差異的通道 1476/8192；對原圖誤差 0.82（上限 1.3）",
+        "bc7：pass —— GPU vs 自寫解碼：最大差 0、有差異的通道 0/16384；對原圖誤差 6.46（上限 9）",
+        "3 次交錯執行取中位數；frame p95 範圍 6.20–6.77ms（±9.3%）；開頭 30 幀 172–176ms"
+      ],
+      "schemaVersion": 4,
+      "capturedAt": "2026-08-16T12:51:46.042Z",
+      "frames": 30,
+      "timing": {
+        "deltaMs": {
+          "count": 30,
+          "mean": 5.736666666467984,
+          "min": 0,
+          "max": 6.700000002980232,
+          "p50": 6,
+          "p95": 6.409999998658895,
+          "p99": 6.642000002115965,
+          "stddev": 1.3239135653615353
+        },
+        "cpuFrameMs": {
+          "count": 30,
+          "mean": 0.009999999900658925,
+          "min": 0,
+          "max": 0.10000000894069672,
+          "p50": 0,
+          "p95": 0.09999999403953552,
+          "p99": 0.10000000461935998,
+          "stddev": 0.030512857359818554
+        },
+        "gpuRenderMs": {
+          "count": 8,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "gpuSampleCount": 8,
+        "fpsP50": 166.66666666666666,
+        "fpsP1Low": 150.55706107820333
+      },
+      "scopes": {
+        "Simulation": {
+          "count": 30,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Physics": {
+          "count": 30,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Animation": {
+          "count": 30,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "AI": {
+          "count": 30,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Streaming": {
+          "count": 30,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "RenderExtraction": {
+          "count": 30,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Render": {
+          "count": 30,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "Present": {
+          "count": 30,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "counters": {
+        "drawCalls": {
+          "count": 30,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "triangles": {
+          "count": 30,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        }
+      },
+      "earlyFrames": {
+        "count": 30,
+        "totalMs": 172.09999999403954,
+        "worstMs": 6.700000002980232,
+        "worstCpuMs": 0.10000000894069672
+      },
+      "memory": {
+        "totalBytes": {
+          "count": 30,
+          "mean": 0,
+          "min": 0,
+          "max": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0,
+          "stddev": 0
+        },
+        "peakTotalBytes": 0,
+        "jsHeapPeakBytes": 39713699,
+        "driftBytes": 0
+      },
+      "mainThread": {
+        "longTaskObservationSupported": true,
+        "longTasks": 1,
+        "longTaskMs": 184
+      }
+    }
+  ],
+  "failures": []
+}

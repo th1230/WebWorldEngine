@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck / Lint / Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # cooked 資產是 build 與 benchmark 的輸入，必須先產生。
+      # --verify 同時驗證可重現性：相同輸入必須得到相同雜湊。
+      - run: pnpm cook -- --verify
+
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
+      # 產出必須真的建得起來；只做型別檢查抓不到 bundler 層的問題
+      - run: pnpm build
+
+      # 發布路徑要在 CI 走過一遍。工作區裡 `exports` 直指 src，所以
+      # **只跑測試完全碰不到 dist** —— 打包壞掉要等到有人 npm install 才知道。
+      - run: pnpm build:pkg
+
+      # package-check 的最後一段會把套件打包成一個網站並在瀏覽器裡跑，
+      # 所以這個 job 也需要瀏覽器。
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # 打包 → 裝進一個乾淨的專案 → import → 真的跑一次 cook → 再打包成
+      # 網站在瀏覽器裡跑一次。這是唯一會用到「使用者那一側」規則的檢查：
+      # peerDependency、publishConfig、兩個套件的格式版本一不一致，以及
+      # worker 在**只有打包產出**的網站上起不起得來。
+      - run: node tools/package-check/verify.mjs
+
+      # 網站的指標：首次可見、下載量、記憶體、與頁面其他內容共存。
+      # 幀率量不到這四件事，而它們才是網站上會被感覺到的東西。
+      - run: node tools/site-check/verify.mjs
+
+  smoke:
+    name: Benchmark smoke (SwiftShader)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm cook
+
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # 這一步**不驗證效能**。CI 跑的是無頭 SwiftShader 軟體 adapter，
+      # 數字毫無意義。它驗證的是：每個場景都跑得完、沒有頁面錯誤、
+      # capability 有正確降級、場景自我檢查通過。
+      #
+      # 注意涵蓋範圍的缺口：SwiftShader 實測落到 WebGL2，所以
+      # compute、indirect draw 與真實 device loss 這些 WebGPU 專屬路徑
+      # **不會**被 CI 覆蓋，只能靠開發機的 `pnpm bench` 驗證。
+      - run: pnpm bench:smoke
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-smoke-results
+          path: benchmarks/results/smoke/
+          retention-days: 14
