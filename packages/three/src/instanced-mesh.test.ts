@@ -635,31 +635,66 @@ describe('InstancedMesh — 資產不再是門檻（W2）', () => {
   });
 });
 
-describe('InstancedMesh — 動態內容的退路', () => {
-  it('連續多幀都改矩陣就放棄空間格，並且說出來', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const mesh = new InstancedMesh(unitBox(), material(), 400);
-    fillGrid(mesh, 20, 5);
+describe('InstancedMesh — 靜態是宣告出來的，不是猜出來的', () => {
+  /** 相機在正上方看整片 —— 全部都在視錐裡，所以格子省不到走訪。 */
+  const overhead = (): PerspectiveCamera => {
     const camera = makeCamera();
     camera.position.set(0, 40, 0);
     camera.lookAt(0, 0, 0);
+    return camera;
+  };
 
+  /** 每幀改一個矩陣，跑 `frames` 幀。 */
+  const jitter = (mesh: InstancedMesh, camera: PerspectiveCamera, frames: number): void => {
     const m = new Matrix4();
-    for (let frame = 0; frame < 12; frame++) {
-      mesh.setMatrixAt(frame % 400, m.makeTranslation(frame, 0, 0));
+    for (let frame = 0; frame < frames; frame++) {
+      mesh.setMatrixAt(frame % mesh.count, m.makeTranslation(frame % 20, 0, 0));
       draw(mesh, camera);
     }
+  };
+
+  it('沒宣告而矩陣一直在變：量到不划算就暫停，並且說出來', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const mesh = new InstancedMesh(unitBox(), material(), 400);
+    fillGrid(mesh, 20, 5);
+    jitter(mesh, overhead(), 12);
 
     expect(mesh.stats.spatial).toBe(false);
-    expect(warn).toHaveBeenCalled();
-    expect(warn.mock.calls[0]![0]).toContain('已停用空間分割剔除');
+    expect(warn.mock.calls[0]![0]).toContain('已暫停空間分割剔除');
+    // 為什麼暫停必須講清楚：畫面一模一樣，只有幀時間變了。
+    expect(warn.mock.calls[0]![0]).toContain('dynamic');
     warn.mockRestore();
   });
 
-  it('退回逐一走訪之後剔除仍然正確', () => {
+  it('暫停之後矩陣停下來，格子會自己恢復', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const mesh = new InstancedMesh(unitBox(), material(), 400);
+    fillGrid(mesh, 20, 5);
+    const camera = overhead();
+    jitter(mesh, camera, 12);
+    expect(mesh.stats.spatial).toBe(false);
+
+    // 載入時抖動幾幀的內容不該永遠失去空間分割。
+    for (let frame = 0; frame < 3; frame++) draw(mesh, camera);
+    expect(mesh.stats.spatial).toBe(true);
+    warn.mockRestore();
+  });
+
+  it('宣告 `dynamic: false` 卻在動：警告，但不換策略', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const mesh = new InstancedMesh(unitBox(), material(), 400, { dynamic: false });
+    fillGrid(mesh, 20, 5);
+    jitter(mesh, overhead(), 12);
+
+    expect(mesh.stats.spatial).toBe(true);
+    expect(warn.mock.calls[0]![0]).toContain('`dynamic: false`');
+    warn.mockRestore();
+  });
+
+  it('宣告 `dynamic: true`：不建格子，不警告，剔除仍然正確', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const geometry = unitBox();
-    const mesh = new InstancedMesh(geometry, material(), 900);
+    const mesh = new InstancedMesh(geometry, material(), 900, { dynamic: true });
     fillGrid(mesh, 30, 4);
     const camera = makeCamera();
     camera.position.set(0, 20, 10);
@@ -667,11 +702,12 @@ describe('InstancedMesh — 動態內容的退路', () => {
 
     const m = new Matrix4();
     for (let frame = 0; frame < 12; frame++) {
-      mesh.setMatrixAt(0, m.makeTranslation(0, 0, 0));
+      mesh.setMatrixAt(frame, m.makeTranslation(0, 0, 0));
       draw(mesh, camera);
     }
-    expect(mesh.stats.spatial).toBe(false);
 
+    expect(mesh.stats.spatial).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
     const drawn = new Set(Array.from(mesh.drawnInstances));
     const lost = [...referenceVisible(mesh, camera, geometry)].filter((id) => !drawn.has(id));
     expect(lost).toEqual([]);
@@ -682,11 +718,53 @@ describe('InstancedMesh — 動態內容的退路', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const mesh = new InstancedMesh(unitBox(), material(), 400);
     fillGrid(mesh, 20, 5);
-    const camera = makeCamera();
-    camera.position.set(0, 40, 0);
-    camera.lookAt(0, 0, 0);
+    const camera = overhead();
 
     for (let frame = 0; frame < 30; frame++) draw(mesh, camera);
+
+    expect(mesh.stats.spatial).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('串流那種「每幀都在寫矩陣」會暫停，但載入停下來之後格子回來', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const mesh = new InstancedMesh(unitBox(), material(), 10_000);
+    fillGrid(mesh, 100, 6);
+    const camera = makeCamera();
+    camera.position.set(0, 2, 300);
+    camera.lookAt(0, 0, 0);
+
+    // 一格載入好了就寫進一批矩陣 —— 跟串流走的是同一條路。
+    const burst = new Float32Array(16 * 20);
+    for (let i = 0; i < 20; i++) new Matrix4().makeTranslation(i, 0, 300).toArray(burst, i * 16);
+    for (let frame = 0; frame < 20; frame++) {
+      mesh.writeMatrices(frame * 20, burst);
+      draw(mesh, camera);
+    }
+
+    // 每幀整份重建**確實不划算** —— 實測 10,000 個時重建 16.30 ms 對省下
+    // 0.83 ms，20 倍。所以載入中暫停是對的判斷。
+    expect(mesh.stats.spatial).toBe(false);
+
+    // 但**載入會結束**，而結束之後格子必須回來 —— 那才是 1M 撐得住的原因。
+    // 舊的實作是永久停用，於是串流過的物件永遠拿不回空間分割：畫面完全
+    // 正常，只有幀時間差，正是「靜靜改變行為」最典型的樣子。
+    for (let frame = 0; frame < 3; frame++) draw(mesh, camera);
+    expect(mesh.stats.spatial).toBe(true);
+    expect(mesh.stats.tested).toBeLessThan(mesh.count);
+    warn.mockRestore();
+  });
+
+  it('改一次矩陣不算動態 —— 不警告也不暫停', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const mesh = new InstancedMesh(unitBox(), material(), 400);
+    fillGrid(mesh, 20, 5);
+    const camera = overhead();
+
+    for (let frame = 0; frame < 5; frame++) draw(mesh, camera);
+    mesh.setMatrixAt(7, new Matrix4().makeTranslation(3, 0, 0));
+    for (let frame = 0; frame < 5; frame++) draw(mesh, camera);
 
     expect(mesh.stats.spatial).toBe(true);
     expect(warn).not.toHaveBeenCalled();

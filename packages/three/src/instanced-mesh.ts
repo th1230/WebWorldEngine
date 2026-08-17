@@ -53,6 +53,22 @@ export interface InstancedMeshOptions {
    */
   instancesPerCell?: number;
   /**
+   * 這批 instance 的矩陣會不會在執行時一直變。預設 **false（靜態）**。
+   *
+   * 這是**宣告**，不是引擎去猜的東西 —— 大量放置幾乎都是靜態的（樹、石頭、
+   * 建築），而靜態才享有空間分割剔除：格子建一次用一輩子。
+   *
+   * | 你寫的 | 引擎做的 |
+   * | --- | --- |
+   * | `dynamic: true` | 不建格子，逐 instance 剔除與選階照常。矩陣愛怎麼動就怎麼動，**不猜也不警告** |
+   * | `dynamic: false` | 永遠用格子。矩陣真的一直在變時警告你宣告錯了，但**不偷偷換策略** |
+   * | 省略 | 當靜態。矩陣一直在變時警告，並且在量到「重建比省下的走訪還貴」之後暫停格子（`stats.spatial` 讀得到，停下來就恢復） |
+   *
+   * 省略時的那個暫停不是一個我訂的幀數門檻，是拿這台機器上剛量到的兩個
+   * 數字比出來的。但**宣告過的就不比** —— 引擎不推論它本來可以被告知的事。
+   */
+  dynamic?: boolean;
+  /**
    * 只給了一份幾何時，要不要在 worker 裡自動補上 LOD 鏈。預設 **true**。
    *
    * 關掉它的理由通常是「這個物件本來就只會近距離出現」或「幾何小到不值得」。
@@ -88,6 +104,20 @@ export interface InstancedMeshOptions {
    * 取決於格子大小的分佈 —— 一個離群的大格子會把每個槽位都撐大。
    */
   hlodSlotInstances?: number;
+  /**
+   * 每幀最多花多少毫秒烘遠景合併。預設 2。
+   *
+   * 這筆錢花的是**開發者的幀預算**，所以上限是他的（`hlodBudgetMB` 同理）。
+   *
+   * 預設之所以是一個小的固定值而不是量出來的：兩邊的失敗形態完全不對稱。
+   * 給太多會在相機轉過去的那一幀卡一下 —— **看得見**；給太少只是遠景晚
+   * 幾幀才併起來，而沒併起來的格子照樣畫得正確 —— **看不見**。所以往小的
+   * 那邊錯。2 ms 在任何機器上都低於一個 60 Hz 的幀（16.7 ms）。
+   *
+   * 而「太小就不會進展」這個風險是另外處理的：**每幀至少烘一格**，不管
+   * 預算剩多少。所以慢機器不會永遠停在未合併的狀態。
+   */
+  hlodBakeMs?: number;
 }
 
 /**
@@ -142,26 +172,25 @@ const _inverse = new Matrix4();
 const _size = new Vector2();
 const _hlodMatrix = new Matrix4();
 
-/** 連續幾幀矩陣都在變就放棄空間格 —— 重建的成本會超過它省下的。 */
-const DYNAMIC_THRESHOLD = 8;
-
 /**
  * 一格少於這個數就不合併。
  *
- * 合併的收益是「省下的繪製次數」，成本是「複製一份幾何」。三個以下時
- * 前者太小而後者照付。
+ * 合併的收益是「省下的繪製次數」= `n - 1`，成本是「複製一份幾何」。
+ * 所以要有收益就得 `n ≥ 2` —— 這個值是**推導出來的**，不是調出來的，
+ * 也因此不給調（見 doctrine 的四問）。
+ *
+ * 曾經是 4。那是隨手訂的，沒有任何論證撐著。
  */
-const HLOD_MIN_INSTANCES = 4;
+const HLOD_MIN_INSTANCES = 2;
 
 /**
- * 每幀花在烘合併幾何上的預算，毫秒。
- *
- * 烘一格要走過它每個 instance 的每個頂點。一次烘幾百格是一次明顯的卡頓，
- * 而那正好發生在相機剛轉過去的時候。
+ * 沒有指定 `hlodBakeMs` 時每幀花在烘合併幾何上的預算，毫秒。
  *
  * **用時間而不是「幾格」當預算**：一格的成本差好幾個數量級（最粗階 4 個
  * 三角形對 3,258 個），而且不同機器差很多。固定格數在小內容上浪費、在大
  * 內容上爆掉 —— 那正是「作者在自己機器上調好」的那種常數。
+ *
+ * 為什麼預設是一個固定的小數字，見 `InstancedMeshOptions.hlodBakeMs`。
  */
 const HLOD_BAKE_BUDGET_MS = 2;
 
@@ -260,11 +289,12 @@ export class InstancedMesh extends BatchedMesh {
   /** 這一幀想合併但還沒烘好的格子。 */
   private hlodWanted: number[] = [];
   private frameIndex = 0;
-  /** 找可回收槽位的旋轉游標。見 。 */
+  /** 找可回收槽位的旋轉游標。見 `serviceHlod`。 */
   private slotCursor = 0;
   private readonly hlodEnabled: boolean;
   private readonly hlodBudgetBytes: number | null;
   private readonly hlodSlotInstances: number | null;
+  private readonly hlodBakeMs: number;
   private _mergedDraws = 0;
   private _mergedInstances = 0;
   private _hlodSlotCount = 0;
@@ -314,8 +344,19 @@ export class InstancedMesh extends BatchedMesh {
 
   private _capacity: number;
   private lastCount = -1;
-  private consecutiveInvalidations = 0;
-  private dynamic = false;
+  /** `options.dynamic`。`undefined` 代表沒宣告 —— 當靜態，但會觀察。 */
+  private readonly declaredDynamic: boolean | undefined;
+  /** 沒宣告而矩陣一直在變，且量到格子不划算。可恢復。 */
+  private gridPaused = false;
+  /** 上一幀真的重建了幾毫秒。0 代表沒重建。見 `weighGrid`。 */
+  private lastRebuildMs = 0;
+  /** 矩陣失效的累計次數，與上一幀看到的值。見 `prepareGrid`。 */
+  private moveCount = 0;
+  private moveCountSeen = -1;
+  /** 每幀重建那段期間累計的重建成本與省下的走訪，毫秒。見 `weighGrid`。 */
+  private gridCostMs = 0;
+  private gridSavedMs = 0;
+  private warnedMoving = false;
   private warnedSingleLevel = false;
   private lastMatrixVersion = -1;
 
@@ -360,10 +401,12 @@ export class InstancedMesh extends BatchedMesh {
     this.lodErrors = errors;
     this.errorPixels = options.errorPixels ?? 2;
     this.instancesPerCell = options.instancesPerCell ?? 64;
+    this.declaredDynamic = options.dynamic;
     this.hlodEnabled = options.hlod !== false;
     this.hlodBudgetBytes =
       options.hlodBudgetMB === undefined ? null : options.hlodBudgetMB * 1048576;
     this.hlodSlotInstances = options.hlodSlotInstances ?? null;
+    this.hlodBakeMs = options.hlodBakeMs ?? HLOD_BAKE_BUDGET_MS;
     this._capacity = count;
     this.count = count;
     this._levelCounts = new Int32Array(prepared.length);
@@ -545,7 +588,7 @@ export class InstancedMesh extends BatchedMesh {
       cells: this.grid.cellCount,
       visibleCells: this.grid.visibleCells,
       levels: this._levelCounts,
-      spatial: !this.dynamic,
+      spatial: this.gridActive,
       cpuMs: this._cpuMs,
       merged: this._mergedDraws,
       mergedInstances: this._mergedInstances,
@@ -628,17 +671,6 @@ export class InstancedMesh extends BatchedMesh {
   }
 
   /**
-   * 把 `[from, from + length)` 的矩陣搬到 `to`。範圍不可重疊。
-   *
-   * 串流卸載一個 cell 之後會留下一個洞。用遮罩跳過那些槽位要在每個
-   * instance 的熱迴圈裡多一次查表；把**最後一塊**搬進洞裡則是一次
-   * memcpy，而且讓存活的 instance 永遠緊密排在 `[0, count)`。
-   *
-   * 這麼做會讓 instance 的索引改變 —— 對串流的內容沒關係（使用者只回答
-   * 「這格有什麼」，不持有索引），但**手動 `setMatrixAt` 的內容不能用
-   * 這條路**。
-   */
-  /**
    * 從 `start` 開始寫入一批連續的矩陣（column-major，每 16 個一組）。
    *
    * 給串流用的：一次寫幾百個時，逐個 `setMatrixAt` 會呼叫幾百次函式、
@@ -651,6 +683,17 @@ export class InstancedMesh extends BatchedMesh {
     this.invalidateInstances();
   }
 
+  /**
+   * 把 `[from, from + length)` 的矩陣搬到 `to`。範圍不可重疊。
+   *
+   * 串流卸載一個 cell 之後會留下一個洞。用遮罩跳過那些槽位要在每個
+   * instance 的熱迴圈裡多一次查表；把**最後一塊**搬進洞裡則是一次
+   * memcpy，而且讓存活的 instance 永遠緊密排在 `[0, count)`。
+   *
+   * 這麼做會讓 instance 的索引改變 —— 對串流的內容沒關係（使用者只回答
+   * 「這格有什麼」，不持有索引），但**手動 `setMatrixAt` 的內容不能用
+   * 這條路**。
+   */
   moveInstances(from: number, to: number, length: number): void {
     if (length <= 0 || from === to) return;
     this.matricesArray.copyWithin(to * 16, from * 16, (from + length) * 16);
@@ -674,6 +717,9 @@ export class InstancedMesh extends BatchedMesh {
     // 會導致修錯地方 —— 那個錯誤犯過一次了（`admit` 的 0.984 ms 有 98%
     // 是呼叫端的）。
     const started = performance.now();
+    // 在最前面加 —— `invalidateInstances` 會蓋這個序號，而 `prepareGrid` 要拿
+    // 它判斷「這一幀之前矩陣動過嗎」。
+    this.frameIndex++;
 
     // 使用者也可能直接寫 instanceMatrix.array —— 那條路徑不經過 setMatrixAt，
     // 所以要靠 needsUpdate 才知道格子過期了。
@@ -705,7 +751,6 @@ export class InstancedMesh extends BatchedMesh {
     // wireframe 會讓 renderer 隱式建立線段索引，數量是三角形索引的兩倍。
     const multiplier = (material as { wireframe?: boolean }).wireframe === true ? 2 : 1;
 
-    this.frameIndex++;
     const collectStarted = performance.now();
     this.collect(ranges, ppu, bytesPerElement, multiplier);
     this._collectMs = performance.now() - collectStarted;
@@ -716,28 +761,104 @@ export class InstancedMesh extends BatchedMesh {
     this._cpuMs = performance.now() - started;
   }
 
-  /** 需要時重建空間格；連續多幀都髒就永久退回逐 instance 走訪。 */
-  private prepareGrid(): { bounds: Int32Array; count: number } | null {
-    if (this.dynamic) return null;
+  /** 空間格這一幀有沒有在用。宣告動態、或量到不划算而暫停都是 false。 */
+  private get gridActive(): boolean {
+    return this.declaredDynamic !== true && !this.gridPaused;
+  }
 
-    if (this.grid.needsRebuild) {
-      this.consecutiveInvalidations++;
-      if (this.consecutiveInvalidations > DYNAMIC_THRESHOLD) {
-        this.dynamic = true;
-        console.warn(
-          `WW.InstancedMesh: 矩陣連續 ${DYNAMIC_THRESHOLD} 幀都在變，已停用空間分割剔除。\n` +
-            '空間格的重建是 O(n log n)，每幀重建會比不做還慢。逐 instance 的視錐剔除與 LOD 仍然照常運作。\n' +
-            '如果只有少數 instance 在動，把它們拆成另一個 WW.InstancedMesh 可以讓其餘的保留空間分割。',
-        );
-        return null;
-      }
-      this.grid.rebuild(this.matricesArray, this.count, this.gridRadius, this.instancesPerCell);
-      this.buildHlod();
+  /**
+   * 需要時重建空間格。
+   *
+   * 靜態是**宣告**出來的（`options.dynamic`），不是猜出來的。沒宣告時當靜態
+   * 而且觀察；宣告過的就照宣告走，不推論。見 `InstancedMeshOptions.dynamic`。
+   */
+  private prepareGrid(): { bounds: Int32Array; count: number } | null {
+    if (this.declaredDynamic === true) return null;
+
+    // 「這一幀之前矩陣動過嗎」不能問 `grid.needsRebuild` —— 它一旦立起來就
+    // 要等重建才會落下，暫停期間永遠是 true，於是永遠恢復不了。所以自己記
+    // 一個失效次數，跟上一幀看到的比。
+    const moving = this.moveCountSeen >= 0 && this.moveCount > this.moveCountSeen;
+    this.moveCountSeen = this.moveCount;
+
+    if (moving) {
+      this.weighGrid();
     } else {
-      this.consecutiveInvalidations = 0;
+      // 停下來了 —— 帳歸零，格子重新划算。暫停是可恢復的：載入時抖動幾幀
+      // 的內容不該永遠失去空間分割。
+      this.gridCostMs = 0;
+      this.gridSavedMs = 0;
+      this.gridPaused = false;
+    }
+
+    if (this.gridPaused) return null;
+
+    this.lastRebuildMs = 0;
+    if (this.grid.needsRebuild) {
+      const rebuildStarted = performance.now();
+      this.grid.rebuild(this.matricesArray, this.count, this.gridRadius, this.instancesPerCell);
+      this.lastRebuildMs = performance.now() - rebuildStarted;
+      this.buildHlod();
     }
 
     return this.grid.update(this.frustum, _cameraLocal.x, _cameraLocal.y, _cameraLocal.z);
+  }
+
+  /**
+   * 每幀都在重建時，判斷格子還值不值得 —— 用**剛剛量到的兩個數字**比，
+   * 不是用一個我訂的幀數門檻。
+   *
+   * | | 從哪來 |
+   * | --- | --- |
+   * | 成本 | 上一幀真的花在**重建**上的時間（`lastRebuildMs`） |
+   * | 省下的 | 沒被走訪到的 instance 數 × 每個 instance 的實測走訪成本 |
+   *
+   * 兩邊都是**這台機器上、這一份內容**的實測值，所以這個判斷在別人的機器上
+   * 也成立。
+   *
+   * 成本只算重建，不算 `grid.update` —— 後者不管矩陣有沒有動都要付，把它算
+   * 進來會讓「改了一次矩陣」的那一幀被判成不划算（相機正上方俯視、全部都在
+   * 視錐裡時省下的走訪是 0，於是任何成本都贏）。要判的是**重建**值不值得。
+   *
+   * 累計而不是逐幀比：一幀的抖動不該推翻結論，而累計會自然地容忍短暫的變動
+   * —— 矩陣一停下來就歸零，不需要另一個「連續幾幀」的門檻。這也是為什麼
+   * 警告掛在這裡而不是掛在「動了」上面：改一次矩陣不是問題，帳算不過來才是。
+   */
+  private weighGrid(): void {
+    if (this.gridPaused) return;
+    const tested = this._testedInstances;
+    if (tested <= 0) return;
+    this.gridCostMs += this.lastRebuildMs;
+    this.gridSavedMs += Math.max(this.lastCount - tested, 0) * (this._collectMs / tested);
+    if (this.gridCostMs <= this.gridSavedMs) return;
+
+    const cost = `重建花掉 ${this.gridCostMs.toFixed(2)} ms，而它省下的走訪只有 ${this.gridSavedMs.toFixed(2)} ms`;
+    const advice =
+      '\n真的是動態內容就宣告 `dynamic: true`。' +
+      '\n只有少數 instance 在動的話，把它們拆成另一個 WW.InstancedMesh，其餘的就保得住空間分割。';
+
+    // 宣告過 `dynamic: false` 就**不換策略** —— 那是 UE 對 Static actor 被移動
+    // 的處理：警告，當成你的錯。宣告了就不猜。
+    if (this.declaredDynamic === false) {
+      if (this.warnedMoving) return;
+      this.warnedMoving = true;
+      console.warn(
+        `WW.InstancedMesh: 宣告了 \`dynamic: false\`，但矩陣每幀都在變 —— ${cost}。\n` +
+          '宣告過了，所以引擎不會自己換策略：格子照建，畫面正確，只是這筆錢白花。' +
+          advice,
+      );
+      return;
+    }
+
+    this.gridPaused = true;
+    if (this.warnedMoving) return;
+    this.warnedMoving = true;
+    console.warn(
+      `WW.InstancedMesh: 已暫停空間分割剔除 —— ${cost}。\n` +
+        '這批 instance 沒有宣告 `dynamic`，預設當靜態。' +
+        '\n逐 instance 的視錐剔除與 LOD 仍然照常運作，矩陣停止變動後格子會自己恢復（`stats.spatial` 讀得到）。' +
+        advice,
+    );
   }
 
   /**
@@ -967,9 +1088,12 @@ export class InstancedMesh extends BatchedMesh {
     // 剩下的全在找槽位。這也是「先量再做」擋下的一次錯誤決定 —— 我原本要把
     // 合併運算搬進 worker，而那一段根本不花時間。
     const order = this.grid.order;
-    const deadline = performance.now() + HLOD_BAKE_BUDGET_MS;
+    const deadline = performance.now() + this.hlodBakeMs;
+    // **一幀至少烘一格。** 一格的成本可能超過整個預算（慢機器、重的最粗階），
+    // 那時純看預算會永遠停在未合併的狀態 —— 而那是靜靜的效能退化。
+    let baked = 0;
     for (const index of this.hlodWanted) {
-      if (performance.now() >= deadline) break;
+      if (baked > 0 && performance.now() >= deadline) break;
       const group = groups[index];
       if (group === undefined || group.slot >= 0) continue;
 
@@ -1011,10 +1135,11 @@ export class InstancedMesh extends BatchedMesh {
 
       _hlodMatrix.makeTranslation(merged.center[0], merged.center[1], merged.center[2]);
       // **走 super，不走自己覆寫的那個。** 我們的 `setMatrixAt` 會把空間格
-      // 標成過期 —— 標過期就變成「每幀都在改矩陣」，八幀之後整個空間分割
+      // 標成過期 —— 標過期就變成「每幀都在改矩陣」，於是整個空間分割
       // 會被當成動態內容關掉。那個 bug 的樣子是幀時間變差而畫面完全正常。
       super.setMatrixAt(slot.instanceId, _hlodMatrix);
 
+      baked++;
       group.slot = pick;
       group.centerX = merged.center[0];
       group.centerY = merged.center[1];
@@ -1037,13 +1162,6 @@ export class InstancedMesh extends BatchedMesh {
   }
 
   /**
-   * 走訪、剔除、選階，把結果寫進 `BatchedMesh` 的繪製表。
-   *
-   * 這是整個類別唯一的熱迴圈。矩陣直接從 `Float32Array` 讀 —— 不建
-   * `Matrix4`、不建 `Sphere`、不呼叫 `getMatrixAt`。Three.js 自己那份
-   * 每個 instance 要配置一次 `Sphere` 的轉換結果，那是它最貴的部分。
-   */
-  /**
    * 把每個 instance 的世界空間包圍球算好：`[cx, cy, cz, radius]`。
    *
    * ## 為什麼值得快取
@@ -1060,13 +1178,6 @@ export class InstancedMesh extends BatchedMesh {
   /**
    * 矩陣改了：空間格與包圍球快取都要重算。
    *
-   * 兩者**必須一起**失效。 不會動 ，
-   * 所以只靠版本號判斷快取的話，用  的人會永遠拿到舊的包圍球
-   * —— 物件搬走了，剔除與選階卻還在看原本的位置。
-   */
-  /**
-   * 矩陣改了：空間格與包圍球快取都要重算。
-   *
    * 兩者**必須一起**失效。`setMatrixAt` 不會動 `instanceMatrix.version`，
    * 所以只靠版本號判斷快取的話，用 `setMatrixAt` 的人會永遠拿到舊的包圍球
    * —— 物件搬走了，剔除與選階卻還在看原本的位置。
@@ -1074,6 +1185,7 @@ export class InstancedMesh extends BatchedMesh {
   private invalidateInstances(): void {
     this.grid.invalidate();
     this.spheresDirty = true;
+    this.moveCount++;
   }
 
   private ensureSpheres(): void {
@@ -1088,7 +1200,7 @@ export class InstancedMesh extends BatchedMesh {
     //
     // 排成走訪順序之後就是循序讀。代價是格子重建時要跟著重排，而那本來
     // 就是同一個時機。
-    const byOrder = !this.dynamic && this.grid.order.length >= this.count;
+    const byOrder = this.gridActive && this.grid.order.length >= this.count;
     if (!this.spheresDirty && this.spheresCount === this.count && this.spheresByOrder === byOrder) {
       return;
     }
@@ -1138,6 +1250,13 @@ export class InstancedMesh extends BatchedMesh {
     this.spheresByOrder = byOrder;
   }
 
+  /**
+   * 走訪、剔除、選階，把結果寫進 `BatchedMesh` 的繪製表。
+   *
+   * 這是整個類別唯一的熱迴圈。矩陣直接從 `Float32Array` 讀 —— 不建
+   * `Matrix4`、不建 `Sphere`、不呼叫 `getMatrixAt`。Three.js 自己那份
+   * 每個 instance 要配置一次 `Sphere` 的轉換結果，那是它最貴的部分。
+   */
   private collect(
     ranges: { bounds: Int32Array; count: number } | null,
     ppu: number,
