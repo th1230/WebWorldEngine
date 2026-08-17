@@ -14,6 +14,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import { createFrustum, frustumFromCamera, type Frustum } from './camera-frustum.ts';
+import { InstanceBlocks } from './instance-blocks.ts';
 import { InstanceGrid } from './instance-grid.ts';
 import { pixelsPerUnit, resolveLodChain, selectLevel, type GeometrySource } from './lod-chain.ts';
 import type {
@@ -354,6 +355,16 @@ export class InstancedMesh extends BatchedMesh {
   private readonly errorPixels: number;
   private readonly instancesPerCell: number;
   private readonly grid = new InstanceGrid();
+  /**
+   * 串流寫進來的區塊。**分割是現成的，不必重算** —— 見 `InstanceBlocks`。
+   *
+   * 有它的時候就不建空間格：一次 `writeMatrices` 就是一格的內容，邊界在
+   * 寫進來的當下就知道。
+   */
+  private readonly blocks = new InstanceBlocks();
+  /** 走訪順序表。區塊路徑用恆等表（位置就是編號），空間格路徑用它的 order。 */
+  private identityOrder = new Uint32Array(0);
+  private usingBlocks = false;
   private readonly frustum: Frustum = createFrustum();
   private matricesArray: Float32Array;
   /** 單一 instance 的區域空間包圍球。 */
@@ -660,7 +671,7 @@ export class InstancedMesh extends BatchedMesh {
       cells: this.grid.cellCount,
       visibleCells: this.grid.visibleCells,
       levels: this._levelCounts,
-      spatial: this.gridActive,
+      spatial: this.spatialActive,
       cpuMs: this._cpuMs,
       merged: this._mergedDraws,
       mergedInstances: this._mergedInstances,
@@ -714,6 +725,9 @@ export class InstancedMesh extends BatchedMesh {
 
   override setMatrixAt(instanceId: number, matrix: Matrix4): this {
     super.setMatrixAt(instanceId, matrix);
+    // 逐個寫入不是「整段」的形狀，區塊的包圍球就過期了。**過期的包圍球會
+    // 讓一整塊憑空消失**，所以這裡作廢而不是嘗試修補。
+    this.blocks.invalidate();
     this.invalidateInstances(instanceId, instanceId + 1);
     return this;
   }
@@ -783,7 +797,11 @@ export class InstancedMesh extends BatchedMesh {
     this.matricesArray.set(elements, start * 16);
     this.internals._matricesTexture.needsUpdate = true;
     this.lastMatrixVersion = this._instanceMatrix.version;
-    this.invalidateInstances(start, start + Math.floor(elements.length / 16));
+    const length = Math.floor(elements.length / 16);
+    // 順手把這一塊的包圍球算出來。**那段記憶體本來就在手上**，所以這一趟
+    // 幾乎是免費的 —— 而它省掉的是之後整份重新排序。
+    this.blocks.write(this.matricesArray, start, length, this.gridRadius);
+    this.invalidateInstances(start, start + length);
   }
 
   /**
@@ -802,6 +820,7 @@ export class InstancedMesh extends BatchedMesh {
     this.matricesArray.copyWithin(to * 16, from * 16, (from + length) * 16);
     this.internals._matricesTexture.needsUpdate = true;
     this.lastMatrixVersion = this._instanceMatrix.version;
+    this.blocks.move(from, to, length);
     // 只有目的地那一段的內容變了。來源那一段還留著同樣的位元組，但它會被
     // 縮小的 count 排除在外，所以不必標。
     this.invalidateInstances(to, to + length);
@@ -831,6 +850,7 @@ export class InstancedMesh extends BatchedMesh {
     if (this.instanceMatrix.version !== this.lastMatrixVersion) {
       this.lastMatrixVersion = this.instanceMatrix.version;
       this.internals._matricesTexture.needsUpdate = true;
+      this.blocks.invalidate();
       this.invalidateInstances();
     }
     // count 是普通欄位（`THREE.Mesh` 本來就有），沒有 setter 可掛，
@@ -843,6 +863,9 @@ export class InstancedMesh extends BatchedMesh {
       // 那一段由 `ensureSpheres` 自己補上。這裡若照一般的失效走，串流就會
       // 每一幀把整份快取標髒（count 每載入一格就變一次）—— 增量等於沒做。
       this.invalidateGridOnly();
+      // count 縮小時，超出去的區塊要丟掉；被切一半的區塊包圍球不再正確，
+      // 那時整張表作廢。
+      this.blocks.truncate(clamped);
     }
 
     _inverse.copy(this.matrixWorld).invert();
@@ -869,9 +892,31 @@ export class InstancedMesh extends BatchedMesh {
     this._cpuMs = performance.now() - started;
   }
 
+  /**
+   * 走訪順序表。區塊路徑用恆等表 —— 區塊不重排 instance，所以第 s 格就是
+   * 第 s 號。
+   */
+  private get traversalOrder(): Uint32Array {
+    return this.usingBlocks ? this.identityOrder : this.grid.order;
+  }
+
+  /** 恆等表長到夠用。只有區塊路徑會走到，而它只會長大。 */
+  private ensureIdentityOrder(): void {
+    if (this.identityOrder.length >= this.count) return;
+    const size = Math.max(this.count, this.identityOrder.length * 2, 64);
+    const order = new Uint32Array(size);
+    for (let i = 0; i < size; i++) order[i] = i;
+    this.identityOrder = order;
+  }
+
   /** 空間格這一幀有沒有在用。宣告動態、或量到不划算而暫停都是 false。 */
   private get gridActive(): boolean {
     return this.declaredDynamic !== true && !this.gridPaused;
+  }
+
+  /** 這一幀有沒有做空間剔除 —— 不管靠的是區塊表還是空間格。 */
+  private get spatialActive(): boolean {
+    return this.usingBlocks || this.gridActive;
   }
 
   /**
@@ -881,6 +926,22 @@ export class InstancedMesh extends BatchedMesh {
    * 而且觀察；宣告過的就照宣告走，不推論。見 `InstancedMeshOptions.dynamic`。
    */
   private prepareGrid(): { bounds: Int32Array; count: number } | null {
+    // ## 串流寫進來的內容已經是分好的，不必再算一次
+    //
+    // 一次 `writeMatrices` 就是一格的內容，寫在一段連續的編號上，而它的
+    // 包圍球在寫進來的當下就順手算完了。那時建空間格是把現成的資訊丟掉
+    // 再用排序重建 —— 實測 490,000 個常駐時那次重建 30 ms，而它省下的
+    // 走訪只有 6.9 ms。
+    //
+    // 這條路不看 `dynamic`：宣告動態的意思是「別去猜、別去排序」，而區塊
+    // 表兩件事都沒做。
+    if (this.blocks.covers(this.count)) {
+      this.usingBlocks = true;
+      this.ensureIdentityOrder();
+      return this.blocks.update(this.frustum, _cameraLocal.x, _cameraLocal.y, _cameraLocal.z);
+    }
+    this.usingBlocks = false;
+
     if (this.declaredDynamic === true) return null;
 
     // 「這一幀之前矩陣動過嗎」不能問 `grid.needsRebuild` —— 它一旦立起來就
@@ -1484,6 +1545,7 @@ export class InstancedMesh extends BatchedMesh {
   }
 
   private ensureSpheres(): void {
+    if (this.usingBlocks) this.ensureIdentityOrder();
     const needed = this.count * 4;
     if (this.spheres.length < needed) {
       // **要把舊的搬過去。** 增量重算只算改過的那幾段，其餘的靠快取裡原本
@@ -1502,7 +1564,9 @@ export class InstancedMesh extends BatchedMesh {
     //
     // 排成走訪順序之後就是循序讀。代價是格子重建時要跟著重排，而那本來
     // 就是同一個時機。
-    const byOrder = this.gridActive && this.grid.order.length >= this.count;
+    // 區塊路徑的順序表是恆等的 —— 位置就是編號，所以增量那條路仍然走得通
+    // （「第幾號髒了」直接對得上「快取的第幾格」）。
+    const byOrder = !this.usingBlocks && this.gridActive && this.grid.order.length >= this.count;
     const previousCount = this.spheresCount;
 
     // ## 只重算真的改過的那幾個
@@ -1549,7 +1613,7 @@ export class InstancedMesh extends BatchedMesh {
   private computeSpheres(from: number, to: number, byOrder: boolean): void {
     const m = this.matricesArray;
     const spheres = this.spheres;
-    const order = this.grid.order;
+    const order = this.traversalOrder;
     const bcx = this.boundsCenter.x;
     const bcy = this.boundsCenter.y;
     const bcz = this.boundsCenter.z;
@@ -1606,7 +1670,7 @@ export class InstancedMesh extends BatchedMesh {
     this._spheresMs = performance.now() - spheresStarted;
     const spheres = this.spheres;
     const invBaseRadius = this.boundsRadius > 0 ? 1 / this.boundsRadius : 1;
-    const order = this.grid.order;
+    const order = this.traversalOrder;
     const starts = this.internals._multiDrawStarts;
     const counts = this.internals._multiDrawCounts;
     const indirect = this.internals._indirectTexture.image.data as Uint32Array;

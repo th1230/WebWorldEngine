@@ -635,6 +635,151 @@ describe('InstancedMesh — 資產不再是門檻（W2）', () => {
   });
 });
 
+describe('InstancedMesh — 串流的區塊就是現成的空間分割', () => {
+  /** 一塊：`n` 個 instance 擠在 `(cx, cz)` 附近，就是串流一格的形狀。 */
+  const cellBlock = (cx: number, cz: number, n: number, size = 20): Float32Array => {
+    const block = new Float32Array(n * 16);
+    const m = new Matrix4();
+    for (let i = 0; i < n; i++) {
+      m.makeTranslation(
+        cx * size + ((i % 5) / 5) * size,
+        0,
+        cz * size + (Math.floor(i / 5) / 5) * size,
+      ).toArray(block, i * 16);
+    }
+    return block;
+  };
+
+  /** 沿著 z 軸鋪一排 cell，每格 25 個 —— 相機只看得到其中幾格。 */
+  const streamIn = (mesh: InstancedMesh, cells: number): void => {
+    for (let c = 0; c < cells; c++) {
+      mesh.writeMatrices(c * 25, cellBlock(0, c - cells / 2, 25));
+    }
+    mesh.count = cells * 25;
+  };
+
+  const check = (mesh: InstancedMesh, camera: PerspectiveCamera, geometry: BufferGeometry): void => {
+    draw(mesh, camera);
+    const drawn = new Set(Array.from(mesh.drawnInstances));
+    const lost = [...referenceVisible(mesh, camera, geometry)].filter((id) => !drawn.has(id));
+    expect(lost).toEqual([]);
+  };
+
+  const looker = (): PerspectiveCamera => {
+    const camera = makeCamera();
+    camera.position.set(0, 6, 60);
+    camera.lookAt(0, 0, -40);
+    return camera;
+  };
+
+  it('整段寫入之後就有空間剔除，而且一次格子都沒建', () => {
+    const geometry = unitBox();
+    const mesh = new InstancedMesh(geometry, material(), 1200, { autoLod: false });
+    streamIn(mesh, 40);
+    const camera = looker();
+    check(mesh, camera, geometry);
+
+    // 這是這條路存在的理由：分割是現成的，所以不必排序，而剔除照樣有效。
+    expect(mesh.stats.spatial).toBe(true);
+    expect(mesh.stats.tested).toBeLessThan(mesh.count);
+    // 空間格一次都沒建 —— 建了的話 cells 會大於 0。
+    expect(mesh.stats.cells).toBe(0);
+  });
+
+  it('掃過所有角度都不破洞 —— 包括視錐邊緣正好切在區塊邊界上', () => {
+    // **這是區塊剔除唯一不能違反的性質。** 區塊的包圍球是從**平移點**算的，
+    // 而 instance 有體積 —— 邊緣那些會突出區塊外。半徑沒把體積加回去的話，
+    // 突出的部分會跟著整塊一起被剔掉。
+    //
+    // 症狀是「某個角度看過去少一叢東西」，所有時間指標完全正常。單一視角
+    // 測不出來：只有視錐的邊界正好切在區塊邊界上時兩者才會分岔，所以必須
+    // 掃角度。
+    const geometry = unitBox();
+    const mesh = new InstancedMesh(geometry, material(), 900, { autoLod: false });
+    const m = new Matrix4();
+    const size = new Vector3(6, 6, 6);
+    // 每一塊 25 個，而且**放大 6 倍** —— 體積遠大於塊內平移點的間距，
+    // 所以「加不加體積」的差別會落在畫面上。
+    for (let c = 0; c < 36; c++) {
+      const block = new Float32Array(25 * 16);
+      for (let i = 0; i < 25; i++) {
+        m.makeTranslation(((c % 6) - 3) * 40 + (i % 5) * 4, 0, (Math.floor(c / 6) - 3) * 40 + Math.floor(i / 5) * 4);
+        m.scale(size);
+        m.toArray(block, i * 16);
+      }
+      mesh.writeMatrices(c * 25, block);
+    }
+    mesh.count = 900;
+
+    const camera = makeCamera();
+    let sawPartial = false;
+    for (let step = 0; step < 48; step++) {
+      const angle = (step / 48) * Math.PI * 2;
+      camera.position.set(Math.cos(angle) * 70, 8, Math.sin(angle) * 70);
+      camera.lookAt(0, 0, 0);
+      draw(mesh, camera);
+      if (mesh.stats.tested < mesh.count) sawPartial = true;
+
+      const drawn = new Set(Array.from(mesh.drawnInstances));
+      const lost = [...referenceVisible(mesh, camera, geometry)].filter((id) => !drawn.has(id));
+      expect(lost, `角度 ${step}`).toEqual([]);
+    }
+    // 每個角度都看得到全部的話，這個測試什麼都沒驗到。
+    expect(sawPartial).toBe(true);
+  });
+
+  it('卸載（把尾巴搬進洞裡）之後仍然正確', () => {
+    const geometry = unitBox();
+    const mesh = new InstancedMesh(geometry, material(), 1200, { autoLod: false });
+    streamIn(mesh, 40);
+    const camera = looker();
+    check(mesh, camera, geometry);
+
+    // 串流卸載的形狀：把洞**後面的全部**往前挪，然後 count 縮小。
+    // （不是「把最後一塊搬進洞」—— 那是我一開始猜錯的形狀，猜錯的代價是
+    // 每一次卸載都讓整張區塊表作廢。）
+    for (let i = 0; i < 6; i++) {
+      const live = mesh.count;
+      const hole = i * 25;
+      mesh.moveInstances(hole + 25, hole, live - hole - 25);
+      mesh.count = live - 25;
+      check(mesh, camera, geometry);
+    }
+    expect(mesh.stats.spatial).toBe(true);
+    expect(mesh.stats.tested).toBeLessThan(mesh.count);
+  });
+
+  it('有人逐個改矩陣就作廢整張表，退回空間格', () => {
+    const geometry = unitBox();
+    const mesh = new InstancedMesh(geometry, material(), 1200, { autoLod: false });
+    streamIn(mesh, 40);
+    const camera = looker();
+    check(mesh, camera, geometry);
+    expect(mesh.stats.cells).toBe(0);
+
+    // 一個 setMatrixAt 就讓那一塊的包圍球過期。過期的包圍球會讓整塊憑空
+    // 消失，所以必須整張表作廢，不是嘗試修補。
+    mesh.setMatrixAt(3, new Matrix4().makeTranslation(0, 0, -500));
+    check(mesh, camera, geometry);
+    expect(mesh.stats.cells).toBeGreaterThan(0);
+  });
+
+  it('不是接在上一塊後面的寫入就作廢', () => {
+    const geometry = unitBox();
+    const mesh = new InstancedMesh(geometry, material(), 1200, { autoLod: false });
+    streamIn(mesh, 40);
+    const camera = looker();
+    draw(mesh, camera);
+    expect(mesh.stats.cells).toBe(0);
+
+    // 覆寫中間那一塊：區塊表對不上，只能作廢。硬記下去會留下一塊邊界錯的
+    // 包圍球。
+    mesh.writeMatrices(200, cellBlock(3, 3, 25));
+    check(mesh, camera, geometry);
+    expect(mesh.stats.cells).toBeGreaterThan(0);
+  });
+});
+
 describe('InstancedMesh — 包圍球快取的增量更新', () => {
   /**
    * 快取只重算改過的那幾段，所以**漏標一段的症狀是那些 instance 用舊的
