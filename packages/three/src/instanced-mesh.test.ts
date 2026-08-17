@@ -635,6 +635,47 @@ describe('InstancedMesh — 資產不再是門檻（W2）', () => {
   });
 });
 
+describe('InstancedMesh — 物件層級的視錐剔除', () => {
+  it('晚一點才寫進來的矩陣不會讓整個物件被剔掉', () => {
+    // 這是串流的形狀：建構時是空的，內容之後才進來，而且離原點很遠。
+    const mesh = new InstancedMesh(unitBox(), material(), 200, { autoLod: false });
+    const camera = makeCamera();
+    camera.position.set(0, 0, 0);
+    camera.lookAt(0, 0, -1);
+    camera.updateMatrixWorld(true);
+
+    /** renderer 每一幀對每個物件做的那件事。第一次呼叫會順手快取包圍球。 */
+    const rendererWouldCull = (): boolean => {
+      camera.updateProjectionMatrix();
+      camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+      const frustum = new Frustum().setFromProjectionMatrix(
+        new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
+      );
+      return !frustum.intersectsObject(mesh);
+    };
+
+    // 第一幀：只有 identity 矩陣，所以算出來的球在原點 —— 然後被記住。
+    rendererWouldCull();
+    draw(mesh, camera);
+
+    const m = new Matrix4();
+    for (let i = 0; i < 200; i++) mesh.setMatrixAt(i, m.makeTranslation(i % 20, 0, -400));
+    camera.position.set(0, 0, -300);
+    camera.lookAt(0, 0, -400);
+    camera.updateMatrixWorld(true);
+    draw(mesh, camera);
+
+    // Three 那一層真的會判斷錯 —— 這一行證明危險是實際存在的，不是假想的。
+    // `BatchedMesh.boundingSphere` 只算一次然後永遠快取，`setMatrixAt`
+    // 不會讓它失效，所以它還停在原點（現在在相機後面）。
+    expect(rendererWouldCull()).toBe(true);
+
+    // 所以必須關掉那一層，否則整個物件一格都不畫，而 console 一片乾淨。
+    expect(mesh.frustumCulled).toBe(false);
+    expect(mesh.stats.visible).toBeGreaterThan(0);
+  });
+});
+
 describe('InstancedMesh — 靜態是宣告出來的，不是猜出來的', () => {
   /** 相機在正上方看整片 —— 全部都在視錐裡，所以格子省不到走訪。 */
   const overhead = (): PerspectiveCamera => {

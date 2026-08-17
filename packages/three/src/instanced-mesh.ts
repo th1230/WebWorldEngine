@@ -286,6 +286,8 @@ export class InstancedMesh extends BatchedMesh {
   private coarsestGeometry: BufferGeometry | null = null;
   private hlodGroups: HlodGroup[] | null = null;
   private hlodSlots: HlodSlot[] | null = null;
+  /** 目前池子裡一個槽位裝得下幾個 instance。變了就整池作廢。 */
+  private hlodChunk = -1;
   /** 這一幀想合併但還沒烘好的格子。 */
   private hlodWanted: number[] = [];
   private frameIndex = 0;
@@ -415,6 +417,23 @@ export class InstancedMesh extends BatchedMesh {
     // 全部 instance，而我們的結果會被它覆蓋。
     this.perObjectFrustumCulled = false;
     this.sortObjects = false;
+
+    // **物件層級的視錐剔除必須關掉，而理由是正確性不是效能。**
+    //
+    // `Frustum.intersectsObject` 對 `BatchedMesh` 讀的是 `this.boundingSphere`，
+    // 而那顆球**只算一次然後永遠快取** —— Three 的 `setMatrixAt` 不會讓它失效。
+    // 所以只要矩陣在第一次繪製之後改過，那顆球就是舊的。
+    //
+    // 症狀最惡劣的是串流：第一幀只有一個 identity instance，於是球在原點、
+    // 半徑等於單一幾何。相機走遠之後整個物件被判定在視錐外 —— **一格都不畫，
+    // 而且永遠不會恢復**。畫面上是「東西不見了」，console 一片乾淨。
+    //
+    // 我們自己做的是逐 instance 的精確剔除，全部看不見時就送出零次繪製。
+    // 所以外面那一層物件測試本來就沒有給我們任何東西，只帶來一顆會過期的球。
+    //
+    // （不能改成「失效時把 boundingSphere 設成 null」—— 那會讓 Three 每次
+    // 都重算一遍全部 instance 的包圍球，也就是把我們自己的熱迴圈做第二次。）
+    this.frustumCulled = false;
 
     this.internals = assertBatchedMeshInternals(this);
 
@@ -653,9 +672,34 @@ export class InstancedMesh extends BatchedMesh {
     if (needed <= this._capacity) return;
 
     const target = Math.max(needed, this._capacity * 2, 16);
-    this.setInstanceCount(target);
+
+    // ## 遠景合併的槽位 instance 也佔 id，而使用者的 instance 必須 id === 索引
+    //
+    // `writeMatrices` / `setMatrixAt` 直接把索引當矩陣陣列的位置用，所以
+    // `[0, capacity)` 這段 id 不能被別人插隊。槽位的 instance 住在 `capacity`
+    // 之後 —— 長大時若不先把它們讓出來，新的使用者 instance 會排到槽位後面，
+    // 於是總數超過 `maxInstanceCount`：**串流會直接丟出
+    // 「Maximum item count reached」，整格內容不見**。
+    //
+    // 實測（`streaming-move`，radius 360）：78 幀裡 117 格載入失敗。
+    //
+    // 只還 instance，不還幾何 —— 烘好的合併幾何與它保留的緩衝區空間都留著
+    // （`deleteGeometry` 不會還空間，還了就是淨損失）。Three 的 `addInstance`
+    // 會優先發還回來的 id 且由小到大，所以讓出來之後使用者拿到的仍然是
+    // `capacity, capacity + 1, …` 這一段連續 id。
+    const slots = this.hlodSlots ?? [];
+    for (const slot of slots) this.deleteInstance(slot.instanceId);
+    this.setInstanceCount(target + slots.length);
     for (let i = this._capacity; i < target; i++) this.addInstance(0);
     this._capacity = target;
+    for (const slot of slots) {
+      slot.instanceId = this.addInstance(slot.geometryId);
+      // 幾何還在，但新的 id 上還沒寫矩陣，所以當成空的。烘焙是惰性的，
+      // 下一幀就會補回來 —— 而在那之前那幾格照原本逐 instance 送。
+      slot.group = -1;
+      slot.lastUsed = -1;
+    }
+    for (const group of this.hlodGroups ?? []) group.slot = -1;
 
     // `setInstanceCount` 重新配置了矩陣貼圖，所以共用的那塊記憶體換人了。
     // 忘了重新綁定的話，之後所有的寫入都會落在一塊沒人在看的舊陣列上 ——
@@ -881,14 +925,7 @@ export class InstancedMesh extends BatchedMesh {
    * 兩者都到齊的時刻就是空間格剛重建完，也就是這裡。
    */
   private buildHlod(): void {
-    // 上一輪的合併幾何要先拆掉。不拆的話每次矩陣一改就多一整份，而症狀是
-    // 記憶體一路長，畫面完全正常。
-    for (const slot of this.hlodSlots ?? []) {
-      this.deleteInstance(slot.instanceId);
-      this.deleteGeometry(slot.geometryId);
-    }
     this.hlodGroups = null;
-    this.hlodSlots = null;
     this.hlodWanted = [];
 
     const coarsest = this.coarsestGeometry;
@@ -926,7 +963,16 @@ export class InstancedMesh extends BatchedMesh {
       if (size >= HLOD_MIN_INSTANCES && size > maxCellInstances) maxCellInstances = size;
     }
     if (maxCellInstances === 0) return;
-    const chunk = Math.max(this.hlodSlotInstances ?? maxCellInstances, HLOD_MIN_INSTANCES);
+    // ## 為什麼向上取到二的次方
+    //
+    // 槽位大小一變，整池就得重配 —— 而重配是**淨增加**（見 `ensureHlodPool`）。
+    // 「最大那一格有幾個」在串流時每次重建都在變，直接用它等於每次都重配。
+    //
+    // 取到二的次方之後，同一個量級內的變動不會動到池子，重配最多發生
+    // log₂ 次。代價是槽位平均浪費 1/3 的空間，而那是換來「不會一路長」。
+    const wanted = Math.max(this.hlodSlotInstances ?? maxCellInstances, HLOD_MIN_INSTANCES);
+    const chunk =
+      this.hlodSlotInstances === null ? 2 ** Math.ceil(Math.log2(wanted)) : wanted;
 
     const groups: HlodGroup[] = [];
     for (let cell = 0; cell < cells; cell++) {
@@ -1024,25 +1070,79 @@ export class InstancedMesh extends BatchedMesh {
       );
     }
 
-    // 一次把整池配好。之後只用 `setGeometryAt` 換內容 —— `addGeometry` 會
-    // 重用 id 但**不會重用緩衝區空間**，所以刪掉再加是會漏的。
-    if (slotVertices * slotCount > this.unusedVertexCount) {
+    this.ensureHlodPool(coarsest, chunk, slotCount, slotVertices, slotIndices);
+    this.hlodGroups = groups;
+    this.hlodWanted = [];
+  }
+
+  /**
+   * 準備好槽位池。**只會長大，不會縮小。**
+   *
+   * ## 為什麼不能拆掉重配
+   *
+   * `deleteGeometry` 會還 id，但**不還緩衝區空間** —— 那是 `BatchedMesh` 的
+   * 性質，不是這裡的選擇。所以「先拆掉再配一份新的」每一次都是淨增加。
+   *
+   * 靜態場景裡看不出來（只重建一次），串流裡是災難。實測（`streaming-move`，
+   * 763 個 instance）：每次重建都重配時 GPU 記憶體三秒漲 **90 MB**，而
+   * `setGeometrySize` 要複製整個緩衝區，於是空間格那一步從 0.05 ms 變成
+   * **7.38 ms** 且一路變慢，幀 p50 **44.25 ms**。
+   *
+   * 症狀是「幀時間越跑越差」，而畫面從頭到尾完全正確 —— 一次量測都沒抓到，
+   * 因為在那之前沒有任何場景會反覆重建空間格。
+   *
+   * ## 所以池子的生命週期與空間格脫鉤
+   *
+   * 格子重建只換**內容**（哪一格對到哪個槽位），不換池子。池子只在
+   * 「槽位變大」或「要更多槽位」時才動，而那兩件事都是單調的。
+   */
+  private ensureHlodPool(
+    coarsest: BufferGeometry,
+    chunk: number,
+    slotCount: number,
+    slotVertices: number,
+    slotIndices: number,
+  ): void {
+    const existing = this.hlodSlots;
+    // 槽位變大了：舊的放不進新內容，整池作廢。空間收不回來，所以 chunk
+    // 刻意取二的次方讓這件事最多發生 log₂ 次。
+    if (existing !== null && this.hlodChunk !== chunk) {
+      for (const slot of existing) {
+        this.deleteInstance(slot.instanceId);
+        this.deleteGeometry(slot.geometryId);
+      }
+      this.hlodSlots = null;
+    }
+    this.hlodChunk = chunk;
+
+    const slots = this.hlodSlots ?? [];
+    // 這一輪的格子換人了，所以每個槽位裡的東西都算過期。
+    for (const slot of slots) {
+      slot.group = -1;
+      slot.lastUsed = -1;
+    }
+    if (slots.length >= slotCount) {
+      this.hlodSlots = slots;
+      return;
+    }
+
+    const add = slotCount - slots.length;
+    if (slotVertices * add > this.unusedVertexCount) {
       this.setGeometrySize(
-        this.internals._maxVertexCount + slotVertices * slotCount,
-        this.internals._maxIndexCount + slotIndices * slotCount,
+        this.internals._maxVertexCount + slotVertices * add,
+        this.internals._maxIndexCount + slotIndices * add,
       );
     }
-    if (this.internals._maxInstanceCount < this._capacity + slotCount) {
-      this.setInstanceCount(this._capacity + slotCount);
-      // `setInstanceCount` 換掉了矩陣貼圖。下面要讀它來烘幾何，讀到舊的
+    if (this.internals._maxInstanceCount < this._capacity + slots.length + add) {
+      this.setInstanceCount(this._capacity + slots.length + add);
+      // `setInstanceCount` 換掉了矩陣貼圖。之後要讀它來烘幾何，讀到舊的
       // 那一份會拿到全零的矩陣 —— 所有東西疊在原點，而且不會報錯。
       this.rebindMatrices(this._capacity);
     }
 
     // 佔位幾何的屬性佈局必須與其他階一致，否則 addGeometry 會拒絕。
     const placeholder = placeholderLike(coarsest);
-    const slots: HlodSlot[] = [];
-    for (let i = 0; i < slotCount; i++) {
+    for (let i = 0; i < add; i++) {
       // 用一個空幾何佔位，保留最大那一格的空間。
       const geometryId = this.addGeometry(placeholder, slotVertices, slotIndices);
       const info = this.internals._geometryInfo[geometryId]!;
@@ -1055,12 +1155,8 @@ export class InstancedMesh extends BatchedMesh {
         lastUsed: -1,
       });
     }
-
     placeholder.dispose();
-
-    this.hlodGroups = groups;
     this.hlodSlots = slots;
-    this.hlodWanted = [];
   }
 
   /**

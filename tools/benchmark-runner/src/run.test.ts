@@ -61,7 +61,7 @@ describe('DEFAULT_RUNS', () => {
     //
     // - texture-conformance：SwiftShader 拿不到 WebGPU adapter，
     //   沒有硬體解碼器就沒有裁判。
-    // - ab-native-real / ab-ww-real / occlusion-sponza：需要 cook 過的
+    // - ab-native-real / ab-ww-real / streaming-move / occlusion-sponza：需要 cook 過的
     //   真實資產，而二進位美術檔不進版控 —— CI 的檔案系統上那些資產
     //   根本不存在。
     const excluded = DEFAULT_RUNS.filter(
@@ -70,6 +70,7 @@ describe('DEFAULT_RUNS', () => {
     expect(excluded).toEqual([
       'ab-native-real',
       'ab-ww-real',
+      'streaming-move',
       'occlusion-sponza',
       'texture-conformance',
     ]);

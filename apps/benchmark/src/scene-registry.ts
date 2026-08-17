@@ -8,6 +8,7 @@ import {
 import { cpuCeilingScene, gpuDrawCallCeilingScene, gpuTriangleCeilingScene } from './scenes/ceiling-scenes.ts';
 import { textureConformanceScene } from './scenes/texture-conformance.ts';
 import { occlusionScene } from './scenes/occlusion-scene.ts';
+import { streamingScene } from './scenes/streaming-scene.ts';
 import { nativeRealAssetScene, wwRealAssetScene } from './scenes/real-asset-scenes.ts';
 import { nativeInstancingScene, wwInstancingScene } from './scenes/ww-scenes.ts';
 import type { SceneDefinition } from './scenes/types.ts';
@@ -34,6 +35,8 @@ export const SCENES: readonly SceneDefinition[] = [
   wwRealAssetScene,
   // 遮擋：唯一有東西擋住東西的場景。散開的石頭量不出遮擋的價值。
   occlusionScene,
+  // 串流：唯一一個內容在載入中變動的場景。靜態場景量不到格子重建的代價。
+  streamingScene,
   // 天花板：兩端各自的上限。W4 的前提，不是結果。
   cpuCeilingScene,
   gpuTriangleCeilingScene,
