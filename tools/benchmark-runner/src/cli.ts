@@ -35,6 +35,9 @@ WebWorld Engine — benchmark runner
   --threshold <percent>        回歸門檻百分比（預設 ${DEFAULT_THRESHOLD_PCT}，由 bench:variance 推導）
   --scene <id[,id]>            只跑指定的場景（逗號分隔，順序仍照 DEFAULT_RUNS）
   --param <k=v[,k=v]>          覆寫場景的 URL 參數（臨時實驗用，不寫進 baseline 的意圖）
+  --ab <k=a,b>                 把選到的場景展開成相鄰的兩筆，只差這一個參數。
+                               機制層改動唯一能判定的量法 —— 這台機器同一份
+                               程式跑兩次就差 30%，不交錯就是在比機器狀態
   --repeat <n>                 每個場景重複 n 次取中位數（預設 ${DEFAULT_REPEAT}）
                                --repeat 1 適合快速迭代，但不該用來判定回歸
 `;
@@ -44,6 +47,8 @@ interface Args {
   profile: string;
   threshold: number;
   scene: string | null;
+  /** `key=a,b`：把選到的場景展開成相鄰的兩筆，只差那一個參數。 */
+  ab: string | null;
   params: Record<string, string>;
   repeat: number;
 }
@@ -54,6 +59,7 @@ function parseArgs(argv: readonly string[]): Args {
     profile: 'hardware',
     threshold: DEFAULT_THRESHOLD_PCT,
     scene: null,
+    ab: null,
     params: {},
     repeat: 0, // 0 = 未指定，由指令自行決定預設
   };
@@ -72,6 +78,9 @@ function parseArgs(argv: readonly string[]): Args {
         if (eq <= 0) throw new Error(`--param 需要 k=v 的形式，收到 "${pair}"`);
         args.params[pair.slice(0, eq)] = pair.slice(eq + 1);
       }
+      i++;
+    } else if (flag === '--ab' && value !== undefined) {
+      args.ab = value;
       i++;
     } else if (flag === '--scene' && value !== undefined) {
       args.scene = value;
@@ -131,6 +140,31 @@ async function doRun(args: Args, defaultRepeat: number): Promise<ResultFile> {
 `);
     const source = selected ?? DEFAULT_RUNS;
     selected = source.map((run) => ({ ...run, params: { ...run.params, ...args.params } }));
+  }
+
+  // --ab key=a,b 把選到的場景展開成**相鄰的兩筆**，只差那一個參數。
+  //
+  // 這是機制層優化唯一能判定的量法。這台機器同一份程式跑兩次就差 30%
+  // （時脈隨散熱與電源狀態變動），所以「整輪跑 A 再整輪跑 B」比出來的差
+  // 是機器狀態，不是程式。相鄰才能讓兩者在同一輪裡背靠背執行。
+  //
+  // 沒有它的話，任何「這個改動有沒有用」都只能猜 —— 而猜錯的方向通常是
+  // 「數字更好看所以是進步」。
+  if (args.ab !== null) {
+    const eq = args.ab.indexOf('=');
+    const key = eq > 0 ? args.ab.slice(0, eq) : '';
+    const [a, b] = args.ab.slice(eq + 1).split(',').map((v) => v.trim());
+    if (key.length === 0 || a === undefined || b === undefined) {
+      throw new Error(`--ab 的格式是 key=a,b（例如 hlod=1,0），收到 "${args.ab}"`);
+    }
+    console.log(`⚠ A/B：${key} = ${a} 對 ${b}，交錯執行。\n`);
+    selected = (selected ?? DEFAULT_RUNS).flatMap((run) =>
+      [a, b].map((value) => ({
+        ...run,
+        label: `${run.label ?? run.id}[${key}=${value}]`,
+        params: { ...run.params, [key]: value },
+      })),
+    );
   }
 
   const outcome = await runBenchmarks({
