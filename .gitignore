@@ -1,0 +1,32 @@
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Benchmark 執行結果是機器相關的暫存輸出；只有 benchmarks/baselines/ 進版控
+benchmarks/results/
+
+playwright-report/
+test-results/
+
+*.local.json
+.env
+.env.*
+!.env.example
+
+.DS_Store
+Thumbs.db
+
+# Cooked 資產是 build 產物，由 pnpm cook / pnpm cook:real 產生
+apps/benchmark/public/cooked/
+apps/benchmark/public/cooked-real/
+apps/benchmark/public/cooked-sponza/
+
+# 真實美術資產的來源目錄。二進位美術檔不進版控 —— cook 的可重現性
+# 由「相同種子 → 相同 glTF → 相同 hash」保證，不需要也不該把幾百 MB 的
+# 模型放進 repo。想用真實資產的人把 .glb 放進去即可。
+assets/source/
+
+dist/
+
+.claude/

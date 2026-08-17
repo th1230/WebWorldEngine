@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "useDefineForClassFields": true,
+
+    // @webgpu/types 不在 @types/ 底下，不會被自動載入，必須明確列出。
+    // 一旦指定 types，就只有列出的套件會提供全域型別。
+    "types": ["node", "@webgpu/types"],
+
+    "baseUrl": ".",
+    "paths": {
+      "@webworld/cook": ["packages/cook/src/index.ts"],
+      "@webworld/cook/texture": ["packages/cook/src/texture/index.ts"],
+      "@webworld/format": ["packages/format/src/index.ts"],
+      "@ww/assets-runtime": ["internal/assets-runtime/src/index.ts"],
+      "@ww/core": ["internal/core/src/index.ts"],
+      "@ww/engine": ["internal/engine/src/index.ts"],
+      "@ww/platform-web": ["internal/platform-web/src/index.ts"],
+      "@ww/diagnostics": ["internal/diagnostics/src/index.ts"],
+      "@ww/render-core": ["internal/render-core/src/index.ts"],
+      "@ww/render-three": ["internal/render-three/src/index.ts"],
+      "@webworld/three": ["packages/three/src/index.ts"]
+    }
+  }
+}

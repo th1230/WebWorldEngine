@@ -1,0 +1,47 @@
+{
+  "name": "webworld-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @ww/benchmark-app dev",
+    "example": "pnpm --filter @ww/example-app dev",
+    "build": "pnpm --filter @ww/benchmark-app build",
+    "build:pkg": "pnpm --filter @webworld/format build && pnpm --filter @webworld/three build && pnpm --filter @webworld/cook build",
+    "preview": "pnpm --filter @ww/benchmark-app preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "bench": "tsx tools/benchmark-runner/src/cli.ts run --profile hardware",
+    "bench:smoke": "tsx tools/benchmark-runner/src/cli.ts run --profile smoke",
+    "bench:baseline": "tsx tools/benchmark-runner/src/cli.ts baseline",
+    "bench:compare": "tsx tools/benchmark-runner/src/cli.ts compare",
+    "bench:variance": "tsx tools/benchmark-runner/src/cli.ts variance",
+    "cook": "tsx packages/cook/src/cli.ts assets/source --builtins --out apps/benchmark/public/cooked",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test",
+    "cook:real": "tsx packages/cook/src/cli.ts assets/source/props --out apps/benchmark/public/cooked-real",
+    "site-check": "node tools/site-check/verify.mjs",
+    "cook:sponza": "tsx packages/cook/src/cli.ts assets/source/sponza --out apps/benchmark/public/cooked-sponza",
+    "bench:capacity": "tsx tools/benchmark-runner/src/cli.ts run --scene ab-ww-real --repeat 1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.2.0",
+    "@webgpu/types": "^0.1.71",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.8.1",
+    "globals": "^17.11.0",
+    "playwright": "^1.62.1",
+    "tsx": "^4.23.12",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.67.0",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10"
+  }
+}

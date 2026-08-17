@@ -1,0 +1,8 @@
+packages:
+  - 'packages/*'
+  - 'internal/*'
+  - 'apps/*'
+  - 'tools/*'
+# esbuild 的 postinstall 會安裝對應平台的原生 binary；Vite 與 Vitest 都依賴它。
+allowBuilds:
+  esbuild: true
