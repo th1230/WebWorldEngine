@@ -2318,6 +2318,40 @@ worker**：那條路已經有了（`autoLod` 就在 worker 裡跑），而且保
 **先量再決定要不要做** —— 這個數字讓「cook 時烘焙」從一個待辦變成一個有條件
 的選項：等到有人拿著一個會卡幾百毫秒的模型出現。
 
+### ⛔ WebGPU 那條路上 VAT 不會動，而且這台機器驗不了
+
+`AnimatedInstancedMesh` 靠 `onBeforeCompile` 注入，那是 WebGL 的鉤子。
+`WebGPURenderer` 用 node 材質，整條編譯路徑不經過它 —— 掛上去**什麼都不會
+發生**，而症狀是**一群停在綁定姿勢、完全不動的模型**。
+
+那看起來像動畫資料有問題，最不可能被懷疑的就是「這條路在這個 renderer 上
+根本沒接上」。所以現在它會**大聲警告**並指向 `THREE.SkinnedMesh`。
+
+#### 為什麼沒有直接把 TSL 那份寫出來
+
+積木都在（`texture`、`attribute`、`uniform`、`instanceIndex`、`positionLocal`
+全部存在，查過了），寫得出來。**問題是驗不了**：
+
+```text
+headed + --enable-unsafe-webgpu  → navigator.gpu 不存在
+headed, 無 flag                  → navigator.gpu 不存在
+```
+
+這台機器上 Playwright 驅動的 Chrome 拿不到 WebGPU，所以 `pnpm bench`
+（WebGPU）在這裡也跑不起來。
+
+而**今天已經有三次「沒驗過的 shader 給出自洽的假成功」**：材質旋鈕（淨虧被
+讀成有效）、MultiMesh 沒呼叫 super（1.589 ms 像五倍勝利）、VAT 用了不存在的
+`batchId`（省 89.5%，比正確答案還好）。
+
+在那個紀錄之後盲寫一份 shader 然後說「應該可以」，是這一輪最不該做的事。
+
+> **這不是「還沒做」，是「這台機器上驗不了」。** 拿得到 WebGPU 的環境裡，
+> 這是一件有界的工作：同一條式子用 TSL 再寫一次，然後拿現有的畫面比對驗它。
+
+順帶：`WW.MultiMesh` **兩條路都能用** —— 它只走 `BatchedMesh` 的公開介面，
+沒有任何 shader 注入。
+
 ### runtime 烘焙，所以不必等 cook
 
 之前把「cook 不處理蒙皮」寫成 VAT 的前置，那是錯的 —— 烘焙在瀏覽器裡做就好，

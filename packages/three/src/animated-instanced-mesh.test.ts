@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { injectVertexAnimation } from './animated-instanced-mesh.ts';
+import { BoxGeometry, DataTexture, Float32BufferAttribute, MeshBasicMaterial } from 'three';
+import { describe, expect, it, vi } from 'vitest';
+import { AnimatedInstancedMesh, injectVertexAnimation } from './animated-instanced-mesh.ts';
 
 /**
  * shader 注入的失效方式全部是靜默的：對不上就什麼都沒發生（所有東西擺在綁定
@@ -69,5 +70,29 @@ describe('把 VAT 取樣插進 vertex shader', () => {
 
   it('Three 換版把 begin_vertex 改掉時會丟例外，不是靜靜失效', () => {
     expect(() => injectVertexAnimation('#include <common>')).toThrow(/begin_vertex/);
+  });
+});
+
+describe('AnimatedInstancedMesh — node 材質', () => {
+  it('大聲說「動畫不會播」，因為 onBeforeCompile 在那條路上不會被呼叫', () => {
+    // 靜靜不生效的症狀是**一群停在綁定姿勢的模型** —— 那看起來像動畫資料
+    // 有問題，最不可能被懷疑的就是「這條路在這個 renderer 上沒接上」。
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const material = new MeshBasicMaterial();
+    (material as unknown as { isNodeMaterial: boolean }).isNodeMaterial = true;
+
+    const geometry = new BoxGeometry(1, 1, 1);
+    geometry.setAttribute('wwVertexId', new Float32BufferAttribute(new Float32Array(geometry.getAttribute('position').count), 1));
+    new AnimatedInstancedMesh(
+      { geometry, texture: new DataTexture(), frameCount: 2, duration: 1, vertexCount: 8 } as never,
+      material,
+      4,
+    );
+
+    expect(warn).toHaveBeenCalled();
+    const said = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(said).toContain('綁定姿勢');
+    expect(said).toContain('SkinnedMesh');
+    warn.mockRestore();
   });
 });

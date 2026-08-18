@@ -110,6 +110,30 @@ export class AnimatedInstancedMesh extends InstancedMesh {
       wwVatPhase: { value: options.phaseSpread ?? 1 },
     };
 
+    // ## node 材質上這段注入不會生效 —— 而它必須大聲說
+    //
+    // `onBeforeCompile` 是 WebGL 那條路的鉤子。`WebGPURenderer` 用的是 node
+    // 材質，整條編譯路徑不經過它，所以掛上去**什麼都不會發生**。
+    //
+    // 而「什麼都不會發生」在這裡的樣子特別會騙人：位置從來沒被改寫，於是
+    // 每一個 instance 都停在**綁定姿勢**。畫面上是一群完全不動的模型 ——
+    // 看起來像「動畫資料有問題」或「忘了呼叫 update」，最不可能被懷疑的
+    // 就是「這條路在這個 renderer 上根本沒接上」。
+    //
+    // 這個專案在材質那條軸上已經踩過同一個坑：實作在 WebGL、量測在 WebGPU，
+    // 兩邊碰不到，而症狀是「開了旋鈕但沒省」。
+    if ((material as { isNodeMaterial?: boolean }).isNodeMaterial === true) {
+      console.warn(
+        [
+          'WW.AnimatedInstancedMesh: 這是 node 材質（WebGPURenderer 那條路），',
+          '而頂點動畫是靠 onBeforeCompile 注入的 —— node 材質不經過那個鉤子。',
+          '結果會是**一群停在綁定姿勢、完全不動的模型**，而且不會有任何錯誤。',
+          '批次、剔除、LOD 選階都照常運作，只有動畫不會播。',
+          'WebGPU 上目前請改用 THREE.SkinnedMesh。',
+        ].join('\n'),
+      );
+    }
+
     const previous = material.onBeforeCompile;
     material.onBeforeCompile = (
       shader: WebGLProgramParametersWithUniforms,
