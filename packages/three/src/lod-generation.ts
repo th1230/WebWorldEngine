@@ -135,6 +135,20 @@ export async function generateLodLevels(
     // 而且會產生一個「存在但與上一階完全相同」的階 —— 那比沒有更糟，
     // 因為統計上看起來 LOD 有在運作。
     if (simplified.length >= previousLength) break;
+
+    // ## 塌成 0 個三角形的階要丟掉，而且要 break 不是 continue
+    //
+    // 誤差上限放鬆之後（接鏈尾巴那條路用 1.0），simplifier 會把網格一路
+    // 塌到什麼都不剩。實測 icosphere 的鏈接到第 4 階時是 **0 個三角形**。
+    //
+    // 那一階完全合法地留在鏈裡，然後在夠遠的距離被選中 —— **整個物件消失**，
+    // 沒有錯誤、沒有警告，只有「那邊本來有東西」。這正是這個專案最怕的
+    // 那一類失效。
+    //
+    // 用 4 當下限而不是 1：少於 4 個三角形圍不出體積，從任何角度看都是
+    // 一片或一條，那不是「很粗的模型」而是破圖。
+    if (simplified.length < 4 * 3) break;
+
     previousLength = simplified.length;
 
     const level = { ...compact(welded, simplified), error: relativeError * scale };
