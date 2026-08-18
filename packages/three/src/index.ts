@@ -16,6 +16,11 @@
  */
 export { InstancedMesh, type InstancedMeshOptions } from './instanced-mesh.ts';
 export { MultiMesh, type MultiMeshOptions } from './multi-mesh.ts';
+export {
+  bakeVertexAnimation,
+  type BakedVertexAnimation,
+  type BakeOptions,
+} from './vertex-animation.ts';
 export { worldFor, World, type WorldStats } from './world.ts';
 export { isLodChain, pixelsPerUnit, selectLevel, type GeometrySource, type LodChain } from './lod-chain.ts';
 export { sphericalLodErrors } from './spherical-error.ts';
