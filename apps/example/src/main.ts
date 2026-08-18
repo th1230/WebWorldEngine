@@ -43,6 +43,15 @@ const COUNT = Number(params.get('count') ?? 60_000);
  *
  * 這會**改變畫面**（遠處變平），所以它是宣告出來的，不是引擎自己決定的。
  */
+/**
+ * 分離變因用的兩個開關。
+ *
+ * 強化版與原生版的畫面差異可能來自三件事：批次幾何的屬性佈局、LOD 選階、
+ * 遠景合併。一次關掉一個才知道是哪一個 —— 沒有這兩個參數就只能猜。
+ */
+const NO_HLOD = params.get('hlod') === '0';
+const SINGLE_LOD = params.get('lodLevels') === '1';
+
 const MATERIAL_DETAIL_PIXELS = params.has('materialDetail')
   ? Number(params.get('materialDetail'))
   : undefined;
@@ -155,8 +164,16 @@ const source: WW.GeometrySource = useCooked
     ? lods[0]!
     : { lods, errors };
 
+// 只留第 0 階 —— 那時選階不可能挑到別階，差異裡就沒有 LOD 這一項。
+const usedSource: WW.GeometrySource = SINGLE_LOD
+  ? (Array.isArray((source as { lods?: unknown[] }).lods)
+      ? { lods: [(source as unknown as { lods: THREE.BufferGeometry[] }).lods[0]!], errors: [0] }
+      : source)
+  : source;
+
 const rocks = enhanced
-  ? new WW.InstancedMesh(source, material, COUNT, {
+  ? new WW.InstancedMesh(usedSource, material, COUNT, {
+      ...(NO_HLOD ? { hlod: false } : {}),
       ...(HLOD_BUDGET_MB === undefined ? {} : { hlodBudgetMB: HLOD_BUDGET_MB }),
       ...(MATERIAL_DETAIL_PIXELS === undefined
         ? {}
@@ -543,7 +560,16 @@ async function verifyQuality(
   const enhancedPixels = await capture();
 
   // 參考：原生 InstancedMesh，最細的幾何，不剔除、不選階
-  const reference = new THREE.InstancedMesh(lods[0]!, material, Math.max(live, 1));
+  // **參考影像必須用強化版拿到的那份幾何**，不是模組頂層那個 `lods`。
+  //
+  // `?cooked=1` 時強化版吃的是 cook 過的鏈，而 `lods` 是程序化的那一份 ——
+  // 拿它當參考等於在比兩個不同的形狀。症狀是「有貼圖時差 20%」，而那看起來
+  // 非常像引擎的缺陷（我差點就那樣記下去，還先排除了合併與選階）。
+  //
+  // `sourceGeometry` 依定義就是「強化版拿到的那條鏈的第 0 階」，所以它是
+  // 唯一正確的參考。
+  const referenceGeometry = (rocks as WW.InstancedMesh).sourceGeometry ?? lods[0]!;
+  const reference = new THREE.InstancedMesh(referenceGeometry, material, Math.max(live, 1));
   reference.count = live;
   reference.castShadow = rocks.castShadow;
   const copy = new THREE.Matrix4();

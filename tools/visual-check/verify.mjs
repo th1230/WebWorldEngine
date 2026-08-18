@@ -191,29 +191,23 @@ const MODES = [
   { name: '近景（螢幕上很大）', query: '?count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512&verify=1', missing: 0.3, ratio: 5 },
   // 同樣的形狀，但走串流那條路 —— 區塊表的剔除錯誤只在這條路上出現。
   { name: '近景串流', query: '?stream=1&size=20&orbit=90&hlodBudgetMB=512&verify=1', missing: 0.6, ratio: 2 },
-  // ## ⛔ 下面這三組**記錄的是一個已知缺陷，不是通過標準**
+  // ## 有貼圖的那條路
   //
-  // 有貼圖的那條路在這之前沒有任何 gate 走過（example 預設是純色材質），
-  // 一走就量到強化版與原生版差 **19.7%**（純色時只差 0.19%）。
+  // 在這之前沒有任何 gate 走過（example 預設是純色材質），所以 normal/ORM
+  // 的取樣、sRGB、mip 全部沒被驗過。
   //
-  // 而且**近景更糟（42.7%）** —— 所以不是「粗階的著色漂移」，粗階那個
-  // 假設會預測近景比較好。原因還沒找到。
-  //
-  // 門檻先訂在量到的值上，作用是**擋住繼續惡化**，不是說這個數字可以接受。
-  // 修好之後這三個門檻要一起收緊。
-  { name: '有貼圖・遠景', query: '?cooked=1&count=20000&hlodBudgetMB=512&verify=1', missing: 14, ratio: 1.1 },
-  // 同樣有貼圖，但物件在螢幕上很大 → 挑的是細階。跟上面那組的差額就是
-  // 「粗階的著色漂移」有多大。
-  { name: '有貼圖・近景', query: '?cooked=1&count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512&verify=1', missing: 30, ratio: 1.0 },
-  // 門檻 0 = 永遠不觸發。**注入必須完全沒有作用** —— 數字要跟上面那組一樣。
-  //
-  // 這一條擋的是「注入寫壞了但看起來還好」：shader 改了卻沒人比對的話，
-  // 微小的著色差異會被當成雜訊。
+  // 一走就量到 19.7%，而那**不是引擎的缺陷，是參考影像用錯幾何** ——
+  // `?cooked=1` 時強化版吃 cook 過的鏈，而參考當時用的是模組頂層那份程序化
+  // 幾何，等於在比兩個不同的形狀。修好之後近景是 0%，遠景 3.3%。
+  { name: '有貼圖・遠景', query: '?cooked=1&count=20000&hlodBudgetMB=512&verify=1', missing: 5, ratio: 2 },
+  // 近景挑的是細階，所以與原生**完全一致**（0%）。這一組因此是最嚴的一個
+  // gate：任何讓有貼圖的內容偏掉的改動都會在這裡紅。
+  { name: '有貼圖・近景', query: '?cooked=1&count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512&verify=1', missing: 0.3, ratio: 4 },
   {
     name: '材質細節降級（門檻 0，應完全無作用）',
     query: '?cooked=1&count=20000&hlodBudgetMB=512&materialDetail=0&verify=1',
-    missing: 14,
-    ratio: 1.1,
+    missing: 5,
+    ratio: 2,
   },
 ];
 
