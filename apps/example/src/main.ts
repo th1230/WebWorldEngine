@@ -31,6 +31,16 @@ const useStream = params.get('stream') === '1';
 const COOKED_MANIFEST = '/cooked/assets.manifest.json';
 const COOKED_MESH = params.get('mesh') ?? 'mesh:rock-large';
 const COUNT = Number(params.get('count') ?? 60_000);
+/**
+ * 遠景合併的記憶體預算，MB。省略就用套件的預設。
+ *
+ * `tools/visual-check` 會把它調大 —— 預設值下這份程序化內容的槽位遠少於
+ * 可合併的格數（實測 60 對 443），於是**哪幾格是合併的每一幀都在變**，
+ * 畫面比對就永遠不穩。兩種畫法都在契約內，但那讓檢查讀不出程式碼的差異。
+ */
+const HLOD_BUDGET_MB = params.has('hlodBudgetMB')
+  ? Number(params.get('hlodBudgetMB'))
+  : undefined;
 const SPREAD = 900;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#viewport')!;
@@ -115,7 +125,9 @@ const source: WW.GeometrySource = useCooked
     : { lods, errors };
 
 const rocks = enhanced
-  ? new WW.InstancedMesh(source, material, COUNT)
+  ? new WW.InstancedMesh(source, material, COUNT, {
+      ...(HLOD_BUDGET_MB === undefined ? {} : { hlodBudgetMB: HLOD_BUDGET_MB }),
+    })
   : new THREE.InstancedMesh(lods[0]!, material, COUNT);
 // ─────────────────────────────────────────────────────────────────────
 
@@ -419,7 +431,13 @@ async function measureStreamDrift(ticks = 400): Promise<unknown> {
  * 哪裡** —— `meanGradientAtOutside` 遠高於 `meanGradientOverall` 就代表
  * 差異都在輪廓上（合約允許的位移），而不是整片區域的著色變了。
  */
-async function verifyQuality(t = 2, radiusPixels = 2, threshold = 8): Promise<unknown> {
+async function verifyQuality(
+  t = 2,
+  radiusPixels = 2,
+  threshold = 8,
+  width = 1280,
+  height = 720,
+): Promise<unknown> {
   if (!enhanced) return { skipped: '這個模式本身就是原生版，沒有東西可以比' };
 
   // ## 串流的內容要先凍住
@@ -433,8 +451,6 @@ async function verifyQuality(t = 2, radiusPixels = 2, threshold = 8): Promise<un
   // 串流時真正活著的是 `rocks.count`，不是建構時的容量。
   const live = rocks.count;
 
-  const width = 640;
-  const height = 360;
   renderer.setSize(width, height, false);
   // composer 有自己的 render target，不跟著 renderer 走 —— 忘了它的話
   // 場景會用舊尺寸畫，然後被拉伸貼到新畫布上。
@@ -450,8 +466,17 @@ async function verifyQuality(t = 2, radiusPixels = 2, threshold = 8): Promise<un
   // 那不是畫質問題，但它會讓這個檢查的數字每次都不一樣（實測鄰域外像素在
   // 959 與 1990 之間跳，梯度比 8.7 對 4.2）。一個會晃兩倍的檢查沒有人擋得住
   // 任何東西。
-  const SETTLE_FRAMES = 60;
-  for (let i = 0; i < SETTLE_FRAMES; i++) step(t);
+  // 跑到**合併不再變動**為止，不是跑固定幾幀。烘焙有每幀時間預算，所以
+  // 「要幾幀」取決於有幾格要烘、機器多快 —— 固定幀數在這裡就是一個
+  // 作者訂的數字，而且它訂錯了：60 幀不夠烘 443 組，於是掃角度時前面
+  // 幾個角度量到的是烘到一半的狀態，同一個角度換個順序就得到不同的數字。
+  // 判準是「這一幀有沒有在烘」，不是「合併數量有沒有變」—— 後者在烘
+  // 看不見的那幾組時是不動的，於是會提早判定穩定了。
+  let quiet = 0;
+  for (let i = 0; i < 900 && quiet < 10; i++) {
+    step(t);
+    quiet = (rocks as WW.InstancedMesh).stats.cpuParts.bake < 0.01 ? quiet + 1 : 0;
+  }
 
   const capture = (): Promise<ImageData> => {
     step(t);
