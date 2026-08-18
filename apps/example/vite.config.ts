@@ -19,6 +19,25 @@ export default defineConfig({
   esbuild: { target: 'esnext' },
   plugins: [
     {
+      // `/source-assets/gltf-sample/*` 直接從版控裡的來源資產讀。
+      //
+      // 那些檔案是「還沒被 cook 處理過」的原始 glTF，而 VAT 的量尺就是要
+      // 拿它們來驗 —— 程序化的圓柱回答不了「真的資產上長什麼樣」。
+      name: 'ww-serve-source-assets',
+      configureServer(server) {
+        server.middlewares.use('/source-assets', async (req, res, next) => {
+          const { createReadStream, existsSync } = await import('node:fs');
+          const { join, resolve } = await import('node:path');
+          const root = resolve(import.meta.dirname, '../../assets/source');
+          const name = (req.url ?? '/').split('?')[0]!.replace(/^\//, '');
+          const file = join(root, name);
+          if (!file.startsWith(root) || !existsSync(file)) return next();
+          res.setHeader('content-type', 'model/gltf-binary');
+          createReadStream(file).pipe(res);
+        });
+      },
+    },
+    {
       name: 'ww-serve-cooked',
       configureServer(server) {
         server.middlewares.use('/cooked', async (req, res, next) => {

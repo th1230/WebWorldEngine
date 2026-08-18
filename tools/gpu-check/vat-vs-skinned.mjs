@@ -95,7 +95,10 @@ async function serve(dir) {
     const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
     const file = path.startsWith('/cooked')
       ? join(COOKED, path)
-      : join(dir, path === '/' ? 'index.html' : path);
+      : // 來源資產（未經 cook 的 glTF）——VAT 的量尺要拿真的骨骼模型驗。
+        path.startsWith('/source-assets')
+        ? join(root, 'assets/source', path.slice('/source-assets/'.length))
+        : join(dir, path === '/' ? 'index.html' : path);
     readFile(file).then(
       (bytes) => {
         const type =

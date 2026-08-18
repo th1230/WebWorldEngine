@@ -68,6 +68,14 @@ const SKINNED = params.has('skinned') ? Number(params.get('skinned')) : 0;
 const VAT = params.has('vat') ? Number(params.get('vat')) : 0;
 /** `?vatLod=0` 關掉 VAT 那條路的 LOD —— 要與蒙皮基準比同樣的三角形數時用。 */
 const VAT_LOD = params.get('vatLod') !== '0';
+/**
+ * `?glb=BrainStem` 拿**真的**骨骼資產來烘，而不是程序化的圓柱。
+ *
+ * 程序化那根回答得了「成本怎麼隨數量成長」，回答不了「真的資產上長什麼樣」
+ * ——真的資產有 4 個骨骼影響、59 個 primitive、不平均的權重。準則說
+ * 「絕對吞吐量不能從程序化的內容推論」，這個參數就是去補那一塊。
+ */
+const GLB = params.get('glb');
 
 /**
  * `?terrain=T` 換成一片地表，切成 T×T 塊。
@@ -282,10 +290,49 @@ if (skinnedField !== null) {
   scene.add(skinnedField.root);
 }
 
+/**
+ * 從 glTF 撈出第一個 `SkinnedMesh` 與第一段動畫。
+ *
+ * 真的資產通常是**很多個 primitive** 掛在同一副骨架上（BrainStem 有 59 個），
+ * 而這裡只烘第一個 —— 這支是量尺不是完整的載入器，而「只烘一個 primitive」
+ * 這件事要講出來，不然畫面上少了大半個模型會看起來像烘壞了。
+ */
+async function loadSkinnedGlb(name: string): Promise<{ mesh: THREE.SkinnedMesh; clip: THREE.AnimationClip } | null> {
+  const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+  const gltf = await new GLTFLoader().loadAsync(`/source-assets/gltf-sample/${name}.glb`);
+  let found: THREE.SkinnedMesh | null = null;
+  gltf.scene.traverse((o) => {
+    if (found === null && (o as THREE.SkinnedMesh).isSkinnedMesh) found = o as THREE.SkinnedMesh;
+  });
+  const clip = gltf.animations[0];
+  if (found === null || clip === undefined) {
+    console.warn(`WW 範例：${name} 裡沒有找到 SkinnedMesh 或動畫，退回程序化的 rig。`);
+    return null;
+  }
+  const mesh = found as THREE.SkinnedMesh;
+  mesh.updateMatrixWorld(true);
+  const primitives = (() => {
+    let n = 0;
+    gltf.scene.traverse((o) => {
+      if ((o as THREE.SkinnedMesh).isSkinnedMesh) n++;
+    });
+    return n;
+  })();
+  if (primitives > 1) {
+    console.info(
+      `WW 範例：${name} 有 ${primitives} 個蒙皮 primitive，這支量尺只烘第一個。` +
+        '畫面上會少掉其餘的部分 —— 那是量尺的簡化，不是烘焙壞了。',
+    );
+  }
+  return { mesh, clip };
+}
+
+const loadedRig = GLB !== null && VAT > 0 ? await loadSkinnedGlb(GLB) : null;
+
 const vatField = (() => {
   if (VAT <= 0) return null;
   // 與 `?skinned=N` 用同一根 rig —— 兩條路比的必須是同一個東西。
-  const rig = makeSkinnedRig(8);
+  const rig = loadedRig ?? makeSkinnedRig(8);
   const baked = WW.bakeVertexAnimation(rig.mesh, rig.clip, { frames: 32 });
   const mesh = new WW.AnimatedInstancedMesh(baked, rig.mesh.material as THREE.Material, VAT, {
     ...(VAT_LOD ? {} : { autoLod: false }),
@@ -296,8 +343,14 @@ const vatField = (() => {
     seed = (seed * 1664525 + 1013904223) >>> 0;
     return seed / 4294967296;
   };
+  // `?size` 也要吃 —— 真實資產的模型尺度差很多（BrainStem 是公尺級的
+  // 小模型），不給縮放的話畫面上只有幾個點，看起來像烘壞了。
   for (let i = 0; i < VAT; i++) {
-    m.makeTranslation((r() - 0.5) * SPREAD, 0, (r() - 0.5) * SPREAD);
+    m.compose(
+      new THREE.Vector3((r() - 0.5) * SPREAD, 0, (r() - 0.5) * SPREAD),
+      new THREE.Quaternion(),
+      new THREE.Vector3(SIZE, SIZE, SIZE),
+    );
     mesh.setMatrixAt(i, m);
   }
   rocks.visible = false;
