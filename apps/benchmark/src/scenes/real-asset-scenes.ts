@@ -123,7 +123,10 @@ function normalizingScale(chain: LodChain): number {
 /** 材質有哪幾張貼圖、多大、什麼格式。寫進 verdict 才看得出量的是什麼。 */
 function describeMaterial(material: MeshStandardMaterial): string {
   const size = (t: Texture | null): string => {
-    if (t === null) return '無';
+    // `== null` 不是 `=== null`：剝到 MeshBasicMaterial 時這些欄位是
+    // **undefined 而不是 null**，寫死 `=== null` 會在下一行丟例外，而症狀是
+    // 「那一組完全沒有結果」——看起來像場景跑不起來，不像回報函式壞了。
+    if (t == null) return '無';
     // 壓縮貼圖的尺寸記在 `mipmaps[0]`，`image` 只是個佔位物件。
     const level0 = (t as CompressedTexture).mipmaps?.[0];
     return `${level0?.width ?? '?'}²/fmt${(t as CompressedTexture).format}`;
@@ -345,7 +348,9 @@ export const wwRealAssetScene: SceneDefinition = {
         // 貼圖沒接上的話畫面只是變成純色 —— 沒有例外、沒有紅字，而效能
         // 數字會顯得漂亮，因為少了三次取樣。這一組存在的理由就是量真實
         // 材質的成本，接不上等於整組數字沒有意義。
-        const missing = materialProblems(material);
+        // 剝層是**故意**把貼圖拿掉的，那時這個檢查會誤報。但預設那一層
+        // 仍然要擋 —— 貼圖沒接上時畫面只是變純色，而效能數字會顯得漂亮。
+        const missing = materialLevel === 'full' ? materialProblems(material) : [];
         if (missing.length > 0) {
           return { ok: false, detail: `材質不完整（${missing.join('、')}）。${detail}` };
         }
