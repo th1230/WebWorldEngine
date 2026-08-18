@@ -38,6 +38,27 @@ const FIRST_FRAME_BUDGET_MS = 3000;
 const MAIN_BUNDLE_BUDGET = 800 * 1024;
 
 /**
+ * 下載總量的上限，位元組。
+ *
+ * 主 script 早就有線了，總量卻只是印出來 —— 而會出事的正是總量：不小心
+ * 把某個相依項打包進去、或多切出一個永遠會被抓的 chunk，主 script 可能
+ * 沒變。
+ */
+const TOTAL_DOWNLOAD_BUDGET = 1024 * 1024;
+
+/**
+ * GPU 物件數的上限（幾何 + 貼圖）。
+ *
+ * 這一項原本也只是印出來。而這一輪抓到的其中一個 bug 正是這個形狀：
+ * 遠景合併的槽位池每次重建都重配，GPU 記憶體三秒漲 90 MB —— 幾何數
+ * 一路往上，而三個檢查全綠。
+ *
+ * example 穩態是 3 個幾何、3 張貼圖，所以 32 是「明顯在漏」的等級，
+ * 不是一條卡住現況的線。
+ */
+const GPU_OBJECT_BUDGET = 32;
+
+/**
  * JS heap 的上限，MB。
  *
  * ## 為什麼非要有這一條
@@ -132,6 +153,17 @@ async function measureLoad(browser, url) {
 
   if (result > FIRST_FRAME_BUDGET_MS) {
     throw new Error(`首次可見 ${result.toFixed(0)} ms 超過 ${FIRST_FRAME_BUDGET_MS} ms 的預算`);
+  }
+  if (total > TOTAL_DOWNLOAD_BUDGET) {
+    throw new Error(
+      `下載總量 ${(total / 1024).toFixed(1)} kB 超過 ${TOTAL_DOWNLOAD_BUDGET / 1024} kB 的預算`,
+    );
+  }
+  const gpuObjects = memory.geometries + memory.textures;
+  if (gpuObjects > GPU_OBJECT_BUDGET) {
+    throw new Error(
+      `GPU 物件 ${gpuObjects} 個超過 ${GPU_OBJECT_BUDGET} —— 最可能是有東西沒被釋放`,
+    );
   }
   if (main > MAIN_BUNDLE_BUDGET) {
     throw new Error(
