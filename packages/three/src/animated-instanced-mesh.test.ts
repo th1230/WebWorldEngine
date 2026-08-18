@@ -1,5 +1,5 @@
 import { BoxGeometry, DataTexture, Float32BufferAttribute, MeshBasicMaterial } from 'three';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { AnimatedInstancedMesh, injectVertexAnimation } from './animated-instanced-mesh.ts';
 
 /**
