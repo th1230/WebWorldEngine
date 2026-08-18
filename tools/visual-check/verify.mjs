@@ -191,6 +191,30 @@ const MODES = [
   { name: '近景（螢幕上很大）', query: '?count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512&verify=1', missing: 0.3, ratio: 5 },
   // 同樣的形狀，但走串流那條路 —— 區塊表的剔除錯誤只在這條路上出現。
   { name: '近景串流', query: '?stream=1&size=20&orbit=90&hlodBudgetMB=512&verify=1', missing: 0.6, ratio: 2 },
+  // ## ⛔ 下面這三組**記錄的是一個已知缺陷，不是通過標準**
+  //
+  // 有貼圖的那條路在這之前沒有任何 gate 走過（example 預設是純色材質），
+  // 一走就量到強化版與原生版差 **19.7%**（純色時只差 0.19%）。
+  //
+  // 而且**近景更糟（42.7%）** —— 所以不是「粗階的著色漂移」，粗階那個
+  // 假設會預測近景比較好。原因還沒找到。
+  //
+  // 門檻先訂在量到的值上，作用是**擋住繼續惡化**，不是說這個數字可以接受。
+  // 修好之後這三個門檻要一起收緊。
+  { name: '有貼圖・遠景', query: '?cooked=1&count=20000&hlodBudgetMB=512&verify=1', missing: 14, ratio: 1.1 },
+  // 同樣有貼圖，但物件在螢幕上很大 → 挑的是細階。跟上面那組的差額就是
+  // 「粗階的著色漂移」有多大。
+  { name: '有貼圖・近景', query: '?cooked=1&count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512&verify=1', missing: 30, ratio: 1.0 },
+  // 門檻 0 = 永遠不觸發。**注入必須完全沒有作用** —— 數字要跟上面那組一樣。
+  //
+  // 這一條擋的是「注入寫壞了但看起來還好」：shader 改了卻沒人比對的話，
+  // 微小的著色差異會被當成雜訊。
+  {
+    name: '材質細節降級（門檻 0，應完全無作用）',
+    query: '?cooked=1&count=20000&hlodBudgetMB=512&materialDetail=0&verify=1',
+    missing: 14,
+    ratio: 1.1,
+  },
 ];
 
 async function run(browser, url, mode) {
@@ -260,13 +284,16 @@ function judge(mode, result) {
 }
 
 async function serve(dir) {
+  // `/cooked*` 從 benchmark 的 public 讀 —— 那是 `pnpm cook` 的輸出，不進版控，
+  // 而 example 的 vite 設定只在 dev server 上代理它。建置後的 app 少了這一段
+  // 就載不到貼圖，於是 `?cooked=1` 會靜靜退回純色材質 —— **檢查照樣全綠，
+  // 只是它驗的內容裡根本沒有貼圖**。
+  const COOKED = join(root, 'apps/benchmark/public');
   const server = createServer((req, res) => {
     const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    const file = join(dir, path === '/' ? 'index.html' : path);
-    if (!file.startsWith(dir)) {
-      res.writeHead(403).end();
-      return;
-    }
+    const file = path.startsWith('/cooked')
+      ? join(COOKED, path)
+      : join(dir, path === '/' ? 'index.html' : path);
     readFile(file).then(
       (bytes) => {
         const type =

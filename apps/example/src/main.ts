@@ -38,6 +38,15 @@ const COUNT = Number(params.get('count') ?? 60_000);
  * 可合併的格數（實測 60 對 443），於是**哪幾格是合併的每一幀都在變**，
  * 畫面比對就永遠不穩。兩種畫法都在契約內，但那讓檢查讀不出程式碼的差異。
  */
+/**
+ * 遠處停止取樣 normal / ORM 的門檻，像素。省略就完全不啟用。
+ *
+ * 這會**改變畫面**（遠處變平），所以它是宣告出來的，不是引擎自己決定的。
+ */
+const MATERIAL_DETAIL_PIXELS = params.has('materialDetail')
+  ? Number(params.get('materialDetail'))
+  : undefined;
+
 const HLOD_BUDGET_MB = params.has('hlodBudgetMB')
   ? Number(params.get('hlodBudgetMB'))
   : undefined;
@@ -149,6 +158,9 @@ const source: WW.GeometrySource = useCooked
 const rocks = enhanced
   ? new WW.InstancedMesh(source, material, COUNT, {
       ...(HLOD_BUDGET_MB === undefined ? {} : { hlodBudgetMB: HLOD_BUDGET_MB }),
+      ...(MATERIAL_DETAIL_PIXELS === undefined
+        ? {}
+        : { materialDetailPixels: MATERIAL_DETAIL_PIXELS }),
     })
   : new THREE.InstancedMesh(lods[0]!, material, COUNT);
 // ─────────────────────────────────────────────────────────────────────

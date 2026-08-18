@@ -288,13 +288,16 @@ async function measureIdleWhenHidden(page, frame) {
 }
 
 async function serve(dir) {
+  // `/cooked*` 從 benchmark 的 public 讀 —— 那是 `pnpm cook` 的輸出，不進版控，
+  // 而 example 的 vite 設定只在 dev server 上代理它。建置後的 app 少了這一段
+  // 就載不到貼圖，於是 `?cooked=1` 會靜靜退回純色材質 —— **檢查照樣全綠，
+  // 只是它驗的內容裡根本沒有貼圖**。
+  const COOKED = join(root, 'apps/benchmark/public');
   const server = createServer((req, res) => {
     const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    const file = join(dir, path === '/' ? 'index.html' : path);
-    if (!file.startsWith(dir)) {
-      res.writeHead(403).end();
-      return;
-    }
+    const file = path.startsWith('/cooked')
+      ? join(COOKED, path)
+      : join(dir, path === '/' ? 'index.html' : path);
     readFile(file).then(
       (bytes) => {
         const type =

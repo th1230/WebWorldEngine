@@ -25,6 +25,7 @@ import type {
 import { requestLodLevels } from './lod-service.ts';
 import { mergeInstances, mergedSize, placeholderLike } from './hlod.ts';
 import { assertBatchedMeshInternals, type BatchedMeshInternals } from './three-internals.ts';
+import { installMaterialDetail, type MaterialDetailHandle } from './material-detail.ts';
 
 /** 自動產生 LOD 的成本拆解。 */
 export interface LodStats {
@@ -119,6 +120,16 @@ export interface InstancedMeshOptions {
    * 預算剩多少。所以慢機器不會永遠停在未合併的狀態。
    */
   hlodBakeMs?: number;
+  /**
+   * 投影半徑小於這麼多像素時，停止取樣 normal 與 ORM 貼圖。**預設關。**
+   *
+   * 實測這兩張貼圖在物件很大時佔 GPU 的 27%，物件只有幾個像素時只佔 8%
+   * —— 也就是這筆錢只在近處付得有價值。
+   *
+   * 但少取樣會讓遠處變平，**那是改變畫面**，所以門檻由你訂，引擎不猜。
+   * 不設就完全不碰你的材質。
+   */
+  materialDetailPixels?: number;
 }
 
 /**
@@ -329,8 +340,11 @@ export class InstancedMesh extends BatchedMesh {
   private slotCursor = 0;
   private readonly hlodEnabled: boolean;
   private readonly hlodBudgetBytes: number | null;
+  private readonly materialDetailPixels: number | undefined;
   private readonly hlodSlotInstances: number | null;
   private readonly hlodBakeMs: number;
+  /** `materialDetailPixels` 開著時，每幀要把投影比例交給 shader。 */
+  private materialDetail: MaterialDetailHandle | null = null;
   private _mergedDraws = 0;
   private _mergedInstances = 0;
   private _hlodSlotCount = 0;
@@ -473,6 +487,7 @@ export class InstancedMesh extends BatchedMesh {
       options.hlodBudgetMB === undefined ? null : options.hlodBudgetMB * 1048576;
     this.hlodSlotInstances = options.hlodSlotInstances ?? null;
     this.hlodBakeMs = options.hlodBakeMs ?? HLOD_BAKE_BUDGET_MS;
+    this.materialDetailPixels = options.materialDetailPixels;
     this._capacity = count;
     this.count = count;
     this._levelCounts = new Int32Array(prepared.length);
@@ -518,6 +533,12 @@ export class InstancedMesh extends BatchedMesh {
     }
     this.coarsestGeometry = prepared[prepared.length - 1]!;
     this.boundsRadius = maxRadius;
+    if (this.materialDetailPixels !== undefined) {
+      this.materialDetail = installMaterialDetail(material, {
+        pixels: this.materialDetailPixels,
+        baseRadius: maxRadius,
+      });
+    }
     this.gridRadius = this.boundsCenter.length() + maxRadius;
 
     // 全部 instance 一次配置好。`setMatrixAt` 要求 instance 已存在，而
@@ -944,6 +965,7 @@ export class InstancedMesh extends BatchedMesh {
     const ranges = this.prepareGrid();
     this._gridMs = performance.now() - gridStarted;
     const ppu = this.projectionScale(renderer, camera);
+    this.materialDetail?.setProjectionScale(ppu);
 
     const index = geometry.getIndex();
     const bytesPerElement = index === null ? 1 : index.array.BYTES_PER_ELEMENT;
