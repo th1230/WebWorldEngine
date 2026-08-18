@@ -2327,18 +2327,29 @@ worker**：那條路已經有了（`autoLod` 就在 worker 裡跑），而且保
 那看起來像動畫資料有問題，最不可能被懷疑的就是「這條路在這個 renderer 上
 根本沒接上」。所以現在它會**大聲警告**並指向 `THREE.SkinnedMesh`。
 
-#### 為什麼沒有直接把 TSL 那份寫出來
+#### 我一度說「這台機器驗不了」，那是量錯的
 
-積木都在（`texture`、`attribute`、`uniform`、`instanceIndex`、`positionLocal`
-全部存在，查過了），寫得出來。**問題是驗不了**：
+先前跑了八種組合都得到 `navigator.gpu 不存在`，於是差點把「WebGPU 在這個
+環境上驗不了」寫成專案的範圍宣告。
+
+**那個測試是錯的**：我在 `about:blank` 上問 `navigator.gpu`，而 WebGPU 需要
+**安全上下文**。換到真的 origin（localhost）上：
 
 ```text
-headed + --enable-unsafe-webgpu  → navigator.gpu 不存在
-headed, 無 flag                  → navigator.gpu 不存在
+about:blank                        → navigator.gpu 不存在
+localhost，headed + flag           → OK，拿到 device
+localhost，headless + swiftshader  → requestAdapter 回傳 null
 ```
 
-這台機器上 Playwright 驅動的 Chrome 拿不到 WebGPU，所以 `pnpm bench`
-（WebGPU）在這裡也跑不起來。
+而 `pnpm bench:smoke` 本來就跑得起來 —— 那是最直接的反證，我卻先做了八次
+錯的實驗才去跑它。
+
+**這是今天第四次「量測的地方不對，於是得到一個很有把握的錯結論」。** 前三次
+是對照組用錯幾何、內容規模不夠、動畫迴圈沒停。這一次差點變成寫進 spec 的
+永久錯誤。
+
+> 判準：**宣告一個限制之前，先跑一次已知會成功的東西。** `bench:smoke` 就在
+> 那裡，跑它要三分鐘，而它會當場推翻那個結論。
 
 而**今天已經有三次「沒驗過的 shader 給出自洽的假成功」**：材質旋鈕（淨虧被
 讀成有效）、MultiMesh 沒呼叫 super（1.589 ms 像五倍勝利）、VAT 用了不存在的
