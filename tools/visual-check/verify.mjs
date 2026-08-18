@@ -67,30 +67,28 @@ import { chromium } from 'playwright';
  * （cook 過的真實資產是 4 個），所以它特別容易撞到 —— 這正是準則說
  * 「合成內容不具代表性」的那件事。
  *
- * ## ⚠ 這個檢查目前擋不住什麼（實測，不是推測）
+ * ## 抓得到什麼、抓不到什麼（實測，不是推測）
  *
- * 拿兩個故意做壞的版本試過，**兩個都通過**：
+ * | 故意弄壞的地方 | 抓到了嗎 |
+ * | --- | --- |
+ * | 選階固定挑最粗的一階 | ✅ 近景那兩組多畫 1.675% / 2.174%，都超過門檻 |
+ * | 區塊包圍球半徑縮成 0.7 倍 | ❌ 少畫只從 0.29% 動到 0.51% |
  *
- * | 故意弄壞的地方 | 乾淨 | 弄壞之後 |
- * | --- | --- | --- |
- * | 區塊包圍球半徑縮成 0.7 倍（畫面邊緣整叢消失） | 0.44%／比 4.8 | 0.46%／比 5.3 |
- * | 選階固定挑最粗的一階 | 0.79%／比 4.7 | 0.38%／比 8.8 |
+ * 第一個一開始也抓不到 —— 原本只有「兩萬個又遠又小」那兩組，而那種內容
+ * 螢幕上每個只有幾個像素、本來就全部在最粗階，選階算錯根本不動畫面。
+ * 加上**近景那兩組**（少量、放大 20 倍、相機拉近）之後才有鑑別力：換一階
+ * 會動到成千上萬個像素。
  *
- * 原因是**內容不對**：`apps/example` 是兩萬個很遠很小的物件，螢幕上每個
- * 只有幾個像素，所以它們本來就全部在最粗階 —— 選階改壞了也看不出來，
- * 而邊緣少一叢只佔幾百個像素，在比例上淹沒掉。
+ * 第二個仍然抓不到，而且原因是結構性的：整塊在畫面邊緣被剔掉只佔幾百個
+ * 像素。那一類由單元測試那邊掃 48 個角度、拿獨立實作比可見集合來擋
+ * （那一組確實抓得到）。兩邊互補，缺一個都會漏。
  *
- * **要讓它真的有鑑別力，需要的是「螢幕上很大」的內容**（少量、近、大），
- * 那時換一階會動到成千上萬個像素。roadmap 裡 `spread 60、3,000 個` 那組
- * 就是那個形狀，但 example app 目前沒有把 spread 開出來。
+ * ## 兩個方向都比
  *
- * 在那之前，這個檢查擋得住的是「整片不見了／整片變色」那個等級，而
- * 逐 instance 的剔除與選階由單元測試那邊掃 48 個角度、拿獨立實作比
- * 可見集合來擋（那一組確實抓得到上面第一個破壞）。
- *
- * 寫在這裡而不是靜靜通過：**一個抓不到東西的綠燈比沒有燈更危險。**
- *
- * ## 兩個模式都要驗
+ * 「強化版有、原生版沒有」抓多畫了或畫錯了；「原生版有、強化版沒有」抓
+ * **東西不見了**。後者是這個引擎最危險的一種錯（剔過頭、包圍球太小、
+ * 整塊被跳過），而且只在那個方向上出現。挑最差角度時看的也是它。
+ * * ## 四個模式，各有各的門檻
  *
  * 靜態那條路（一次擺完）與串流那條路（區塊表、增量分組）是**兩份不同的
  * 程式碼**。這一輪抓到的四個 bug 全部只在串流那條路上出現，而靜態那條路
@@ -109,7 +107,11 @@ const DIST = join(root, 'apps/example/dist');
  * 槽位給滿之後它就穩了（見檔案開頭）。1280×720 下實測乾淨狀態靜態
  * 0.38%–0.86%、串流 0.40%–0.50%，所以 2% 留了兩倍多的餘裕。
  */
-const OUTSIDE_BUDGET = 0.02;
+// 門檻**逐個模式各訂**，寫在 MODES 上。
+//
+// 統一一條線的話，最寬鬆的那個模式會把所有模式都拉鬆：靜態那組乾淨狀態
+// 就有 1.58%（而且還在兩個值之間跳），近景那組是 0.18% —— 用同一條線等於
+// 讓近景那組的門檻鬆了九倍，而它正是唯一驗得動畫質的那一組。
 
 /**
  * 不合的像素要**集中在輪廓上**，不能散在整片區域裡。
@@ -128,7 +130,15 @@ const OUTSIDE_BUDGET = 0.02;
  * 邊緣只佔幾百個像素，比例上看不出來。那一類由單元測試掃 48 個角度、拿
  * 獨立實作比可見集合來擋。兩邊互補，缺一個都會漏。
  */
-const GRADIENT_RATIO_MIN = 2;
+
+/**
+ * 「原生版畫了、強化版沒畫」的像素上限。**這一條比正向那條嚴。**
+ *
+ * 多畫是輪廓位移，少畫是東西不見了 —— 而剔除剔過頭、包圍球太小、整塊被
+ * 跳過，全都是這個引擎最危險的失效方式，而且全都只在這個方向上出現。
+ *
+ * 門檻等擷取到乾淨基準之後再填。
+ */
 
 async function main() {
   console.log('建置 example app…');
@@ -155,7 +165,7 @@ async function main() {
   if (failures.length > 0) {
     throw new Error(`畫面比對失敗：\n  ${failures.join('\n  ')}`);
   }
-  console.log('\nOK: 兩個模式的畫面都在品質契約內');
+  console.log('\nOK: 四個模式的畫面都在品質契約內');
 }
 
 const MODES = [
@@ -163,9 +173,18 @@ const MODES = [
   // 預設預算下這份程序化內容只配得到 60 個槽位、443 組要合併，於是每一幀
   // 被合併的是不同的那幾格 —— 兩種畫法都在契約內，但畫面因此每一幀都不同。
   // 實測：同一頁、同一個角度連續量五次是 959 / 959 / 2967 / 2129 / 959。
-  { name: '靜態（一次擺完）', query: '?count=20000&hlodBudgetMB=512' },
+  { name: '靜態（一次擺完）', query: '?count=20000&hlodBudgetMB=512', missing: 3, ratio: 1.5 },
   // 串流走的是另一份程式碼：區塊表、增量分組、卸載時的編號平移。
-  { name: '串流（區塊表）', query: '?stream=1&hlodBudgetMB=512' },
+  { name: '串流（區塊表）', query: '?stream=1&hlodBudgetMB=512', missing: 1, ratio: 3 },
+  // **這一組才驗得動畫質。** 上面兩組是兩萬個又遠又小的物件，螢幕上每個
+  // 只有幾個像素，本來就全部在最粗階 —— 選階算錯、邊緣少一叢都看不出來
+  // （兩個故意做壞的版本都通過了）。
+  //
+  // 這一組把物件放大 20 倍、數量降到 600、相機拉近，於是換一階會動到
+  // 成千上萬個像素。
+  { name: '近景（螢幕上很大）', query: '?count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512', missing: 0.5, ratio: 4 },
+  // 同樣的形狀，但走串流那條路 —— 區塊表的剔除錯誤只在這條路上出現。
+  { name: '近景串流', query: '?stream=1&size=20&orbit=90&hlodBudgetMB=512', missing: 1, ratio: 2 },
 ];
 
 async function run(browser, url, mode) {
@@ -189,7 +208,8 @@ async function run(browser, url, mode) {
       await page.close();
       return { ...one, consoleErrors };
     }
-    if (worst === null || (one.percent ?? Infinity) > (worst.percent ?? -Infinity)) {
+    // 用「少畫」挑最差 —— 東西不見了才是這裡最要抓的那一種。
+    if (worst === null || (one.missingPercent ?? Infinity) > (worst.missingPercent ?? -Infinity)) {
       worst = { ...one, t };
     }
   }
@@ -200,7 +220,7 @@ async function run(browser, url, mode) {
 function judge(mode, result) {
   const line =
     `${mode.name}：${result.instances} 個 instance，` +
-    `最差角度 t=${result.t}，鄰域外 ${result.outsideContract}（${result.percent}%），` +
+    `最差角度 t=${result.t}，多畫 ${result.percent}%，少畫 ${result.missingPercent}%，` +
     `梯度比 ${(result.meanGradientAtOutside / Math.max(result.meanGradientOverall, 1e-6)).toFixed(1)}`;
   console.log(`\n── ${line}`);
 
@@ -214,13 +234,21 @@ function judge(mode, result) {
   if (typeof result.percent !== 'number' || Number.isNaN(result.percent)) {
     return `${mode.name}：拿不到比對結果（percent = ${String(result.percent)}）`;
   }
-  if (result.percent / 100 > OUTSIDE_BUDGET) {
-    return `${mode.name}：鄰域外 ${result.percent}% 超過 ${OUTSIDE_BUDGET * 100}%`;
+  if (result.percent > mode.missing * 1.5) {
+    return `${mode.name}：多畫 ${result.percent}% 超過 ${mode.missing * 1.5}%`;
+  }
+  // **少畫的那個方向要嚴得多。** 多畫幾個像素通常是輪廓位移；少畫代表
+  // 東西真的不見了，而那是這個引擎最危險的失效方式。
+  if (typeof result.missingPercent !== "number" || Number.isNaN(result.missingPercent)) {
+    return `${mode.name}：拿不到反向比對結果`;
+  }
+  if (result.missingPercent > mode.missing) {
+    return `${mode.name}：原生版有、強化版沒有的像素 ${result.missingPercent}% 超過 ${mode.missing}%`;
   }
   const ratio = result.meanGradientAtOutside / Math.max(result.meanGradientOverall, 1e-6);
   if (!Number.isFinite(ratio)) return `${mode.name}：梯度比算不出來`;
-  if (result.outsideContract > 0 && ratio < GRADIENT_RATIO_MIN) {
-    return `${mode.name}：不合的像素沒有集中在輪廓上（梯度比 ${ratio.toFixed(1)} < ${GRADIENT_RATIO_MIN}）`;
+  if (result.outsideContract > 0 && ratio < mode.ratio) {
+    return `${mode.name}：不合的像素沒有集中在輪廓上（梯度比 ${ratio.toFixed(1)} < ${mode.ratio}）`;
   }
   return null;
 }

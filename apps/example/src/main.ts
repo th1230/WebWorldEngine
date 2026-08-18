@@ -41,7 +41,16 @@ const COUNT = Number(params.get('count') ?? 60_000);
 const HLOD_BUDGET_MB = params.has('hlodBudgetMB')
   ? Number(params.get('hlodBudgetMB'))
   : undefined;
-const SPREAD = 900;
+/**
+ * 內容鋪多大、每個多大、相機繞多遠。
+ *
+ * 開成參數是為了 `tools/visual-check` —— 預設那組（兩萬個又遠又小）
+ * **量不出畫質退步**：每個物件在螢幕上只有幾個像素，本來就全部在最粗階，
+ * 所以選階算錯也看不出來。要驗畫質就得讓物件在螢幕上很大。
+ */
+const SPREAD = Number(params.get('spread') ?? 900);
+const SIZE = Number(params.get('size') ?? 1);
+const ORBIT = Number(params.get('orbit') ?? 260);
 
 const canvas = document.querySelector<HTMLCanvasElement>('#viewport')!;
 const hud = document.querySelector<HTMLDivElement>('#hud')!;
@@ -149,7 +158,7 @@ if (!useStream) {
     position.set((rand() - 0.5) * SPREAD, 0, (rand() - 0.5) * SPREAD);
     euler.set(rand() * 6.283, rand() * 6.283, rand() * 6.283);
     quaternion.setFromEuler(euler);
-    const s = 0.6 + rand() * 2.4;
+    const s = (0.6 + rand() * 2.4) * SIZE;
     scale.set(s, s, s);
     rocks.setMatrixAt(i, matrix.compose(position, quaternion, scale));
   }
@@ -219,7 +228,7 @@ if (useStream && world !== null) {
         position.set((cx + rnd()) * CELL_SIZE, 0, (cz + rnd()) * CELL_SIZE);
         euler.set(rnd() * 6.283, rnd() * 6.283, rnd() * 6.283);
         quaternion.setFromEuler(euler);
-        const size = 0.6 + rnd() * 2.4;
+        const size = (0.6 + rnd() * 2.4) * SIZE;
         // 刻意重複使用同一個 Matrix4 —— 那是 Three.js 的慣例，介面必須撐得住。
         place(rocks as WW.InstancedMesh, matrix.compose(position, quaternion, scale.setScalar(size)));
       }
@@ -241,9 +250,9 @@ addEventListener('resize', () => {
 
 renderer.setAnimationLoop((time) => {
   const t = time / 1000;
-  const radius = 260;
-  camera.position.set(Math.cos(t * 0.12) * radius, 14, Math.sin(t * 0.12) * radius);
-  camera.lookAt(Math.cos(t * 0.12 + 1.2) * 60, 8, Math.sin(t * 0.12 + 1.2) * 60);
+  const radius = ORBIT;
+  camera.position.set(Math.cos(t * 0.12) * radius, 14 * SIZE, Math.sin(t * 0.12) * radius);
+  camera.lookAt(Math.cos(t * 0.12 + 1.2) * (radius * 0.23), 8 * SIZE, Math.sin(t * 0.12 + 1.2) * (radius * 0.23));
   walker.position.set(camera.position.x * 0.9, 1.4, camera.position.z * 0.9);
 
   renderFrame();
@@ -332,12 +341,12 @@ function step(t = 0): void {
   // 開串流的話走直線遠離原點 —— 繞圈永遠只碰到同一批 cell，量不出
   // 「一直載入一直卸載」會不會漏。
   if (useStream) {
-    camera.position.set(t * 40, 14, t * 40);
-    camera.lookAt(t * 40 + 100, 8, t * 40 + 100);
+    camera.position.set(t * 40, 14 * SIZE, t * 40);
+    camera.lookAt(t * 40 + 100, 8 * SIZE, t * 40 + 100);
   } else {
-    const radius = 260;
-    camera.position.set(Math.cos(t * 0.12) * radius, 14, Math.sin(t * 0.12) * radius);
-    camera.lookAt(Math.cos(t * 0.12 + 1.2) * 60, 8, Math.sin(t * 0.12 + 1.2) * 60);
+    const radius = ORBIT;
+    camera.position.set(Math.cos(t * 0.12) * radius, 14 * SIZE, Math.sin(t * 0.12) * radius);
+    camera.lookAt(Math.cos(t * 0.12 + 1.2) * (radius * 0.23), 8 * SIZE, Math.sin(t * 0.12 + 1.2) * (radius * 0.23));
   }
   renderFrame();
 }
@@ -514,10 +523,35 @@ async function verifyQuality(
   reference.dispose();
   rocks.visible = true;
 
+  // ## 兩個方向都要比
+  //
+  // 「強化版的像素在原生版找不到」抓的是**多畫了或畫錯了**；
+  // 「原生版的像素在強化版找不到」抓的是**東西不見了** —— 剔除剔過頭、
+  // 包圍球太小、整塊被跳過。那是這個引擎最危險的一種錯，而正向比對對它
+  // 幾乎沒有反應（實測把區塊半徑縮成 0.7 倍，正向只從 0.32% 動到 0.48%）。
+  const forward = compare(
+    enhancedPixels.data,
+    nativePixels.data,
+    width,
+    height,
+    radiusPixels,
+    threshold,
+  ) as Record<string, number>;
+  const backward = compare(
+    nativePixels.data,
+    enhancedPixels.data,
+    width,
+    height,
+    radiusPixels,
+    threshold,
+  ) as Record<string, number>;
+
   return {
     instances: live,
     streaming: useStream,
-    ...(compare(enhancedPixels.data, nativePixels.data, width, height, radiusPixels, threshold) as object),
+    ...forward,
+    missing: backward.outsideContract,
+    missingPercent: backward.percent,
   };
 }
 
