@@ -1169,3 +1169,92 @@ describe('worldFor', () => {
     expect(worldFor(scene).stats.objects).toBe(0);
   });
 });
+
+describe('InstancedMesh — 同一頁上兩個引擎實例', () => {
+  /**
+   * 網站上很常見：頁面上兩塊 3D，各自一個 scene、各自一份內容。
+   *
+   * 套件裡有**模組層級的共用狀態**（LOD worker 是單例、manifest 有快取），
+   * 那是刻意的 —— 一個 worker 服務所有 mesh 才對。但共用狀態一旦有一份是
+   * 「以為只有一個使用者」寫的，兩塊就會互相污染，而症狀是**其中一塊的
+   * 剔除或選階套用了另一塊的相機**。
+   *
+   * demo 永遠看不出來，因為 demo 只有一塊。
+   */
+  it('兩個 mesh 各自用自己的相機，統計不互相污染', () => {
+    const geometry = unitBox();
+    const a = new InstancedMesh(geometry, material(), 400, { autoLod: false });
+    const b = new InstancedMesh(geometry, material(), 400, { autoLod: false });
+    fillGrid(a, 20, 8);
+    fillGrid(b, 20, 8);
+
+    // 一個看得到全部，一個幾乎看不到 —— 兩者的統計必須明顯不同。
+    const wide = makeCamera();
+    wide.position.set(0, 400, 0);
+    wide.lookAt(0, 0, 0);
+    const narrow = makeCamera();
+    narrow.position.set(0, 2, 500);
+    narrow.lookAt(0, 0, 600);
+
+    // 交錯畫，模擬同一幀裡兩塊各自 render 的情形。
+    for (let i = 0; i < 4; i++) {
+      draw(a, wide);
+      draw(b, narrow);
+    }
+
+    expect(a.stats.visible).toBeGreaterThan(0);
+    expect(b.stats.visible).toBe(0);
+    // 反過來再確認一次：換相機之後兩邊都要跟著換，而不是停在對方的結果上。
+    draw(a, narrow);
+    draw(b, wide);
+    expect(a.stats.visible).toBe(0);
+    expect(b.stats.visible).toBeGreaterThan(0);
+  });
+
+  it('兩個 scene 各自串流，載入的是自己的內容', () => {
+    const geometry = unitBox();
+    const rocksA = new InstancedMesh(geometry, material(), 4000, { autoLod: false });
+    const rocksB = new InstancedMesh(geometry, material(), 4000, { autoLod: false });
+    const sceneA = new Scene();
+    const sceneB = new Scene();
+    sceneA.add(rocksA);
+    sceneB.add(rocksB);
+
+    const m = new Matrix4();
+    let loadsA = 0;
+    let loadsB = 0;
+    worldFor(sceneA).stream({
+      cellSize: 100,
+      radius: 150,
+      load: (cx, cz, place) => {
+        loadsA++;
+        for (let i = 0; i < 10; i++) place(rocksA, m.makeTranslation(cx * 100 + i, 0, cz * 100));
+      },
+    });
+    worldFor(sceneB).stream({
+      cellSize: 100,
+      radius: 150,
+      load: (cx, cz, place) => {
+        loadsB++;
+        // 刻意放在很遠的地方 —— 兩邊的內容不該混在一起。
+        for (let i = 0; i < 10; i++) place(rocksB, m.makeTranslation(cx * 100 + i, 0, cz * 100 + 9000));
+      },
+    });
+
+    const camera = makeCamera();
+    camera.position.set(0, 10, 0);
+    camera.lookAt(0, 0, -1);
+    camera.updateMatrixWorld(true);
+    // 兩個 scene 各自被 render 一次 —— 串流掛在 scene.onBeforeRender 上。
+    for (const scene of [sceneA, sceneB]) {
+      scene.onBeforeRender(null as never, scene, camera, null as never, null as never, null as never);
+    }
+
+    expect(loadsA).toBeGreaterThan(0);
+    expect(loadsB).toBeGreaterThan(0);
+    // 各自的 world 是各自的：停掉一個不該影響另一個。
+    worldFor(sceneA).stopStream();
+    expect(worldFor(sceneA).streaming).toBeNull();
+    expect(worldFor(sceneB).streaming).not.toBeNull();
+  });
+});
