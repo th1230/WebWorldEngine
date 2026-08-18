@@ -1,5 +1,12 @@
-import { BoxGeometry, DataTexture, Float32BufferAttribute, MeshBasicMaterial } from 'three';
-import { describe, expect, it } from 'vitest';
+import {
+  BoxGeometry,
+  DataTexture,
+  Float32BufferAttribute,
+  MeshBasicMaterial,
+  PerspectiveCamera,
+  Scene,
+} from 'three';
+import { describe, expect, it, vi } from 'vitest';
 import { AnimatedInstancedMesh, injectVertexAnimation } from './animated-instanced-mesh.ts';
 
 /**
@@ -128,5 +135,54 @@ describe('AnimatedInstancedMesh — node 材質（WebGPU 那條路）', () => {
     );
 
     expect(material.onBeforeCompile).toBe(before);
+  });
+});
+
+describe('別人把 onBeforeCompile 蓋掉時', () => {
+  it('講出來，而不是靜靜地停在綁定姿勢', () => {
+    // `onBeforeCompile` 是單一插槽，而生態系裡有人是**直接指派**的。
+    // Three 自己的 CSM 就是（`three/addons/csm`）：
+    //
+    //   material.onBeforeCompile = function ( shader ) { … };
+    //
+    // 所以 `csm.setupMaterial(material)` 只要在建立這個 mesh 之後呼叫，
+    // 頂點動畫就沒了 —— 而症狀是一群不動的模型，沒有任何錯誤。
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const material = new MeshBasicMaterial();
+    const geometry = new BoxGeometry(1, 1, 1);
+    const n = geometry.getAttribute('position').count;
+    geometry.setAttribute('wwVertexId', new Float32BufferAttribute(new Float32Array(n), 1));
+
+    const mesh = new AnimatedInstancedMesh(
+      {
+        geometry,
+        texture: new DataTexture(new Float32Array(n * 2 * 4), n, 2),
+        frameCount: 2,
+        duration: 1,
+        vertexCount: n,
+      } as never,
+      material,
+      2,
+    );
+
+    // 模擬 CSM：直接指派，把我們的蓋掉。
+    material.onBeforeCompile = (): void => {};
+
+    const camera = new PerspectiveCamera(60, 1, 0.1, 100);
+    camera.updateMatrixWorld(true);
+    camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+    mesh.updateMatrixWorld(true);
+    mesh.onBeforeRender(
+      { getDrawingBufferSize: (t: never) => t, getRenderTarget: () => null } as never,
+      new Scene(),
+      camera,
+      mesh.geometry,
+      mesh.material as never,
+    );
+
+    const said = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(said).toContain('綁定姿勢');
+    expect(said).toContain('CSM');
+    warn.mockRestore();
   });
 });

@@ -80,6 +80,9 @@ export class AnimatedInstancedMesh extends InstancedMesh {
    * 「靜靜失敗了」在外面看起來一模一樣。
    */
   nodeReady: Promise<void> = Promise.resolve();
+  /** 我們掛上去的那個鉤子。被別人換掉就代表頂點動畫沒了 —— 見 `checkHook`。 */
+  private installedHook: ((...args: never[]) => void) | null = null;
+  private hookWarned = false;
 
   constructor(
     baked: BakedVertexAnimation,
@@ -174,7 +177,7 @@ export class AnimatedInstancedMesh extends InstancedMesh {
     }
 
     const previous = material.onBeforeCompile;
-    material.onBeforeCompile = (
+    const injected = (
       shader: WebGLProgramParametersWithUniforms,
       ...rest: unknown[]
     ): void => {
@@ -183,7 +186,55 @@ export class AnimatedInstancedMesh extends InstancedMesh {
       Object.assign(shader.uniforms, uniforms);
       shader.vertexShader = injectVertexAnimation(shader.vertexShader);
     };
+    material.onBeforeCompile = injected;
+    this.installedHook = injected;
     material.needsUpdate = true;
+  }
+
+  /**
+   * 有沒有別人把我們的 `onBeforeCompile` 蓋掉了。
+   *
+   * ## 為什麼要查這個
+   *
+   * `onBeforeCompile` 是一個**單一插槽**，而生態系裡有人是直接指派的
+   * ——不是接續。Three 自己的 CSM（`three/addons/csm`）就是：
+   *
+   * ```js
+   * material.onBeforeCompile = function ( shader ) { … };   // 直接蓋
+   * ```
+   *
+   * 所以 `csm.setupMaterial(material)` 只要在建立這個 mesh **之後**呼叫，
+   * 頂點動畫就沒了。而症狀是**一群停在綁定姿勢、完全不動的模型**：沒有
+   * 錯誤、沒有警告、幀時間還更好看。
+   *
+   * 反過來的順序沒事 —— 我們這一份會把前一個接住再呼叫。
+   *
+   * 所以這裡不去搶插槽（搶回來只會變成互相蓋），而是**講出來**：說清楚
+   * 是誰蓋的、症狀會是什麼、怎麼修（換順序）。
+   */
+  private checkHook(): void {
+    if (this.installedHook === null || this.hookWarned) return;
+    const material = this.material as Material;
+    if (material.onBeforeCompile === this.installedHook) return;
+
+    this.hookWarned = true;
+    console.warn(
+      [
+        'WW.AnimatedInstancedMesh: 有別的東西把這個材質的 onBeforeCompile 蓋掉了，',
+        '頂點動畫不會播 —— 畫面上會是一群停在綁定姿勢、完全不動的模型。',
+        '最常見的來源是 three/addons 的 CSM：它的 setupMaterial() 是直接指派而不是接續。',
+        '解法是換順序：先 csm.setupMaterial(material)，再 new WW.AnimatedInstancedMesh(...)。',
+        '（我們這一份會把前一個接住再呼叫，所以那個順序兩邊都成立。）',
+      ].join('\n'),
+    );
+  }
+
+  override onBeforeRender(
+    ...args: Parameters<InstancedMesh['onBeforeRender']>
+  ): void {
+    super.onBeforeRender(...args);
+    // 在這裡查而不是建構時：蓋掉我們的那一行通常發生在建構之後。
+    this.checkHook();
   }
 
   /** 動畫走到第幾秒。每幀呼叫。 */
