@@ -37,6 +37,20 @@ const COUNT = Number(params.get('count') ?? 60_000);
  * 強化版與原生版的畫面差異可能來自三件事：批次幾何的屬性佈局、LOD 選階、
  * 遠景合併。一次關掉一個才知道是哪一個 —— 沒有這兩個參數就只能猜。
  */
+/**
+ * 品質契約的門檻，像素。省略就用套件的預設（2）。
+ *
+ * 開成參數是為了量「契約值多少錢」。誤差改成真的量出來之後，遠景那組的
+ * GPU 時間從 6.5 ms 變成 16.9 ms —— 那不是變慢了，是**以前沒有真的守住
+ * 2 像素**（回報的誤差低估最多 1.48 倍，於是選到太粗的階）。
+ *
+ * 把門檻放寬回去應該要能拿回那個差，而那正是這個參數存在的理由：讓
+ * 「契約多嚴」變成一個量得出價錢的選擇，而不是一句話。
+ */
+const ERROR_PIXELS = params.has('errorPixels')
+  ? Number(params.get('errorPixels'))
+  : undefined;
+
 const NO_HLOD = params.get('hlod') === '0';
 const SINGLE_LOD = params.get('lodLevels') === '1';
 
@@ -195,6 +209,7 @@ const rocks = enhanced
   ? new WW.InstancedMesh(usedSource, material, COUNT, {
       ...(NO_HLOD ? { hlod: false } : {}),
       ...(HLOD_BUDGET_MB === undefined ? {} : { hlodBudgetMB: HLOD_BUDGET_MB }),
+      ...(ERROR_PIXELS === undefined ? {} : { errorPixels: ERROR_PIXELS }),
     })
   : new THREE.InstancedMesh(nativeGeometry, material, COUNT);
 // ─────────────────────────────────────────────────────────────────────
