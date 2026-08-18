@@ -65,6 +65,24 @@ export function installMaterialDetail(
   material: Material,
   options: MaterialDetailOptions,
 ): MaterialDetailHandle {
+  // ## node 材質上這個注入不會生效 —— 而它必須說出來
+  //
+  // `onBeforeCompile` 是 WebGL 那條路的鉤子。`WebGPURenderer` 用的是 node
+  // 材質，它整條編譯路徑不經過那個鉤子，所以掛上去**什麼都不會發生**。
+  //
+  // 不講的話症狀是「開了旋鈕但一點都沒省」，而那看起來像旋鈕沒用，不像
+  // 沒生效。準則：缺前置時要大聲說出缺什麼、少了它會怎樣。
+  if ((material as { isNodeMaterial?: boolean }).isNodeMaterial === true) {
+    console.warn(
+      [
+        "WW.InstancedMesh: materialDetailPixels 在 node 材質上不會生效。",
+        "它靠 onBeforeCompile 注入，而那是 WebGL 那條路的鉤子 —— WebGPURenderer",
+        "走的 node 材質不經過它。這個旋鈕現在什麼都沒做。",
+        "其餘的剔除、LOD、遠景合併完全不受影響。",
+      ].join('\n'),
+    );
+  }
+
   const ppu = { value: 1 };
   const pixels = { value: options.pixels };
   const baseRadius = { value: options.baseRadius };

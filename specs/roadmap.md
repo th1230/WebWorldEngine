@@ -1518,14 +1518,39 @@ example 預設是純色材質，所以 normal/ORM 的取樣一直沒有被任何
 嫌疑犯才發現量尺本身是歪的。所以那條「先量再做」還要再加一句：
 **先確認量尺量的是你以為的那個東西。**
 
-#### 還沒做：WebGPU 那一半#### 還沒做：WebGPU 那一半
+#### ⛔ 省多少還量不到，而卡住的是工具不是引擎
 
-`onBeforeCompile` 只對 WebGL 有效。`apps/benchmark` 走 `three/webgpu`，
-材質會被轉成 node 材質，注入不會生效 —— 所以**這個旋鈕現在量不到省多少**
-（量測harness 在 WebGPU 那邊，驗證 harness 在 WebGL 這邊）。
+`onBeforeCompile` 是 WebGL 那條路的鉤子。`WebGPURenderer` 用 node 材質，
+整條編譯路徑不經過它 —— 所以旋鈕在那邊**什麼都不會發生**。
 
-上限已知：近景時 normal + ORM 佔 GPU 的 27%。
+而工具的分工正好相反：
 
+| | 後端 | 能做什麼 |
+| --- | --- | --- |
+| `apps/example`（site/visual-check） | WebGL2 | 驗畫面對不對 ✅ |
+| `apps/benchmark`（`pnpm bench`） | WebGPU | 量 GPU 時間 ✅ |
+
+**實作在 WebGL 這邊，GPU 計時在 WebGPU 那邊。** 所以「開了省多少」現在量不到。
+
+試過用 example 自己量：`step()` 只反映 CPU（GPU 是非同步的），加 `gl.finish()
+也沒有拉開差距，而絕對值小到不合理 —— 那條路不成立，不是結論。
+
+**至少它不會靜靜沒作用**：裝在 node 材質上會警告，說清楚它不會生效、
+其餘功能不受影響。靜靜沒作用的症狀是「開了旋鈕但沒省」，那看起來像旋鈕沒用，
+而不是沒生效 —— 兩者的下一步完全不同。
+
+#### 這條軸的狀態
+
+| | |
+| --- | --- |
+| 成本拆解 | ✅ 光照是固定 ~30% 的稅，貼圖 5%→33% 隨螢幕大小 |
+| 旋鈕一（光照） | ✅ 不需要引擎做任何事 —— 材質是開發者傳進來的 |
+| 旋鈕二（貼圖依大小降級） | 🟡 WebGL 做好且驗過，node 材質未實作 |
+| 省多少 | ⬜ 量不到（上限已知：近景 27%） |
+
+**下一步只有一個**：把旋鈕二用 node 材質再實作一次（`MeshStandardNodeMaterial`
+有 `normalNode` / `roughnessNode` / `metalnessNode` 可以覆寫）。做完之後
+兩件事會同時解開 —— WebGPU 上會生效，而且 `pnpm bench` 就量得到省多少。
 #### 這條軸剩下的工作
 
 | | 狀態 |

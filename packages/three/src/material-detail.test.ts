@@ -1,5 +1,5 @@
 import { MeshStandardMaterial, ShaderChunk } from 'three';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { InstancedMesh } from './instanced-mesh.ts';
 import { installMaterialDetail } from './material-detail.ts';
 import { BoxGeometry } from 'three';
@@ -115,5 +115,20 @@ describe('材質細節依螢幕大小降級', () => {
     expect(fragment).not.toContain('vec3 mapN = texture2D( normalMap');
     expect(fragment).not.toContain('vec4 texelRoughness = texture2D( roughnessMap');
     expect(fragment).not.toContain('vec4 texelMetalness = texture2D( metalnessMap');
+  });
+});
+
+describe('材質細節降級 — node 材質', () => {
+  it('在 node 材質上大聲說它不會生效', () => {
+    // 靜靜沒作用的症狀是「開了旋鈕但一點都沒省」—— 那看起來像旋鈕沒用，
+    // 而不是沒生效。兩者的下一步完全不同。
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const material = new MeshStandardMaterial();
+    (material as unknown as { isNodeMaterial: boolean }).isNodeMaterial = true;
+    installMaterialDetail(material, { pixels: 8, baseRadius: 1 });
+
+    expect(warn).toHaveBeenCalled();
+    expect(warn.mock.calls[0]![0]).toContain('node 材質');
+    warn.mockRestore();
   });
 });
