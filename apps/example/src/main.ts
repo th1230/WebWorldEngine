@@ -55,7 +55,20 @@ const ORBIT = Number(params.get('orbit') ?? 260);
 const canvas = document.querySelector<HTMLCanvasElement>('#viewport')!;
 const hud = document.querySelector<HTMLDivElement>('#hud')!;
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+/**
+ * `?verify=1` 時保留繪圖緩衝。
+ *
+ * `toDataURL` 讀的是繪圖緩衝，而預設情況下瀏覽器**合成完就可以把它清掉**。
+ * 所以「畫完馬上讀」大多數時候讀得到，偶爾讀到空的 —— 實測掃八個角度會
+ * 有一個爆掉，而且每次爆的是不同的角度。那正是這個檢查一直不穩的另一半。
+ *
+ * 只在驗證時開：它會讓瀏覽器多留一份緩衝，那是真實網站不需要付的成本。
+ */
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true,
+  preserveDrawingBuffer: params.get('verify') === '1',
+});
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight, false);
 

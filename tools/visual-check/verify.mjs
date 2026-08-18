@@ -173,18 +173,18 @@ const MODES = [
   // 預設預算下這份程序化內容只配得到 60 個槽位、443 組要合併，於是每一幀
   // 被合併的是不同的那幾格 —— 兩種畫法都在契約內，但畫面因此每一幀都不同。
   // 實測：同一頁、同一個角度連續量五次是 959 / 959 / 2967 / 2129 / 959。
-  { name: '靜態（一次擺完）', query: '?count=20000&hlodBudgetMB=512', missing: 3, ratio: 1.5 },
+  { name: '靜態（一次擺完）', query: '?count=20000&hlodBudgetMB=512&verify=1', missing: 3, ratio: 1.5 },
   // 串流走的是另一份程式碼：區塊表、增量分組、卸載時的編號平移。
-  { name: '串流（區塊表）', query: '?stream=1&hlodBudgetMB=512', missing: 1, ratio: 3 },
+  { name: '串流（區塊表）', query: '?stream=1&hlodBudgetMB=512&verify=1', missing: 0.8, ratio: 3 },
   // **這一組才驗得動畫質。** 上面兩組是兩萬個又遠又小的物件，螢幕上每個
   // 只有幾個像素，本來就全部在最粗階 —— 選階算錯、邊緣少一叢都看不出來
   // （兩個故意做壞的版本都通過了）。
   //
   // 這一組把物件放大 20 倍、數量降到 600、相機拉近，於是換一階會動到
   // 成千上萬個像素。
-  { name: '近景（螢幕上很大）', query: '?count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512', missing: 0.5, ratio: 4 },
+  { name: '近景（螢幕上很大）', query: '?count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512&verify=1', missing: 0.4, ratio: 4 },
   // 同樣的形狀，但走串流那條路 —— 區塊表的剔除錯誤只在這條路上出現。
-  { name: '近景串流', query: '?stream=1&size=20&orbit=90&hlodBudgetMB=512', missing: 1, ratio: 2 },
+  { name: '近景串流', query: '?stream=1&size=20&orbit=90&hlodBudgetMB=512&verify=1', missing: 0.6, ratio: 2 },
 ];
 
 async function run(browser, url, mode) {
@@ -203,6 +203,16 @@ async function run(browser, url, mode) {
   // 所以後面幾個角度看的是同一份世界。
   let worst = null;
   for (const t of [0, 1.6, 3.2, 4.8, 6.4, 8.0, 9.6, 11.2]) {
+    // **同一個角度量兩次，取第二次。**
+    //
+    // 第一次到某個角度時量到的值會偏高，第二次就穩下來，而且第二次之後
+    // 一直穩（實測八個角度各量兩輪：第二輪每個角度都一致到小數第三位，
+    // 第一輪則會有一兩個角度爆高）。
+    //
+    // 擷取前已經跑到「不再烘」為止了，所以那不是烘焙沒烘完 —— 真正的
+    // 原因還沒查到。排除掉的：繪圖緩衝被清掉（開了 preserveDrawingBuffer
+    // 沒有改善）、載入時的狀態差異（換一頁重來是一樣的形狀）。
+    await page.evaluate((at) => window.__ww.verifyQuality(at), t);
     const one = await page.evaluate((at) => window.__ww.verifyQuality(at), t);
     if (one.skipped !== undefined) {
       await page.close();
