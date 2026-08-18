@@ -1,4 +1,5 @@
 import * as WW from '@webworld/three';
+import { makeSkinnedField } from './skinned.ts';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -53,6 +54,15 @@ const ERROR_PIXELS = params.has('errorPixels')
 
 /** `?extendLod=1` 開啟引擎自己接更粗的階（套件裡預設關）。 */
 const EXTEND_LOD = params.get('extendLod') === '1';
+
+/**
+ * `?skinned=N` 換成 N 個各自有骨架的 `THREE.SkinnedMesh`。
+ *
+ * 這是「會動的東西」那條軸的量尺：這個套件對蒙皮**完全無能為力**
+ * （`BatchedMesh` 不支援），所以要先知道原生的成本怎麼隨數量成長，
+ * 才知道有沒有值得做的東西、以及上限在哪。
+ */
+const SKINNED = params.has('skinned') ? Number(params.get('skinned')) : 0;
 
 const NO_HLOD = params.get('hlod') === '0';
 const SINGLE_LOD = params.get('lodLevels') === '1';
@@ -243,6 +253,18 @@ if (!useStream) {
 }
 scene.add(rocks);
 
+/**
+ * `?skinned=N` 時把石頭換掉，改放 N 個各自有骨架的 `SkinnedMesh`。
+ *
+ * 換掉而不是加上去：兩種內容混在同一幀裡的話，量到的是兩者的和，而這條軸
+ * 要問的是「蒙皮這件事本身多貴」。
+ */
+const skinnedField = SKINNED > 0 ? makeSkinnedField(SKINNED, SPREAD, 8) : null;
+if (skinnedField !== null) {
+  rocks.visible = false;
+  scene.add(skinnedField.root);
+}
+
 // ── 並存：一個普通的 Mesh，套件完全不碰它 ────────────────────────────
 const walker = new THREE.Mesh(
   new THREE.CapsuleGeometry(1.2, 2.4, 8, 16),
@@ -427,6 +449,8 @@ function step(t = 0): void {
     camera.position.set(Math.cos(t * 0.12) * radius, 14 * SIZE, Math.sin(t * 0.12) * radius);
     camera.lookAt(Math.cos(t * 0.12 + 1.2) * (radius * 0.23), 8 * SIZE, Math.sin(t * 0.12 + 1.2) * (radius * 0.23));
   }
+  // 骨頭要真的動 —— 姿勢不變的話量到的不是動畫的成本。
+  skinnedField?.update(t);
   renderFrame();
 }
 
@@ -967,6 +991,9 @@ Object.assign(window, {
     },
     measureGpuMs,
     measureFillBound,
+    skinned: skinnedField === null
+      ? null
+      : { count: SKINNED, triangles: skinnedField.triangles, bones: skinnedField.bones },
     // 任何 GPU 計時之前都要先跑它。沒跑的話量到的是**還在烘遠景合併**的
     // 那幾幀 —— 實測同一個場景 44.5 ms 對 14.7 ms，差三倍，而且看起來
     // 完全像一個真實的結果。
