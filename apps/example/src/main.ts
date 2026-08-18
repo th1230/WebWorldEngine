@@ -795,6 +795,55 @@ async function measureFillBound(t = 0): Promise<unknown> {
   return out;
 }
 
+/**
+ * 收集迴圈的**下界**：同樣的資料量，只做「非做不可」的那幾件事。
+ *
+ * ## 為什麼要量這個
+ *
+ * W4 的條件是「附上相對天花板的位置」，而 CPU 那一格一直寫著「離下界 4.5
+ * 倍」。那個下界是「把矩陣讀一遍」——但收集迴圈根本不讀矩陣（包圍球是預先
+ * 算好的），所以那個比較從一開始就不對等。
+ *
+ * 真正的下界是：讀四個 float、寫三個陣列元素。那是任何實作都躲不掉的。
+ * 剩下的（六個平面、選階）才是可以討論要不要優化的部分。
+ */
+function measureCollectFloor(instances = 214_000, rounds = 20): unknown {
+  const spheres = new Float32Array(instances * 4);
+  for (let i = 0; i < instances * 4; i++) spheres[i] = i * 0.001;
+  const starts = new Int32Array(instances);
+  const counts = new Int32Array(instances);
+  const indirect = new Uint32Array(instances);
+
+  const samples: number[] = [];
+  for (let r = 0; r < rounds; r++) {
+    const t0 = performance.now();
+    let out = 0;
+    for (let i = 0; i < instances; i++) {
+      const s = i * 4;
+      // 非做不可的：讀球（四個 float）、寫三個陣列。
+      const radius = spheres[s + 3]!;
+      const cx = spheres[s]!;
+      const cy = spheres[s + 1]!;
+      const cz = spheres[s + 2]!;
+      if (cx + cy + cz + radius > -1e30) {
+        starts[out] = s;
+        counts[out] = 1;
+        indirect[out] = i;
+        out++;
+      }
+    }
+    samples.push(performance.now() - t0);
+    if (out === 0) throw new Error('unreachable');
+  }
+  samples.sort((a, b) => a - b);
+  const floorMs = samples[Math.floor(rounds / 2)]!;
+  return {
+    instances,
+    floorMs: +floorMs.toFixed(3),
+    nsPerInstance: +((floorMs * 1e6) / instances).toFixed(2),
+  };
+}
+
 async function measureGpuMs(t = 0, budgetMs = 2000, minSamples = 20): Promise<unknown> {
   const gl = renderer.getContext() as WebGL2RenderingContext;
   const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as {
@@ -1168,6 +1217,7 @@ Object.assign(window, {
     },
     measureGpuMs,
     measureFillBound,
+    measureCollectFloor,
     terrain: terrain === null ? null : { tiles: terrain.tiles, triangles: terrain.triangles },
     vat:
       vatField === null
