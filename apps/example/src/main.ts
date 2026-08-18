@@ -27,6 +27,17 @@ const params = new URLSearchParams(location.search);
 const enhanced = params.get('ww') !== '0';
 const usePost = params.get('post') === '1';
 const useShadows = params.get('shadows') === '1';
+/**
+ * `?shadows=csm` 走世界尺度的陰影（cascaded shadow maps）。
+ *
+ * 單一 shadow map 要罩住廣闊地形時，解析度被範圍除爛 —— 近處的陰影糊成
+ * 一團。CSM 把視錐切成幾段，每段自己一張 map，近處那段的解析度就不必為了
+ * 遠處犧牲。
+ *
+ * 這是「世界很大本身帶來的問題」，不是效能問題：範圍拉大到某個程度，
+ * 單張 map 的陰影就**不成立**，而不是變慢。
+ */
+const useCsm = params.get('shadows') === 'csm';
 const useAutoLod = params.get('autolod') === '1';
 const useCooked = params.get('cooked') === '1';
 const useStream = params.get('stream') === '1';
@@ -147,9 +158,19 @@ scene.add(sun);
 // 陰影是**另一條 render 路徑**：Three.js 會用光源的相機再走訪一次場景，
 // 畫進 shadow map。套件不必為它做任何特別處理 —— `onBeforeShadow` 會轉呼叫
 // `onBeforeRender`，剔除與選階自然用 shadow 相機與 shadow map 的尺寸重算。
-if (useShadows) {
+if (useShadows || useCsm) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  // ## 太陽要放低
+  //
+  // 預設那個位置（120, 200, 80）幾乎在正上方，於是每個東西的影子都落在
+  // 自己底下、被自己擋住 —— 畫面上「看起來沒有陰影」。
+  //
+  // 第一次驗 CSM 就是這樣白跑一輪：兩張截圖都沒有影子，而我差點把它讀成
+  // 「CSM 沒接上」。低角度才看得到影子的形狀，也才是有陰影的世界該有的樣子。
+  sun.position.set(320, 90, 200);
+}
+if (useShadows) {
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   const shadowCam = sun.shadow.camera;
@@ -203,6 +224,35 @@ const material = useCooked
       return new THREE.MeshStandardMaterial({ color: 0x8b8b93, roughness: 0.85 });
     })
   : new THREE.MeshStandardMaterial({ color: 0x8b8b93, roughness: 0.85 });
+
+/**
+ * 世界尺度的陰影。Three 的 CSM addon，**不是自己寫的**。
+ *
+ * 接法用 `WW.applyShadows(csm, scene)`（見下面）—— 它會走完整個場景、
+ * 每個材質接一次，而且把已經掛在上面的鉤子接住。手動逐材質呼叫的話，
+ * 漏一個就是那個東西完全沒有陰影，而且不報錯。
+ *
+ * ## 為什麼 sun 要拿掉
+ *
+ * CSM 自己建了 `cascades` 盞平行光。原本那盞留著就是雙重光照 —— 畫面會
+ * 過亮，而那看起來像「材質調錯」不像「多了一盞燈」。
+ */
+const csm = useCsm
+  ? await (async () => {
+      const { CSM } = await import('three/addons/csm/CSM.js');
+      scene.remove(sun);
+      const instance = new CSM({
+        maxFar: 1200,
+        cascades: 4,
+        mode: 'practical',
+        parent: scene,
+        shadowMapSize: 2048,
+        lightDirection: new THREE.Vector3(-0.85, -0.35, -0.4).normalize(),
+        camera,
+      });
+      return instance;
+    })()
+  : null;
 
 // ── 這裡就是全部的差別 ───────────────────────────────────────────────
 //
@@ -383,11 +433,14 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = -1;
 scene.add(ground);
 
-if (useShadows) {
+if (useShadows || useCsm) {
   rocks.castShadow = true;
   walker.castShadow = true;
   ground.receiveShadow = true;
 }
+// 一行接完整個場景。逐材質呼叫 `csm.setupMaterial` 很容易漏 —— 第一次接
+// 就漏了地面，結果整片地板一點影子都沒有，而那看起來像「CSM 沒接上」。
+if (csm !== null) WW.applyShadows(csm, scene);
 
 // ── 後處理：完全是使用者那一側的東西，套件不參與 ─────────────────────
 //
@@ -477,6 +530,7 @@ function updateHud(): void {
   const extras = [
     usePost ? 'post' : null,
     useShadows ? 'shadows' : null,
+    useCsm ? 'shadows:csm' : null,
     useAutoLod ? 'autolod' : null,
     useCooked ? 'cooked' : null,
     useStream ? 'stream' : null,
@@ -575,6 +629,9 @@ function step(t = 0): void {
  * 看起來都正常。
  */
 function renderFrame(): void {
+  // CSM 的每一盞光都跟著相機的視錐走，所以每幀都要更新一次。忘了的話
+  // 陰影會留在開場那一幀的位置 —— 相機走遠之後整片陰影就不見了。
+  csm?.update();
   if (composer !== null) composer.render();
   else renderer.render(scene, camera);
 

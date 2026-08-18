@@ -26,6 +26,7 @@ export {
   type BakeOptions,
 } from './vertex-animation.ts';
 export { worldFor, World, type WorldStats } from './world.ts';
+export { applyShadows, type CascadedShadows } from './shadows.ts';
 export {
   OriginRebase,
   translateObject,
