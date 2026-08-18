@@ -25,7 +25,7 @@ import type {
 import { requestLodLevels } from './lod-service.ts';
 import { mergeInstances, mergedSize, placeholderLike } from './hlod.ts';
 import { assertBatchedMeshInternals, type BatchedMeshInternals } from './three-internals.ts';
-import { installMaterialDetail, type MaterialDetailHandle } from './material-detail.ts';
+import { installMaterialDetail } from './material-detail.ts';
 
 /** 自動產生 LOD 的成本拆解。 */
 export interface LodStats {
@@ -121,15 +121,19 @@ export interface InstancedMeshOptions {
    */
   hlodBakeMs?: number;
   /**
-   * 投影半徑小於這麼多像素時，停止取樣 normal 與 ORM 貼圖。**預設關。**
+   * 貼圖被縮到這個程度以下就不再取樣 normal 與 ORM。**預設關。**
    *
-   * 實測這兩張貼圖在物件很大時佔 GPU 的 27%，物件只有幾個像素時只佔 8%
-   * —— 也就是這筆錢只在近處付得有價值。
+   * 值是「一個 fragment 跨過多少 UV」。直覺換算：`1 / 貼圖寬度` 大約是
+   * 「一個 fragment 對一個 texel」，所以 1024² 的貼圖給 `0.004` 大約是
+   * 縮到四分之一大小的時候。
    *
-   * 但少取樣會讓遠處變平，**那是改變畫面**，所以門檻由你訂，引擎不猜。
+   * 實測這兩張貼圖在物件很大時佔 GPU 的 27%，只有幾個像素時只佔 8% ——
+   * 這筆錢只在貼圖真的看得到時才付得有價值。
+   *
+   * 但少取樣會讓表面變平，**那是改變畫面**，所以門檻由你訂，引擎不猜。
    * 不設就完全不碰你的材質。
    */
-  materialDetailPixels?: number;
+  materialDetailUvPerPixel?: number;
 }
 
 /**
@@ -340,11 +344,9 @@ export class InstancedMesh extends BatchedMesh {
   private slotCursor = 0;
   private readonly hlodEnabled: boolean;
   private readonly hlodBudgetBytes: number | null;
-  private readonly materialDetailPixels: number | undefined;
+  private readonly materialDetailUv: number | undefined;
   private readonly hlodSlotInstances: number | null;
   private readonly hlodBakeMs: number;
-  /** `materialDetailPixels` 開著時，每幀要把投影比例交給 shader。 */
-  private materialDetail: MaterialDetailHandle | null = null;
   private _mergedDraws = 0;
   private _mergedInstances = 0;
   private _hlodSlotCount = 0;
@@ -487,7 +489,7 @@ export class InstancedMesh extends BatchedMesh {
       options.hlodBudgetMB === undefined ? null : options.hlodBudgetMB * 1048576;
     this.hlodSlotInstances = options.hlodSlotInstances ?? null;
     this.hlodBakeMs = options.hlodBakeMs ?? HLOD_BAKE_BUDGET_MS;
-    this.materialDetailPixels = options.materialDetailPixels;
+    this.materialDetailUv = options.materialDetailUvPerPixel;
     this._capacity = count;
     this.count = count;
     this._levelCounts = new Int32Array(prepared.length);
@@ -533,11 +535,8 @@ export class InstancedMesh extends BatchedMesh {
     }
     this.coarsestGeometry = prepared[prepared.length - 1]!;
     this.boundsRadius = maxRadius;
-    if (this.materialDetailPixels !== undefined) {
-      this.materialDetail = installMaterialDetail(material, {
-        pixels: this.materialDetailPixels,
-        baseRadius: maxRadius,
-      });
+    if (this.materialDetailUv !== undefined) {
+      installMaterialDetail(material, { uvPerPixel: this.materialDetailUv });
     }
     this.gridRadius = this.boundsCenter.length() + maxRadius;
 
@@ -965,7 +964,6 @@ export class InstancedMesh extends BatchedMesh {
     const ranges = this.prepareGrid();
     this._gridMs = performance.now() - gridStarted;
     const ppu = this.projectionScale(renderer, camera);
-    this.materialDetail?.setProjectionScale(ppu);
 
     const index = geometry.getIndex();
     const bytesPerElement = index === null ? 1 : index.array.BYTES_PER_ELEMENT;

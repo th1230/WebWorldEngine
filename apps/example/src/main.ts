@@ -52,7 +52,7 @@ const COUNT = Number(params.get('count') ?? 60_000);
 const NO_HLOD = params.get('hlod') === '0';
 const SINGLE_LOD = params.get('lodLevels') === '1';
 
-const MATERIAL_DETAIL_PIXELS = params.has('materialDetail')
+const MATERIAL_DETAIL_UV = params.has('materialDetail')
   ? Number(params.get('materialDetail'))
   : undefined;
 
@@ -175,9 +175,9 @@ const rocks = enhanced
   ? new WW.InstancedMesh(usedSource, material, COUNT, {
       ...(NO_HLOD ? { hlod: false } : {}),
       ...(HLOD_BUDGET_MB === undefined ? {} : { hlodBudgetMB: HLOD_BUDGET_MB }),
-      ...(MATERIAL_DETAIL_PIXELS === undefined
+      ...(MATERIAL_DETAIL_UV === undefined
         ? {}
-        : { materialDetailPixels: MATERIAL_DETAIL_PIXELS }),
+        : { materialDetailUvPerPixel: MATERIAL_DETAIL_UV }),
     })
   : new THREE.InstancedMesh(lods[0]!, material, COUNT);
 // ─────────────────────────────────────────────────────────────────────
@@ -569,7 +569,22 @@ async function verifyQuality(
   // `sourceGeometry` 依定義就是「強化版拿到的那條鏈的第 0 階」，所以它是
   // 唯一正確的參考。
   const referenceGeometry = (rocks as WW.InstancedMesh).sourceGeometry ?? lods[0]!;
-  const reference = new THREE.InstancedMesh(referenceGeometry, material, Math.max(live, 1));
+  // **參考要用一份沒有被改過的材質。**
+  //
+  // `materialDetailUvPerPixel` 是掛在材質上的（`onBeforeCompile`），而參考
+  // 若共用同一個材質物件，兩邊就會套到同一段 shader —— 於是**任何材質層級
+  // 的改動在這個比對裡都是隱形的**。
+  //
+  // 實測：關掉、惰性、最大效果三個設定量出來完全同分（0%），三個一樣本來
+  // 就該當成訊號。
+  //
+  // `clone()` 不會複製 `onBeforeCompile`，所以複本就是「原本的材質」。
+  const referenceMaterial = material.clone();
+  const reference = new THREE.InstancedMesh(
+    referenceGeometry,
+    referenceMaterial,
+    Math.max(live, 1),
+  );
   reference.count = live;
   reference.castShadow = rocks.castShadow;
   const copy = new THREE.Matrix4();
@@ -582,6 +597,7 @@ async function verifyQuality(
   const nativePixels = await capture();
   scene.remove(reference);
   reference.dispose();
+  referenceMaterial.dispose();
   rocks.visible = true;
 
   // ## 兩個方向都要比
