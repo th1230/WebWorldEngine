@@ -336,6 +336,8 @@ export class InstancedMesh extends BatchedMesh {
   private _hlodSlotCount = 0;
   private _hlodGroupCount = 0;
   private _hlodCellMax = 0;
+  /** 每階的距離平方係數。見 `collect` 的選階。 */
+  private levelDistanceSq = new Float64Array(0);
   private _spheresMs = 0;
   private _hlodBuildMs = 0;
   private _mergeMs = 0;
@@ -1856,7 +1858,7 @@ export class InstancedMesh extends BatchedMesh {
    * 每個 instance 要配置一次 `Sphere` 的轉換結果，那是它最貴的部分。
    */
   private collect(
-    ranges: { bounds: Int32Array; count: number } | null,
+    ranges: { bounds: Int32Array; count: number; inside?: Uint8Array } | null,
     ppu: number,
     bytesPerElement: number,
     multiplier: number,
@@ -1875,6 +1877,22 @@ export class InstancedMesh extends BatchedMesh {
     const levelCounts = this._levelCounts;
     const hasLod = errors.length > 1;
     const errorPixels = this.errorPixels;
+    // 每階的「要多遠才用得上」係數，與 instance 無關 —— 每幀算一次。
+    // 判斷式是 `errors[l] * (radius * invBaseRadius / distance) * ppu <= errorPixels`，
+    // 移項成 `(errors[l] * invBaseRadius * ppu / errorPixels)² * radius² <= distance²`。
+    // **先長大再取本地參照。** 反過來的話本地那份還指著舊的（長度 0）
+    // 陣列，讀出來是 undefined，乘完變 NaN，比較永遠不成立 —— 症狀是
+    // 所有東西都固定用第 0 階，畫面完全正常只是慢。
+    if (this.levelDistanceSq.length < errors.length) {
+      this.levelDistanceSq = new Float64Array(errors.length);
+    }
+    const levelDistanceSq = this.levelDistanceSq;
+    {
+      const scale = (invBaseRadius * ppu) / Math.max(errorPixels, 1e-6);
+      for (let l = 0; l < errors.length; l++) {
+        levelDistanceSq[l] = errors[l]! * scale * (errors[l]! * scale);
+      }
+    }
 
     const camX = _cameraLocal.x;
     const camY = _cameraLocal.y;
@@ -1899,10 +1917,13 @@ export class InstancedMesh extends BatchedMesh {
     // 差別只在外層取哪些段。兩份 body 是這裡最容易寫歪的地方。
     const spanCount = ranges === null ? 1 : ranges.count;
     const bounds = ranges?.bounds;
+    // 整段都在視錐內側時，逐一測那六個平面是白工 —— 區塊測試已經答過了。
+    const spanInside = ranges?.inside;
 
     for (let span = 0; span < spanCount; span++) {
       const from = bounds === undefined ? 0 : bounds[span * 2]!;
       const to = bounds === undefined ? this.count : bounds[span * 2 + 1]!;
+      const skipPlanes = spanInside !== undefined && spanInside[span] === 1;
 
       for (let slot = from; slot < to; slot++) {
         // ── 遠景合併 ──
@@ -1965,25 +1986,39 @@ export class InstancedMesh extends BatchedMesh {
         const cy = spheres[s + 1]! - camY;
         const cz = spheres[s + 2]! - camZ;
 
-        let inside = true;
-        for (let p = 0; p < 24; p += 4) {
-          if (planes[p]! * cx + planes[p + 1]! * cy + planes[p + 2]! * cz + planes[p + 3]! < -radius) {
-            inside = false;
-            break;
+        if (!skipPlanes) {
+          let inside = true;
+          for (let p = 0; p < 24; p += 4) {
+            if (
+              planes[p]! * cx + planes[p + 1]! * cy + planes[p + 2]! * cz + planes[p + 3]! <
+              -radius
+            ) {
+              inside = false;
+              break;
+            }
           }
+          if (!inside) continue;
         }
-        if (!inside) continue;
 
         let level = 0;
         if (hasLod) {
-          const distance = Math.sqrt(cx * cx + cy * cy + cz * cz);
-          // 半徑已經含了縮放，所以 scale = radius / baseRadius。除法換成
-          // 預先算好的倒數乘法。
-          level = selectLevel(
-            errors,
-            ((radius * invBaseRadius) / Math.max(distance, 1e-6)) * ppu,
-            errorPixels,
-          );
+          // ## 同一個判斷，但沒有開根號也沒有除法
+          //
+          // 原本是「誤差 × 縮放 ÷ 距離 × ppu ≤ errorPixels」。把它整理成
+          // 距離那一側：**誤差 × 縮放 × ppu ÷ errorPixels ≤ 距離**，兩邊
+          // 平方之後距離只剩平方，開根號就不必了。
+          //
+          // 每階的係數與 instance 無關，所以每幀算一次（`levelDistanceSq`），
+          // 迴圈裡只剩一次乘法與一次比較。挑出來的階與原本**完全相同** ——
+          // 兩邊都是單調的，平方不改變大小關係（距離非負）。
+          const distanceSq = cx * cx + cy * cy + cz * cz;
+          const radiusSq = radius * radius;
+          for (let l = errors.length - 1; l > 0; l--) {
+            if (levelDistanceSq[l]! * radiusSq <= distanceSq) {
+              level = l;
+              break;
+            }
+          }
         }
         levelCounts[level]!++;
 

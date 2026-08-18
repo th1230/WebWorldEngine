@@ -38,10 +38,16 @@ export class InstanceBlocks {
   /** 區塊有沒有完整覆蓋 `[0, instances)`。沒有就不能用它剔除。 */
   private covered = true;
 
-  /** 這一幀通過測試的區塊範圍，格式與 `InstanceGrid.update` 相同。 */
-  private readonly visible: { bounds: Int32Array; count: number } = {
+  /**
+   * 這一幀通過測試的區塊範圍，格式與 `InstanceGrid.update` 相同。
+   *
+   * 多一個 `inside`：那一段是不是**整段都在視錐內側**。是的話裡面每一個
+   * instance 都必然可見，逐一測試那六個平面是純粹的白工。
+   */
+  private readonly visible: { bounds: Int32Array; count: number; inside: Uint8Array } = {
     bounds: new Int32Array(0),
     count: 0,
+    inside: new Uint8Array(0),
   };
 
   get count(): number {
@@ -194,11 +200,13 @@ export class InstanceBlocks {
     cameraX: number,
     cameraY: number,
     cameraZ: number,
-  ): { bounds: Int32Array; count: number } {
+  ): { bounds: Int32Array; count: number; inside: Uint8Array } {
     if (this.visible.bounds.length < this._count * 2) {
       this.visible.bounds = new Int32Array(this._count * 2);
+      this.visible.inside = new Uint8Array(this._count);
     }
     const bounds = this.visible.bounds;
+    const insideFlags = this.visible.inside;
     const planes = frustum.planes;
     const spheres = this.spheres;
     let out = 0;
@@ -209,21 +217,29 @@ export class InstanceBlocks {
       const cy = spheres[s + 1]! - cameraY;
       const cz = spheres[s + 2]! - cameraZ;
       const radius = spheres[s + 3]!;
-      let inside = true;
+      // 一趟同時答兩件事：碰得到嗎（`>= -radius`），以及**整顆都在內側**嗎
+      // （`>= +radius`）。後者讓走訪那一側可以整段跳過平面測試。
+      let hit = true;
+      let whole = true;
       for (let p = 0; p < 24; p += 4) {
-        if (planes[p]! * cx + planes[p + 1]! * cy + planes[p + 2]! * cz + planes[p + 3]! < -radius) {
-          inside = false;
+        const d = planes[p]! * cx + planes[p + 1]! * cy + planes[p + 2]! * cz + planes[p + 3]!;
+        if (d < -radius) {
+          hit = false;
           break;
         }
+        if (d < radius) whole = false;
       }
-      if (!inside) continue;
-      // 相鄰的可見區塊併成一段，走訪那一側就少一次外層迴圈。
-      if (out > 0 && bounds[out - 1] === this.starts[i]) {
+      if (!hit) continue;
+      const flag = whole ? 1 : 0;
+      // 相鄰的可見區塊併成一段，走訪那一側就少一次外層迴圈 —— 但只有
+      // 內外側判斷相同時才併得起來，不然那一段的旗標就沒有意義了。
+      if (out > 0 && bounds[out - 1] === this.starts[i] && insideFlags[out / 2 - 1] === flag) {
         bounds[out - 1] = this.ends[i]!;
         continue;
       }
       bounds[out] = this.starts[i]!;
       bounds[out + 1] = this.ends[i]!;
+      insideFlags[out / 2] = flag;
       out += 2;
     }
 
