@@ -333,7 +333,11 @@ const vatField = (() => {
   if (VAT <= 0) return null;
   // 與 `?skinned=N` 用同一根 rig —— 兩條路比的必須是同一個東西。
   const rig = loadedRig ?? makeSkinnedRig(8);
+  // 烘焙是主執行緒上的一段同步工作 —— 量它，因為「要不要搬去 cook 時做」
+  // 完全取決於這個數字。
+  const bakeStarted = performance.now();
   const baked = WW.bakeVertexAnimation(rig.mesh, rig.clip, { frames: 32 });
+  const bakeMs = performance.now() - bakeStarted;
   const mesh = new WW.AnimatedInstancedMesh(baked, rig.mesh.material as THREE.Material, VAT, {
     ...(VAT_LOD ? {} : { autoLod: false }),
   });
@@ -355,7 +359,7 @@ const vatField = (() => {
   }
   rocks.visible = false;
   scene.add(mesh);
-  return { mesh, baked };
+  return { mesh, baked, bakeMs };
 })();
 
 const terrain = TERRAIN > 0 ? makeTerrain(2400, TERRAIN, TERRAIN_SEG, enhanced, TERRAIN_MULTI) : null;
@@ -1109,6 +1113,7 @@ Object.assign(window, {
             frames: vatField.baked.frameCount,
             vertices: vatField.baked.vertexCount,
             textureMB: +((vatField.baked.vertexCount * vatField.baked.frameCount * 16) / 1048576).toFixed(2),
+            bakeMs: +vatField.bakeMs.toFixed(1),
           },
     skinned: skinnedField === null
       ? null
