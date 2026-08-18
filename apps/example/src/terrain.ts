@@ -67,6 +67,28 @@ function height(x: number, z: number): number {
  *
  * `tiles = 1` 就是「整塊一份幾何」—— 也就是今天直接把地表丟進 Three 的樣子。
  */
+/**
+ * 用套件的 `WW.buildTerrain` 蓋一片地表。
+ *
+ * 與下面那個手工版的差別是**逐塊還有自己的 LOD 鏈**，而且接縫有裙邊擋著。
+ * 手工那份是這條軸的量尺（整片一階 vs 逐塊選階），這份是真正要交出去的東西。
+ */
+export function makeTerrainSystem(
+  size: number,
+  tiles: number,
+  segments: number,
+): Terrain {
+  const built = WW.buildTerrain({ size, tiles, segments, height });
+  const material = new THREE.MeshStandardMaterial({ color: 0x6f7a63, roughness: 0.95 });
+  const mesh = new WW.MultiMesh(built.chains, material);
+  const m = new THREE.Matrix4();
+  built.centers.forEach(([x, z], i) => mesh.setMatrixAt(i, m.makeTranslation(x, 0, z)));
+
+  const root = new THREE.Group();
+  root.add(mesh);
+  return { root, triangles: built.triangles, tiles: tiles * tiles };
+}
+
 export function makeTerrain(
   size: number,
   tiles: number,

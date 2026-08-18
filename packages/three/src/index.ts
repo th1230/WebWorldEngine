@@ -16,6 +16,7 @@
  */
 export { InstancedMesh, type InstancedMeshOptions } from './instanced-mesh.ts';
 export { MultiMesh, type MultiMeshOptions } from './multi-mesh.ts';
+export { buildTerrain, type TerrainOptions, type TerrainTiles } from './terrain.ts';
 export {
   AnimatedInstancedMesh,
   type AnimatedInstancedMeshOptions,

@@ -1,6 +1,6 @@
 import * as WW from '@webworld/three';
 import { makeSkinnedField, makeSkinnedRig } from './skinned.ts';
-import { makeTerrain } from './terrain.ts';
+import { makeTerrain, makeTerrainSystem } from './terrain.ts';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -99,6 +99,8 @@ const TERRAIN = params.has('terrain') ? Number(params.get('terrain')) : 0;
 const TERRAIN_SEG = Number(params.get('terrainSeg') ?? 64);
 /** `?terrainMulti=1` 把所有塊裝進同一個 `WW.MultiMesh`，而不是一塊一個物件。 */
 const TERRAIN_MULTI = params.get('terrainMulti') === '1';
+/** `?terrainSystem=1` 用套件的 `WW.buildTerrain`（逐塊 LOD 鏈 + 裙邊）。 */
+const TERRAIN_SYSTEM = params.get('terrainSystem') === '1';
 
 const NO_HLOD = params.get('hlod') === '0';
 const SINGLE_LOD = params.get('lodLevels') === '1';
@@ -412,7 +414,12 @@ const vatField = (() => {
   return { mesh, baked, bakeMs };
 })();
 
-const terrain = TERRAIN > 0 ? makeTerrain(2400, TERRAIN, TERRAIN_SEG, enhanced, TERRAIN_MULTI) : null;
+const terrain =
+  TERRAIN > 0
+    ? TERRAIN_SYSTEM
+      ? makeTerrainSystem(2400, TERRAIN, TERRAIN_SEG)
+      : makeTerrain(2400, TERRAIN, TERRAIN_SEG, enhanced, TERRAIN_MULTI)
+    : null;
 if (terrain !== null) {
   rocks.visible = false;
   scene.add(terrain.root);
