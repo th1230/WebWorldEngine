@@ -1,5 +1,6 @@
 import * as WW from '@webworld/three';
 import { makeSkinnedField } from './skinned.ts';
+import { makeTerrain } from './terrain.ts';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -63,6 +64,16 @@ const EXTEND_LOD = params.get('extendLod') === '1';
  * 才知道有沒有值得做的東西、以及上限在哪。
  */
 const SKINNED = params.has('skinned') ? Number(params.get('skinned')) : 0;
+
+/**
+ * `?terrain=T` 換成一片地表，切成 T×T 塊。
+ *
+ * `terrain=1` 是「整塊一份幾何」（今天直接把地表丟進 Three 的樣子），
+ * 大於 1 就是逐塊選階與逐塊剔除。兩者的差就是「大地表」那條軸的標價。
+ */
+const TERRAIN = params.has('terrain') ? Number(params.get('terrain')) : 0;
+/** 每一塊切幾格。總三角形數 = terrain² × seg² × 2，兩種擺法要固定它才可比。 */
+const TERRAIN_SEG = Number(params.get('terrainSeg') ?? 64);
 
 const NO_HLOD = params.get('hlod') === '0';
 const SINGLE_LOD = params.get('lodLevels') === '1';
@@ -265,6 +276,12 @@ if (skinnedField !== null) {
   scene.add(skinnedField.root);
 }
 
+const terrain = TERRAIN > 0 ? makeTerrain(2400, TERRAIN, TERRAIN_SEG, enhanced) : null;
+if (terrain !== null) {
+  rocks.visible = false;
+  scene.add(terrain.root);
+}
+
 // ── 並存：一個普通的 Mesh，套件完全不碰它 ────────────────────────────
 const walker = new THREE.Mesh(
   new THREE.CapsuleGeometry(1.2, 2.4, 8, 16),
@@ -444,6 +461,15 @@ function step(t = 0): void {
   if (useStream) {
     camera.position.set(t * 40, 14 * SIZE, t * 40);
     camera.lookAt(t * 40 + 100, 8 * SIZE, t * 40 + 100);
+  } else if (terrain !== null) {
+    // ## 地表要**貼著地面往地平線看**
+    //
+    // 從高處俯瞰的話整片地表離相機的距離差不多，而那正好把這條軸要問的東西
+    // 消掉了：逐區域選階的價值全部來自「同一個物件橫跨很大的深度範圍」。
+    //
+    // 所以相機壓低、看向遠方 —— 腳下清清楚楚、地平線那端只有幾個像素。
+    camera.position.set(Math.cos(t * 0.12) * 900, 40, Math.sin(t * 0.12) * 900);
+    camera.lookAt(0, 10, 0);
   } else {
     const radius = ORBIT;
     camera.position.set(Math.cos(t * 0.12) * radius, 14 * SIZE, Math.sin(t * 0.12) * radius);
@@ -991,6 +1017,7 @@ Object.assign(window, {
     },
     measureGpuMs,
     measureFillBound,
+    terrain: terrain === null ? null : { tiles: terrain.tiles, triangles: terrain.triangles },
     skinned: skinnedField === null
       ? null
       : { count: SKINNED, triangles: skinnedField.triangles, bones: skinnedField.bones },
