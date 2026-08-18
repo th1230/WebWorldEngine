@@ -589,6 +589,33 @@ describe('InstancedMesh — 資產不再是門檻（W2）', () => {
     expect(mesh.levelCount).toBe(3);
   });
 
+  it('宣告了 extendLodChain 才會接尾巴，而且只接更粗的', async () => {
+    // ## 為什麼這是宣告的而不是預設的
+    //
+    // 鏈會見底：示範內容有 88.5% 的 instance 掛在最粗階，接一階更粗的上去
+    // GPU 時間掉 61%。但接了之後 `visual-check` 的多畫是 0.471% 對門檻
+    // 0.45% —— 踩在容忍邊緣，而分不出那是殘餘的低估還是抗鋸齒。
+    //
+    // 分不出來就不預設開。**把門檻放寬到剛好讓自己過**是這裡最不該做的事。
+    const supplied = { lods: [sphere()], errors: [0] };
+    const plain = new InstancedMesh(supplied, material(), 4);
+    await plain.lodReady;
+    // 自備鏈 + 沒宣告 = 一階都不接。
+    expect(plain.levelCount).toBe(1);
+
+    const extended = new InstancedMesh(supplied, material(), 4, { extendLodChain: true });
+    await extended.lodReady;
+    expect(extended.levelCount).toBeGreaterThan(1);
+
+    // 接上去的每一階都必須比前一階更不準 —— 「更粗 = 更不準」是所有下游
+    // 都在假設的性質，而接尾巴是從第 0 階簡化的，落在原鏈範圍裡的那幾階
+    // 必須被濾掉才維持得住。
+    const errors = extended.errorsPerLevel;
+    for (let i = 1; i < errors.length; i++) {
+      expect(errors[i]!, `第 ${i} 階`).toBeGreaterThan(errors[i - 1]!);
+    }
+  });
+
   it('做不到的時候講清楚做不到什麼', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const geometry = sphere();

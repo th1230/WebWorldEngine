@@ -76,6 +76,38 @@ export interface InstancedMeshOptions {
    * 關掉之後這個物件仍然有空間分割剔除。
    */
   autoLod?: boolean;
+  /**
+   * 在 LOD 鏈的尾巴接上**更粗的階**。預設 **false**。
+   *
+   * ## 為什麼它值得存在
+   *
+   * 鏈會見底。實測示範內容（60,000 個、三階、最粗 80 個三角形）有 88.5% 的
+   * instance 掛在最粗階 —— 那不是「已經挑到最粗了」，是**想再粗也沒得挑**。
+   * 手動接一階 20 個三角形的上去：
+   *
+   * | | 三階 | 四階 |
+   * | --- | ---: | ---: |
+   * | 三角形 | 2,598,466 | 689,402 |
+   * | GPU 時間 | 14.716 ms | **5.693 ms** |
+   *
+   * cook 過的鏈也一樣見底（61% 掛在最粗的第七階）。
+   *
+   * ## 為什麼預設是關的
+   *
+   * 因為它**踩在 `visual-check` 的容忍邊緣**：多畫 0.471% 對門檻 0.45%。
+   *
+   * 那個差不一定是違約 —— 少畫（東西不見了，最危險的方向）是 0.21%，遠低於
+   * 上限；梯度比 11.0 是整組最高的，代表差異集中在輪廓上，正是契約允許的
+   * 那一種。但梯度比只說明差異的**種類**，不說明它的**大小**，而多畫本來就
+   * 是「位移超過 2 像素」的計數，現在是抗鋸齒地板的 2.4 倍。
+   *
+   * 兩種解釋都成立：（a）還有殘餘的低估；（b）更多輪廓落在容忍邊界上，於是
+   * 抗鋸齒把更多像素推到界外。**分不出來就不預設開** —— 而把門檻放寬到剛好
+   * 讓自己過，是這個專案最不該做的事。
+   *
+   * 所以它是宣告出來的：想要那個倍數、而且自己驗過畫面可以接受的人再開。
+   */
+  extendLodChain?: boolean;
   /** 自動產生的參數。只在 `autoLod` 生效時有意義。 */
   lod?: LodGenerationOptions;
   /**
@@ -246,6 +278,33 @@ const HLOD_OP_DROP = 1;
 
 /** 自動 LOD 待補時，批次幾何要預留幾倍的空間。 */
 const LOD_RESERVE = 2;
+
+/**
+ * 接鏈尾巴時允許的相對誤差上限，比從頭生的時候（0.2）鬆。
+ *
+ * 這個上限管的**不是畫質，是記憶體**：誤差再大的階，也只有在投影到螢幕
+ * ≤ `errorPixels` 時才會被選中，所以它決定的是「要為多遠的距離存幾份幾何」。
+ *
+ * 畫質是另一件事在守的 —— 每一階的誤差現在是**量出來的**
+ * （`maxSurfaceDeviation`），不是簡化器估的。在還用估計值的時候接長鏈會當場
+ * 讓 `visual-check` 紅掉，因為那個估計值每一階都低估最多 1.48 倍。
+ *
+ * 1.0 代表「誤差跟物件本身一樣大」，也就是形狀完全沒了。再往下沒有意義：
+ * 那時契約只會在物件小於 2 像素時選它，而 2 像素的東西長什麼樣都一樣。
+ */
+const EXTEND_MAX_RELATIVE_ERROR = 1;
+
+/**
+ * 接尾巴用的簡化比例，比 `DEFAULT_RATIOS` 多四階。
+ *
+ * 因為是從第 0 階開始簡化，前面幾階會落在使用者那條鏈的範圍裡然後被丟掉 ——
+ * 真正有用的是尾巴那幾階。預設比例累乘只到 0.0064，對 5,120 面的第 0 階是
+ * 33 面，而使用者的最粗階可能已經比那還粗。
+ *
+ * 多列的四階不會白白產生：產生迴圈在「簡化器動不了」或「剩不到 4 個三角形」
+ * 時就會停，所以這串只是上限。
+ */
+const EXTEND_RATIOS = [0.5, 0.5, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4] as const;
 
 /**
  * `THREE.InstancedMesh` 的強化版：同樣的建構參數、同樣的方法，
@@ -455,20 +514,53 @@ export class InstancedMesh extends BatchedMesh {
     options: InstancedMeshOptions = {},
   ) {
     const { geometries, errors, canAutoGenerate } = resolveLodChain(source);
-    const autoLod = canAutoGenerate && options.autoLod !== false;
-    const prepared = unifyIndexing(geometries, autoLod);
+    const buildWhole = canAutoGenerate && options.autoLod !== false;
+    // 接長鏈**預設關**，理由寫在 `extendLodChain` 的說明上。
+    const generateChain = buildWhole || options.extendLodChain === true;
+
+    // ## 第二個參數要看「**會不會**接上產生出來的階」，不是「是不是從頭生」
+    //
+    // `BatchedMesh` 要求同一批的幾何有沒有索引必須一致，而簡化器產生的階一定
+    // 有索引。所以只要之後可能接上產生的階，使用者那幾階就得先補上索引。
+    //
+    // 傳 `buildWhole` 的版本在「使用者給了一條非索引的鏈」那條路上會被擋下：
+    //
+    //     THREE.BatchedMesh: All geometries must consistently have "index".
+    //
+    // 而那個例外丟在 `lodReady` 這個**沒有人 await 的 promise** 裡 —— 畫面
+    // 正常、主控台一個字都沒有，只是鏈沒接長。
+    const prepared = unifyIndexing(geometries, generateChain);
 
     let vertexBudget = 0;
     let indexBudget = 0;
+    let lastVertexCount = 0;
+    let lastIndexCount = 0;
     for (const geometry of prepared) {
-      vertexBudget += geometry.getAttribute('position')!.count;
-      indexBudget += geometry.getIndex()?.count ?? 0;
+      lastVertexCount = geometry.getAttribute('position')!.count;
+      lastIndexCount = geometry.getIndex()?.count ?? 0;
+      vertexBudget += lastVertexCount;
+      indexBudget += lastIndexCount;
     }
     // 之後要塞進來的階需要空間。預設比例累加起來約 0.78 倍，留一倍是為了
     // 不必在鏈補上來的那一幀重新配置整個批次幾何。
-    const reserve = autoLod ? LOD_RESERVE : 1;
+    const reserve = buildWhole ? LOD_RESERVE : 1;
 
-    super(count, Math.ceil(vertexBudget * reserve), Math.max(Math.ceil(indexBudget * reserve), 1), material);
+    // ## 接尾巴要預留多少是**算得出來的**，不必猜一個倍率
+    //
+    // 接上去的每一階都比最粗那一階小，所以**留一份最粗階的大小就一定夠**。
+    //
+    // 不留的話 `appendLodLevels` 會重建整個批次幾何，而那是主執行緒上的一次
+    // 卡頓：實測 60,000 個 instance 的示範內容上 **101.8 ms**，而產生本身只
+    // 花了 worker 裡的 2.2 ms。整個「不卡主執行緒」會毀在最後這一步。
+    const extendVertices = buildWhole || !generateChain ? 0 : lastVertexCount;
+    const extendIndices = buildWhole || !generateChain ? 0 : lastIndexCount;
+
+    super(
+      count,
+      Math.ceil(vertexBudget * reserve) + extendVertices,
+      Math.max(Math.ceil(indexBudget * reserve) + extendIndices, 1),
+      material,
+    );
 
     this.sourceGeometry = geometries[0]!;
     this.lodErrors = errors;
@@ -540,10 +632,23 @@ export class InstancedMesh extends BatchedMesh {
 
     // 用**使用者給的**那份去產生，不是補過索引的那份 —— 補上去的
     // 索引是 0,1,2,… 的假索引，熔接階段反而要把它拆掉重來。
-    this.lodReady = autoLod
-      ? this.buildLodChain(geometries[0]!, options.lod ?? {})
-      : Promise.resolve();
-    if (!autoLod && prepared.length === 1) this.warnSingleLevel();
+    this.lodReady = buildWhole
+      ? this.buildLodChain(geometries[0]!, options.lod ?? {}, 'whole')
+      : generateChain
+        ? // ## 接尾巴也是從**第 0 階**簡化，不是從最粗那一階
+          //
+          // 從最粗那階簡化比較省時間，但那樣拿到的誤差是「相對於最粗階」，
+          // 要湊成「相對第 0 階」才能拿去選階。而那個加法不可靠 —— 實測
+          // icosphere 的鏈，有一階**低估 1.20 倍**（不安全的方向）。
+          //
+          // 從第 0 階簡化就不必湊。代價是 worker 多走幾趟完整網格。
+          this.buildLodChain(
+            geometries[0]!,
+            { ratios: EXTEND_RATIOS, maxRelativeError: EXTEND_MAX_RELATIVE_ERROR, ...options.lod },
+            'extend',
+          )
+        : Promise.resolve();
+    if (!generateChain && prepared.length === 1) this.warnSingleLevel();
   }
 
   /**
@@ -555,15 +660,23 @@ export class InstancedMesh extends BatchedMesh {
   private async buildLodChain(
     geometry: BufferGeometry,
     options: LodGenerationOptions,
+    mode: 'whole' | 'extend',
   ): Promise<void> {
     const copyStarted = performance.now();
     const source = toGeometryData(geometry);
     if (typeof source === 'string') {
       // 做不到就講清楚做不到什麼、為什麼、以及使用者可以怎麼辦。
       // 靜默退化成單一階會讓人以為自己在用強化版。
+      //
+      // 兩種模式的後果不一樣，所以話也不一樣：從頭生失敗是「完全沒有 LOD」，
+      // 接尾巴失敗是「你的鏈照常運作，只是沒有變得更粗」。用同一句話會讓
+      // 後者聽起來像壞掉了。
       console.info(
-        `WW.InstancedMesh: 這份幾何不能自動產生 LOD（${source}），會一直用最細的幾何。\n` +
-          '空間分割剔除照常運作。要 LOD 的話請自備 { lods: [細…粗], errors: [0, …] }。',
+        mode === 'whole'
+          ? `WW.InstancedMesh: 這份幾何不能自動產生 LOD（${source}），會一直用最細的幾何。\n` +
+              '空間分割剔除照常運作。要 LOD 的話請自備 { lods: [細…粗], errors: [0, …] }。'
+          : `WW.InstancedMesh: 這份幾何不能再簡化（${source}），所以 LOD 鏈沒有被接長。\n` +
+              '你給的那幾階照常運作。',
       );
       return;
     }
@@ -575,22 +688,55 @@ export class InstancedMesh extends BatchedMesh {
       timing = await requestLodLevels(source, options);
     } catch (error) {
       console.warn(
-        'WW.InstancedMesh: LOD 產生失敗，會一直用最細的幾何。',
+        mode === 'whole'
+          ? 'WW.InstancedMesh: LOD 產生失敗，會一直用最細的幾何。'
+          : 'WW.InstancedMesh: LOD 鏈沒有接長（你給的那幾階照常運作）。',
         error instanceof Error ? error.message : error,
       );
       return;
     }
 
-    if (timing.levels.length === 0) {
-      console.info(
-        'WW.InstancedMesh: 這份幾何簡化不下去（可能三角形本來就很少，或全是硬邊），' +
-          '會一直用最細的幾何。空間分割剔除照常運作。',
-      );
+    // ## 只留真的比現有最粗階更粗的
+    //
+    // 接尾巴是從第 0 階簡化的，所以產生出來的前幾階會落在使用者那條鏈的範圍
+    // 裡 —— 那些不能接，接了會讓誤差不再遞增，而「更粗 = 更不準」是所有下游
+    // 都在假設的性質。
+    //
+    // 判準用誤差不用三角形數：誤差才是選階看的東西。
+    const coarsestError = this.lodErrors[this.lodErrors.length - 1] ?? 0;
+    const levels =
+      mode === 'extend'
+        ? timing.levels.filter((level) => level.error > coarsestError)
+        : timing.levels;
+
+    if (levels.length === 0) {
+      // 接尾巴接不動是**正常結果**：一條已經夠粗的鏈本來就簡化不下去了。
+      // 每次都印一句 info 會讓正常情況變成雜訊，而雜訊會讓人開始忽略這個
+      // 前綴的所有訊息 —— 包括真的要看的那幾句。
+      if (mode === 'whole') {
+        console.info(
+          'WW.InstancedMesh: 這份幾何簡化不下去（可能三角形本來就很少，或全是硬邊），' +
+            '會一直用最細的幾何。空間分割剔除照常運作。',
+        );
+      }
       return;
     }
 
     const appendStarted = performance.now();
-    this.appendLodLevels(timing.levels);
+    try {
+      this.appendLodLevels(levels);
+    } catch (error) {
+      // `lodReady` 沒有人 await，所以在這裡丟出去只會變成一個沒人處理的
+      // rejection —— 畫面正常、主控台安靜、只是功能沒生效。發生過一次
+      // （非索引的鏈接上有索引的階，被 `BatchedMesh` 擋下）。
+      console.warn(
+        mode === 'whole'
+          ? 'WW.InstancedMesh: 產生好的 LOD 階接不進批次幾何，會一直用最細的幾何。'
+          : 'WW.InstancedMesh: 更粗的 LOD 階接不進批次幾何，你給的那幾階照常運作。',
+        error instanceof Error ? error.message : error,
+      );
+      return;
+    }
     this._lodStats = {
       levels: this.lodErrors.length,
       generationMs: timing.elapsedMs,
@@ -710,6 +856,17 @@ export class InstancedMesh extends BatchedMesh {
   /** LOD 階數。1 代表沒有 LOD 鏈。 */
   get levelCount(): number {
     return this.lodErrors.length;
+  }
+
+  /**
+   * 每一階的幾何誤差，世界單位。
+   *
+   * 開出來是為了驗「誤差嚴格遞增」—— 「更粗 = 更不準」是選階與遠景合併
+   * 都在假設的性質，而它不成立的時候**沒有任何東西會報錯**，只是某些距離
+   * 挑到不該挑的階。
+   */
+  get errorsPerLevel(): Float32Array {
+    return this.lodErrors;
   }
 
   /**
