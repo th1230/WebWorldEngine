@@ -173,7 +173,7 @@ async function measure(browser, url) {
       w.renderer.info.reset();
       w.step(6.0);
       const { calls, triangles } = w.renderer.info.render;
-      return w.measureGpuMs(6.0, 120).then((gpu) => ({ gpu, calls, triangles }));
+      return w.measureGpuMs(6.0).then((gpu) => ({ gpu, calls, triangles }));
     });
     return typeof result?.gpu?.p50 === 'number'
       ? { ms: result.gpu.p50, calls: result.calls, triangles: result.triangles }

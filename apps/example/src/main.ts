@@ -549,7 +549,7 @@ async function measureFillBound(t = 0): Promise<unknown> {
     renderer.info.reset();
     step(t);
     const { triangles, calls } = renderer.info.render;
-    const gpu = (await measureGpuMs(t, 60)) as { p50?: number };
+    const gpu = (await measureGpuMs(t, 1000)) as { p50?: number };
     out[name] = { pixels: w * h, ms: gpu.p50 ?? null, triangles, calls };
   }
 
@@ -560,7 +560,7 @@ async function measureFillBound(t = 0): Promise<unknown> {
   return out;
 }
 
-async function measureGpuMs(t = 0, frames = 120): Promise<unknown> {
+async function measureGpuMs(t = 0, budgetMs = 2000, minSamples = 20): Promise<unknown> {
   const gl = renderer.getContext() as WebGL2RenderingContext;
   const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as {
     TIME_ELAPSED_EXT: number;
@@ -570,7 +570,18 @@ async function measureGpuMs(t = 0, frames = 120): Promise<unknown> {
 
   const samples: number[] = [];
   let disjoint = 0;
-  for (let i = 0; i < frames; i++) {
+  // ## 取樣數用時間界定，不是固定幀數
+  //
+  // 固定 120 幀在快的內容上是 1.5 秒，在慢的內容上是 25 秒（遠景那組原生
+  // 每幀 211 ms）—— 於是整個 gate 要跑十五分鐘，而跑十五分鐘的檢查沒有人
+  // 會跑。固定幀數在這裡就是那種「作者在自己的內容上調好」的常數。
+  //
+  // 變異數不需要那麼多樣本：遠景那組五輪量到 6.528 / 6.531 / 6.532 / 6.538
+  // / 6.539，中位數穩到小數第三位。所以先給時間預算，再用 `minSamples` 保
+  // 一個下限，免得極慢的內容只拿到一兩個樣本。
+  const deadline = performance.now() + budgetMs;
+  for (let i = 0; i < 1000; i++) {
+    if (i >= minSamples && performance.now() > deadline) break;
     const query = gl.createQuery()!;
     gl.beginQuery(ext.TIME_ELAPSED_EXT, query);
     step(t);
