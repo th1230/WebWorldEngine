@@ -96,7 +96,19 @@ export interface StreamOptions {
    * 可以回傳 Promise —— 從網路抓內容是正常的用法。`place` 在 `await`
    * 之後仍然有效。
    */
-  load(cellX: number, cellZ: number, place: PlaceFn): void | Promise<void>;
+  load(
+    cellX: number,
+    cellZ: number,
+    place: PlaceFn,
+    /**
+     * 這一格多大，世界單位 —— 就是上面那個 `cellSize`。
+     *
+     * 傳進來而不是讓呼叫端自己記：規則式的擺放（`WW.scatter`）要用它換算
+     * 密度，而「兩個地方各記一份同一個數字」遲早會不一致 —— 症狀是內容的
+     * 疏密突然變了，而不是報錯。
+     */
+    cellSize: number,
+  ): void | Promise<void>;
   /**
    * 同時進行中的載入**上限**。預設 16。
    *
@@ -154,6 +166,7 @@ export class WorldStream {
   private readonly streamer: WorldStreamer<CellBlocks>;
   private readonly perMesh = new Map<InstancedMesh, MeshBlocks>();
   private readonly load: StreamOptions['load'];
+  private readonly cellSize: number;
   private lastFrameTime = 0;
 
   private readonly fixedBudgetMs: number | undefined;
@@ -186,6 +199,7 @@ export class WorldStream {
 
   constructor(options: StreamOptions) {
     this.load = options.load;
+    this.cellSize = options.cellSize;
     const unloadRadius = options.unloadRadius ?? options.radius * 1.25;
 
     const source: CellSource<CellBlocks> = {
@@ -297,7 +311,7 @@ export class WorldStream {
       buffer[at + 14]! -= origin.z;
     };
 
-    await this.load(cx, cz, place);
+    await this.load(cx, cz, place, this.cellSize);
     if (staged.size === 0) return [];
 
     const cell: CellBlocks = { blocks: [] };

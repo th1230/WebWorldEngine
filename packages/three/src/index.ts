@@ -45,3 +45,9 @@ export { load } from './load.ts';
 export { loadMaterial, loadTexture } from './load-material.ts';
 export { clearAssetCache } from './manifest.ts';
 export { WorldStream, type StreamOptions, type PlaceFn } from './streaming.ts';
+export {
+  scatter,
+  type ScatterRule,
+  type ScatterContext,
+  type ScatterPlacement,
+} from './scatter.ts';
