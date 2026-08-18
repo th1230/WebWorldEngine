@@ -1432,24 +1432,44 @@ canvas，永遠在視野裡。
 1. **光照的成本**（固定稅）—— 對應 UE 的 shading model 與 Quality Level
 2. **貼圖依螢幕大小降級**（隨距離變）—— 對應材質的 LOD
 
-#### ⛔ 第二個旋鈕卡在一個結構問題上
+#### 第二個旋鈕本來以為被結構擋住，驗過之後沒有
 
-「遠處用便宜的材質」需要**同一批 instance 裡不同的 instance 用不同材質**，
-而整個引擎建立在一個 `BatchedMesh` 上 —— 它是一份幾何、一次 multi-draw。
-Three 的型別寫著 `Material|Array<Material>`，但陣列在 `Mesh` 上對應的是
-**幾何的 group**，不是 instance；能不能拿來做逐 instance 的材質切換**還沒
-驗過**，那是這條軸下一步唯一該做的事。
+一開始的判斷是：「遠處用便宜的材質」需要同一批 instance 裡不同 instance
+用不同材質，而整個引擎建在一個 `BatchedMesh` 上（一份幾何、一次 multi-draw），
+所以做不到。
 
-三條可能的路，都還沒量：
+**那個判斷是錯的，而且錯在把「不同材質」當成唯一的做法。** 去讀 Three 的
+batching shader chunk 之後：
 
-| | 代價 |
+```glsl
+// batching_vertex.glsl
+mat4 batchingMatrix = getBatchingMatrix( getIndirectIndex( gl_DrawID ) );
+```
+
+**每個 instance 的世界矩陣在 vertex shader 裡本來就拿得到。** 所以逐 instance
+的材質變化不需要逐 instance 的材質 —— 一份材質，在 shader 裡依那個矩陣算出
+「這個 instance 在螢幕上多大」，再決定要不要取樣 normal／ORM 就好。
+
+兩個 BatchedMesh 遷移、instance 索引會變 —— 那條路整條不必走。
+
+#### 這條軸剩下的工作
+
+| | 狀態 |
 | --- | --- |
-| 近／遠兩個 `BatchedMesh`，instance 在之間遷移 | 索引會變、遷移本身有成本 |
-| 單一材質裡用逐 instance 屬性在 shader 裡分支 | 要 NodeMaterial，WebGL2 那條路要另外想 |
-| 只做第一個旋鈕（光照），不做材質 LOD | 少拿近景那 33%，但沒有結構風險 |
+| 旋鈕一：光照成本 | **已經滿足了** —— 材質是開發者傳進來的，他要換 shading model 或用更便宜的材質本來就可以，引擎不擋 |
+| 旋鈕二：貼圖依螢幕大小降級 | 路確認可行（上面），還沒實作 |
 
-**在驗出哪一條可行之前，不該先寫程式碼。** 這正是準則說的順序。
+實作的四件事，順序不能換：
 
+1. **預設關**。少取樣 normal／ORM 會讓遠處變平 —— 那是改變畫面，屬於開發者
+   （四問第一問）。門檻由開發者宣告，引擎不自己訂。
+2. **兩個後端都要**。`apps/example` 是 WebGL2（site-check 與 visual-check 跑它），
+   `apps/benchmark` 是 WebGPU（`pnpm bench` 跑它）。**驗證與量測分別在不同的
+   後端上**，所以只做一邊等於只有一半。
+3. **shader 裡的動態分支要小心導數**。`texture()` 在非均勻控制流裡的行為是
+   未定義的，要用明確的 LOD。而且只有整個 warp 走同一邊才真的省得到 ——
+   遠處整個物件會一致，近處不會。
+4. **量到才算數**：近景那組現在 normal + ORM 佔 27%，那是這個旋鈕的上限。
 #### 這個結論只對這份內容成立
 
 物件很小是這裡的關鍵前提。**近距離、大面積的內容上貼圖取樣會反過來變成
