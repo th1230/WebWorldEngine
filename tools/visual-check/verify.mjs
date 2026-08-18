@@ -171,7 +171,9 @@ async function main() {
   if (failures.length > 0) {
     throw new Error(`畫面比對失敗：\n  ${failures.join('\n  ')}`);
   }
-  console.log('\nOK: 四個模式的畫面都在品質契約內');
+  // 模式數寫死過一次，加到七個之後它還在說「四個」—— 一個會說謊的檢查，
+  // 它報的通過範圍比實際跑的小。
+  console.log(`\nOK: ${MODES.length} 個模式的畫面都在品質契約內`);
 }
 
 const MODES = [
