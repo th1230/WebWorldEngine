@@ -29,6 +29,11 @@ export {
 export { worldFor, World, type WorldStats } from './world.ts';
 export { applyShadows, type CascadedShadows } from './shadows.ts';
 export {
+  PhysicsScheduler,
+  type PhysicsSchedulerOptions,
+  type PhysicsStats,
+} from './physics-scheduler.ts';
+export {
   OriginRebase,
   translateObject,
   type OriginRebaseOptions,
