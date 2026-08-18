@@ -170,6 +170,9 @@ async function measure(browser, url) {
     await page.waitForFunction(() => window.__ww?.totalFrames > 90, undefined, { timeout: 60_000 });
     const result = await page.evaluate(() => {
       const w = window.__ww;
+      // 先讓遠景合併烘完 —— 沒等的話量到的是烘焙中的那幾幀。實測同一個
+      // 場景 44.5 ms 對 14.7 ms，而那個數字看起來完全像一個真實的結果。
+      w.settleHlod(6.0);
       w.renderer.info.reset();
       w.step(6.0);
       const { calls, triangles } = w.renderer.info.render;

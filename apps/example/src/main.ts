@@ -116,12 +116,27 @@ if (useShadows) {
 // 才是 W2 要解決的情況：使用者手上是一份直接匯出的美術資產，不是一條
 // 準備好的 LOD 鏈。用 500 面的球去示範「產生 LOD 不卡主執行緒」等於在
 // 示範一件本來就不會卡的事。
+/**
+ * `?extraLod=1` 在鏈的尾巴多接一階（20 個三角形）。
+ *
+ * 這是一個**量鏈有沒有見底**的實驗開關，不是內容的一部分。遠景那組量到
+ * 10,647 個 instance 裡有 10,647 個掛在最粗階 —— 那看起來像「引擎挑到最粗
+ * 了」，但也可能是「鏈只有這麼粗，引擎想再粗也沒得挑」。
+ *
+ * 兩者的差別是後者代表**開發者給的鏈是瓶頸**，而那時引擎該做的是自己補
+ * 更粗的階（它本來就有 worker 裡的簡化能力），不是什麼都不做。
+ *
+ * 分辨的方法就是接一階上去看它會不會被用到。
+ */
+const EXTRA_LOD = params.get('extraLod') === '1';
+
 const lods = useAutoLod
   ? [new THREE.IcosahedronGeometry(1, 24)]
   : [
       new THREE.IcosahedronGeometry(1, 4),
       new THREE.IcosahedronGeometry(1, 2),
       new THREE.IcosahedronGeometry(1, 1),
+      ...(EXTRA_LOD ? [new THREE.IcosahedronGeometry(1, 0)] : []),
     ];
 // 每一階相對第 0 階的幾何誤差，世界單位。**從幾何本身量出來，不是猜的** ——
 // 猜錯的方向若是低估，就會選到太粗的階，也就是靜靜地違反品質契約。
@@ -568,6 +583,21 @@ async function measureGpuMs(t = 0, budgetMs = 2000, minSamples = 20): Promise<un
   } | null;
   if (ext === null) return { skipped: '這個瀏覽器沒有 EXT_disjoint_timer_query_webgl2' };
 
+  // ## 動畫迴圈必須停掉，而且是在這裡停
+  //
+  // 下面每一顆查詢中間都有 `await`（等 GPU 回覆），而動畫迴圈會在那些空檔
+  // 裡繼續跑 —— 它用的是**一直在前進的 t**，所以相機在移動、遠景在重新烘。
+  // 於是量到的不是「這個狀態多貴」，是「一個一直在變的狀態」。
+  //
+  // 實測同一個場景（60,000 個、程序化）：**迴圈沒停 43.6 ms、停掉 14.7 ms。**
+  // 三倍，而 43.6 那個數字穩定到小數第二位、看起來完全像一個真實的結果。
+  //
+  // 兩支工具對同一個場景給出不同的數字才發現 —— 一支停了、一支沒停。
+  //
+  // 停在這裡而不是叫呼叫端停：**沒有任何呼叫端會想要它開著**，而忘記停的
+  // 症狀是一個看起來很正常的錯誤數字。這正是 `verifyQuality` 踩過的同一個坑。
+  renderer.setAnimationLoop(null);
+
   const samples: number[] = [];
   let disjoint = 0;
   // ## 取樣數用時間界定，不是固定幀數
@@ -918,6 +948,10 @@ Object.assign(window, {
     },
     measureGpuMs,
     measureFillBound,
+    // 任何 GPU 計時之前都要先跑它。沒跑的話量到的是**還在烘遠景合併**的
+    // 那幾幀 —— 實測同一個場景 44.5 ms 對 14.7 ms，差三倍，而且看起來
+    // 完全像一個真實的結果。
+    settleHlod,
     verifyQuality,
     measureStreamDrift,
     measureLodBlocking,
