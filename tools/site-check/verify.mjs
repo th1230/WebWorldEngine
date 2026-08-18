@@ -213,7 +213,46 @@ async function measureCoexistence(browser, url) {
   if (inner.canvasWidth > inner.windowWidth) {
     throw new Error(`畫布 ${inner.canvasWidth} px 比視窗還寬 —— 假設了獨佔整個視窗`);
   }
+
+  await measureIdleWhenHidden(page, frame);
   await page.close();
+}
+
+/**
+ * 那一塊捲出畫面之後，套件要**完全停下來**。
+ *
+ * ## 為什麼這是網站條件而不是效能條件
+ *
+ * 網站上的 3D 大多數時間不在視野裡（在頁面下方、在別的分頁）。套件若自己
+ * 排了 `setInterval` 或 `requestIdleCallback` 去串流、去烘遠景，那些工作
+ * 會在使用者根本沒在看的時候吃他的電池與主執行緒。
+ *
+ * demo 永遠看不出來 —— demo 就是整頁一個 canvas，永遠在視野裡。
+ *
+ * ## 怎麼驗
+ *
+ * 把 iframe 設成 `display:none`（瀏覽器會停掉它的 rAF），然後看引擎的
+ * 幀數有沒有繼續往前。**驗的是行為不是實作** —— 抓 `setInterval` 的字串
+ * 擋不住第三種寫法。
+ */
+async function measureIdleWhenHidden(page, frame) {
+  const before = await frame.evaluate(() => window.__ww?.totalFrames ?? null);
+  if (before === null) throw new Error('iframe 沒有回報幀數');
+
+  await page.evaluate(() => {
+    document.getElementById('viewport').style.display = 'none';
+  });
+  await page.waitForTimeout(1500);
+  const after = await frame.evaluate(() => window.__ww?.totalFrames ?? null);
+
+  console.log(`捲出畫面後      ${after - before} 幀（1.5 秒內）`);
+  // 0 是預期值。留一點餘裕給「隱藏的那一刻正好有一幀在飛」。
+  if (after - before > 2) {
+    throw new Error(
+      `那一塊看不見了卻還畫了 ${after - before} 幀 —— 套件自己排了工作，` +
+        '使用者沒在看的時候還在吃電池',
+    );
+  }
 }
 
 async function serve(dir) {

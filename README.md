@@ -52,6 +52,7 @@ apps/
 tools/
   benchmark-runner/     Playwright 跑分與回歸比對
   package-check/        打包 → 裝進乾淨專案 → import
+  visual-check/         畫面比對：強化版 vs 原生，掃相機角度
   site-check/           網站指標：首次可見、下載量、記憶體、與頁面共存
 benchmarks/baselines/ 各機器的效能基準（進版控）
 specs/                準則、里程碑、契約與 ADR

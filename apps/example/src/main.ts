@@ -214,6 +214,8 @@ if (useStream && world !== null) {
     },
   });
 }
+/** 這個頁面一共畫了幾幀。site-check 用它驗「不畫就不做事」。 */
+let totalFrames = 0;
 let windowFrames = 0;
 let windowStart = 0;
 let fps = 0;
@@ -236,6 +238,7 @@ renderer.setAnimationLoop((time) => {
 
   // 滑動視窗，不是開機以來的平均 —— 平均會把切換場景前後的兩段混在一起。
   windowFrames++;
+  totalFrames++;
   if (time - windowStart >= 500) {
     fps = Math.round((windowFrames * 1000) / (time - windowStart));
     windowStart = time;
@@ -633,6 +636,9 @@ Object.assign(window, {
     enhanced,
     get firstFrameMs() {
       return firstFrameMs;
+    },
+    get totalFrames() {
+      return totalFrames;
     },
     verifyQuality,
     measureStreamDrift,
