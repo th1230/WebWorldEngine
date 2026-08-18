@@ -110,11 +110,18 @@ pnpm verify:all
 | `pnpm verify` | 型別、lint、500 個單元測試 | — |
 | `pnpm package-check` | 打包 → 裝進乾淨專案 → 在瀏覽器裡跑起來 | 瀏覽器 |
 | `pnpm site-check` | 首次可見、下載量、記憶體、與頁面共存、看不見時要停 | 瀏覽器 |
-| `pnpm visual-check` | 畫面與原生版的差異，四個模式各掃八個角度 | 瀏覽器 |
+| `pnpm visual-check` | 畫面與原生版的差異，七個模式各掃八個角度 | 瀏覽器 |
+| `pnpm gpu-check` | **真的 GPU 時間**與原生版的比較，兩種內容 | 瀏覽器 |
 
-**後面三道不在 `pnpm verify` 裡**，因為它們要建 app 跟開瀏覽器。而這一輪
+**後面四道不在 `pnpm verify` 裡**，因為它們要建 app 跟開瀏覽器。而這一輪
 最嚴重的兩個 bug 都是「有量、沒有人擋」——分頁記憶體漲到 1 GB、畫面比對
 從來沒被跑過。所以它們現在有一個統一的入口，不必記四個指令。
+
+`gpu-check` 補的是一直缺的那一側：其餘的證據全部在 CPU（幀時間、分組時間、
+traversal 時間），但這個引擎做的每一件事**改變的是送給 GPU 的東西**。它靠
+`EXT_disjoint_timer_query_webgl2` 直接問 GPU，而不是量 `render()` 回來多快
+（那是 CPU —— 實測開關兩邊都是 0.13 ms）。加上它的第一天就刪掉了一個功能：
+一個做完、驗過、畫質在契約內的材質旋鈕，淨值是 **−15% 到 −20%**。
 
 `node tools/package-check/verify.mjs` 把三個套件打包、裝進一個乾淨專案，
 import 之後真的跑一次 cook 並檢查產出的 `.wwm`，最後把它打包成一個網站在

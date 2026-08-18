@@ -50,10 +50,11 @@ const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/
 const DIST = join(root, 'apps/example/dist');
 
 /**
- * 兩種內容，而且**必須兩種都量**。
+ * 兩種內容，而且**必須兩種都量**，各自的門檻寫在自己旁邊。
  *
- * 近景那組分支幾乎都成立（照樣取樣），遠景那組分支幾乎都不成立（真的跳過）。
- * 只量一種的話，量到的是那一種內容的結論，不是這個旋鈕的結論。
+ * 遠景那組省的是「少畫」（剔除、合併、粗階），近景那組六百個大物件本來就
+ * 都要畫，能省的只有選階。兩者的量級差一個數量級 —— 用同一條線的話，寬到
+ * 近景過得了的那條線，遠景整個壞掉也照樣綠。
  */
 const SCENES = [
   {
@@ -74,14 +75,6 @@ const CASES = [
 ];
 
 const ROUNDS = 5;
-
-/**
- * 強化版至少要比原生省下這麼多 GPU 時間。
- *
- * 逐內容各訂 —— 遠景那組有得少畫（實測省 5 倍以上），近景那組六百個大物件
- * 本來就都要畫，能省的只有選階，實測 1.1 倍。用同一條線的話，寬到近景
- * 過得了的那條線，遠景整個壞掉也照樣綠。
- */
 
 async function main() {
   console.log('建置 example…');
@@ -119,7 +112,7 @@ async function main() {
   let failed = false;
   console.log('');
   for (const { scene, rounds } of results) {
-    const usable = rounds.filter((r) => CASES.every((c) => typeof r[c.key] === 'number'));
+    const usable = rounds.filter((r) => CASES.every((c) => typeof r[c.key]?.ms === 'number'));
     if (usable.length === 0) {
       // 一顆計時都沒回來不是「通過」—— 沒量到就是沒量到。
       console.error(`FAIL: ${scene.name} 一輪都沒量到（沒有 EXT_disjoint_timer_query_webgl2？）`);
@@ -128,12 +121,21 @@ async function main() {
       return;
     }
     // 逐輪配對再取中位數 —— 先各自取中位數再相除的話，峰的漂移不會抵消。
-    const saving = median(usable.map((r) => 1 - r.ww / r.native));
+    const saving = median(usable.map((r) => 1 - r.ww.ms / r.native.ms));
 
     console.log(scene.name);
     for (const c of CASES) {
-      console.log(`  ${c.label.padEnd(26)} ${fmt(median(usable.map((r) => r[c.key])))} ms`);
+      const row = usable[0][c.key];
+      console.log(
+        `  ${c.label.padEnd(26)} ${median(usable.map((r) => r[c.key].ms)).toFixed(3)} ms` +
+          `   ${row.triangles.toLocaleString('en-US').padStart(11)} 個三角形，${row.calls} 次繪製`,
+      );
     }
+    // ## 三角形數要跟時間一起報
+    //
+    // 對照組一度是用**程序化**的幾何建的，而 `?cooked=1` 時強化版吃的是
+    // cook 過的鏈 —— 兩邊畫的是不同的模型（300,002 vs 2,188,802 個三角形），
+    // 而那被讀成「強化版慢了兩倍」。時間單獨看的話那個結論完全成立。
     const ok = saving >= scene.minSaving;
     console.log(
       `  GPU 時間省下                ${pct(saving)}` +
@@ -160,14 +162,22 @@ async function measure(browser, url) {
     await page.goto(url, { waitUntil: 'load' });
     // 等 LOD 烘完、貼圖載完 —— 沒等的話量到的是「還在建東西」的那幾幀。
     await page.waitForFunction(() => window.__ww?.totalFrames > 90, undefined, { timeout: 60_000 });
-    const result = await page.evaluate(() => window.__ww.measureGpuMs(6.0, 120));
-    return typeof result?.p50 === 'number' ? result.p50 : result;
+    const result = await page.evaluate(() => {
+      const w = window.__ww;
+      w.renderer.info.reset();
+      w.step(6.0);
+      const { calls, triangles } = w.renderer.info.render;
+      return w.measureGpuMs(6.0, 120).then((gpu) => ({ gpu, calls, triangles }));
+    });
+    return typeof result?.gpu?.p50 === 'number'
+      ? { ms: result.gpu.p50, calls: result.calls, triangles: result.triangles }
+      : result;
   } finally {
     await page.close();
   }
 }
 
-const fmt = (v) => (typeof v === 'number' ? v.toFixed(3) : JSON.stringify(v));
+const fmt = (v) => (typeof v?.ms === 'number' ? v.ms.toFixed(3) : JSON.stringify(v));
 const pct = (v) => `${v >= 0 ? '' : ''}${(v * 100).toFixed(1)}%`;
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 

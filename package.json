@@ -22,7 +22,7 @@
     "package-check": "node tools/package-check/verify.mjs",
     "site-check": "node tools/site-check/verify.mjs",
     "visual-check": "node tools/visual-check/verify.mjs",
-    "verify:all": "pnpm verify && pnpm package-check && pnpm site-check && pnpm visual-check",
+    "verify:all": "pnpm verify && pnpm package-check && pnpm site-check && pnpm visual-check && pnpm gpu-check",
     "bench": "tsx tools/benchmark-runner/src/cli.ts run --profile hardware",
     "bench:smoke": "tsx tools/benchmark-runner/src/cli.ts run --profile smoke",
     "bench:baseline": "tsx tools/benchmark-runner/src/cli.ts baseline",
