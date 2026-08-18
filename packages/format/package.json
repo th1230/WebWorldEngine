@@ -6,7 +6,7 @@
     ".": "./src/index.ts"
   },
   "types": "./src/index.ts",
-  "description": "@webworld/three 與 @webworld/cook 之間的資產格式契約（只有型別與常數）。",
+  "description": "@webworld/three 與 @webworld/cook 之間的資產格式契約：型別、常數，以及「誤差」這個數字的定義。",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -49,8 +49,14 @@ describe('generateLodLevels', () => {
     for (let i = 1; i < levels.length; i++) {
       expect(levels[i]!.error).toBeGreaterThan(levels[i - 1]!.error);
     }
-    // 半徑 1 的球，誤差不該是半個球那麼大
-    expect(levels.at(-1)!.error).toBeLessThan(0.5);
+    // 半徑 1 的球，最粗那階的誤差不該大到「比物件本身還遠」——那代表回報的
+    // 根本不是世界單位的距離。
+    //
+    // 這條線本來是 0.5，而那是照**簡化器自己回報的估計值**訂的。改成真的量
+    // 之後同一份幾何量到 0.567 —— 不是變差了，是**本來就那麼大，只是以前
+    // 少報了**。最粗那階只剩十幾個三角形，它離球面 0.5 以上完全合理
+    // （矢高的封閉解在 12 面時是 0.53）。
+    expect(levels.at(-1)!.error).toBeLessThan(1);
   });
 
   it('同時比較粗又比較不準的階會被丟掉', async () => {

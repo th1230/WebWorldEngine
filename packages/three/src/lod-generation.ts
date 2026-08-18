@@ -1,4 +1,5 @@
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
+import { maxSurfaceDeviation } from '@webworld/format';
 
 /**
  * 執行期產生 LOD 鏈。
@@ -94,7 +95,6 @@ export async function generateLodLevels(
   }
 
   await MeshoptSimplifier.ready;
-  const scale = MeshoptSimplifier.getScale(position.array, position.itemSize);
 
   const levels: GeneratedLevel[] = [];
   const base = welded.indices!;
@@ -123,7 +123,9 @@ export async function generateLodLevels(
     //
     // 從第 0 階開始就兩個問題都沒有，代價是簡化器多走幾趟完整網格 ——
     // 而這整段在 worker 裡。
-    const [simplified, relativeError] = MeshoptSimplifier.simplify(
+    // 第二個回傳值是 simplifier 自己估的誤差。**刻意不用它** —— 見下面
+    // 量誤差那一段。
+    const [simplified] = MeshoptSimplifier.simplify(
       base,
       position.array,
       position.itemSize,
@@ -151,7 +153,29 @@ export async function generateLodLevels(
 
     previousLength = simplified.length;
 
-    const level = { ...compact(welded, simplified), error: relativeError * scale };
+    // ## 誤差是**量出來的**，不是拿簡化器回報的那個
+    //
+    // `relativeError * scale` 是 meshoptimizer 的估計值，而品質契約
+    // （「被選中的階投影到螢幕 ≤ 2 像素」）整個建立在這個數字上。
+    //
+    // 它不是上界。拿有封閉解的幾何比對過（icosphere，真值用矢高）：250 面
+    // 低估 1.44 倍、50 面低估 1.48 倍、12 面低估 1.35 倍 —— **每一階都低估**。
+    // 於是實際的契約是「≤ 大約 3 像素」，而沒有任何東西會報錯。
+    //
+    // 這件事是這樣被抓到的：量到 LOD 鏈見底（99.7% 的 instance 掛在最粗階，
+    // 多接一階更粗的下去 GPU 時間掉 61%），做了自動接長鏈，然後 `visual-check`
+    // 紅了。先怪自己湊誤差的方式、改掉還是紅，才回頭問這個數字準不準。
+    //
+    // 現在改成真的去量原始頂點到簡化表面的最大距離。代價是每一階多一次
+    // O(頂點數) 的最近點查詢，而這整段在 worker 裡。
+    const compacted = compact(welded, simplified);
+    const level = {
+      ...compacted,
+      error: maxSurfaceDeviation(position.array as Float32Array, {
+        positions: compacted.attributes['position']!.array,
+        indices: compacted.indices,
+      }),
+    };
     const last = levels.at(-1);
 
     // **丟掉被支配的階。**

@@ -1,4 +1,4 @@
-import { VERTEX_FLOATS, type Bounds } from '@webworld/format';
+import { VERTEX_FLOATS, type Bounds, maxSurfaceDeviation } from '@webworld/format';
 import { MeshoptEncoder } from 'meshoptimizer/encoder';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 import { generateTangents as generateMikkTangents } from 'mikktspace';
@@ -261,7 +261,6 @@ export async function generateLods(
   await MeshoptSimplifier.ready;
 
   const positions = extractPositions(mesh);
-  const scale = MeshoptSimplifier.getScale(positions, 3);
   const lods: LodResult[] = [{ mesh, error: 0 }];
 
   let previousLength = mesh.indices.length;
@@ -291,7 +290,8 @@ export async function generateLods(
     // 東西會報錯。
     //
     // 代價是簡化器多走幾趟完整網格。這是 cook 時做的事，不進 runtime。
-    const [simplified, relativeError] = MeshoptSimplifier.simplify(
+    // 第二個回傳值是 simplifier 自己估的誤差。**刻意不用** —— 見下面。
+    const [simplified] = MeshoptSimplifier.simplify(
       mesh.indices,
       positions,
       3,
@@ -301,11 +301,29 @@ export async function generateLods(
 
     // simplifier 達不到目標時會回傳原本的索引；再往下產生只是浪費空間
     if (simplified.length >= previousLength) break;
+
+    // 塌成幾乎沒有三角形的階會在夠遠的距離被選中，然後**整個物件消失** ——
+    // 沒有錯誤、沒有警告。少於 4 個面圍不出體積。
+    if (simplified.length < 4 * 3) break;
+
     previousLength = simplified.length;
 
     const lod: LodResult = {
       mesh: { vertices: mesh.vertices, indices: simplified },
-      error: relativeError * scale,
+      // ## 誤差是量出來的，不是 `relativeError * scale`
+      //
+      // 那個是 meshoptimizer 的**估計值，不是上界**。拿有封閉解的幾何比對過
+      // （icosphere，真值用矢高）：每一階都低估，最多 1.48 倍。於是實際的
+      // 契約變成「≤ 大約 3 像素」而不是宣稱的 2 像素，而沒有任何東西會報錯。
+      //
+      // 量法住在 `@webworld/format` —— **這個數字的定義本身就是格式契約的
+      // 一部分**，cook 這邊寫進 `.wwm`、runtime 那邊讀出來選階，兩邊對它的
+      // 意思必須一模一樣。只修一邊的症狀是「cook 過的資產比 runtime 產生的
+      // 糊」，而型別檢查不會有意見。
+      error: maxSurfaceDeviation(positions, {
+        positions,
+        indices: Uint32Array.from(simplified),
+      }),
     };
 
     // **丟掉被支配的階。** 簡化器對每個目標三角形數各做一次貪婪選擇，
