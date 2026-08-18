@@ -115,6 +115,16 @@ export const streamingScene: SceneDefinition = {
     // 每幀前進多少世界單位。預設是「一格的十分之一」—— 也就是每十幀跨一格，
     // 保證載入是持續發生的而不是偶發的。
     const speed = numberParam(ctx.params, 'speed', Math.max(cellSize / 10, 1), 1, 10_000);
+    // 一個槽位裝幾個 instance。0 = 用預設（每格的目標數）。
+    //
+    // 值得掃：固定的記憶體預算下，涵蓋到的 instance 數與這個值**無關**
+    // （槽位數 × 每槽位的量 = 預算 ÷ 每個 instance 的量），但**繪製次數
+    // 等於槽位數**，所以調大理論上是白賺的。代價是顆粒變粗 —— 一組要
+    // 全部都夠遠才合併得起來，組越大越不容易全部達標。
+    const hlodSlot = numberParam(ctx.params, 'hlodSlot', 0, 0, 100_000);
+    // 0 = 用套件的預設。**沒接這個參數的話 `--ab hlodBudgetMB=...` 會兩邊
+    // 一模一樣**，而那看起來就像「這個旋鈕沒有用」—— 這一輪已經踩過一次。
+    const hlodBudgetMB = numberParam(ctx.params, 'hlodBudgetMB', 0, 0, 8192);
     const meshId = ctx.params.get('mesh') ?? DEFAULT_MESH;
 
     const { chain, material } = await loadAsset(meshId);
@@ -127,7 +137,10 @@ export const streamingScene: SceneDefinition = {
     // 容量從 0 開始 —— 串流會自己長大。給一個大的初始值等於偷偷把
     // 「配置」這件事排除在量測外，而那正是串流最貴的部分之一。
     const scale = normalizingScale(chain);
-    const rocks = new WWInstancedMesh(chain, material, 1);
+    const rocks = new WWInstancedMesh(chain, material, 1, {
+      ...(hlodSlot > 0 ? { hlodSlotInstances: hlodSlot } : {}),
+      ...(hlodBudgetMB > 0 ? { hlodBudgetMB } : {}),
+    });
     scene.add(rocks);
 
     const world = worldFor(scene);
@@ -206,7 +219,7 @@ export const streamingScene: SceneDefinition = {
           pendingPeak = Math.max(pendingPeak, stream.stats.pending);
         }
       },
-      reportParams: { cellSize, radius, perCell, speed, mesh: meshId },
+      reportParams: { cellSize, radius, perCell, speed, hlodSlot, hlodBudgetMB, mesh: meshId },
       notes: [
         `真實資產：${meshId}，LOD ${chain.lods.map((g) => g.getIndex()!.count / 3).join('/')}。`,
         `相機每幀前進 ${speed} 單位（一格 ${cellSize}），所以載入是持續發生的。`,
