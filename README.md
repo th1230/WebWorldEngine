@@ -99,6 +99,23 @@ pnpm build:pkg  # 建置三個發布套件的 dist
 pnpm site-check # 網站指標（首次可見、下載量、記憶體、與頁面共存）
 ```
 
+## 四道關卡，一個指令
+
+```bash
+pnpm verify:all
+```
+
+| | 擋什麼 | 需要 |
+| --- | --- | --- |
+| `pnpm verify` | 型別、lint、500 個單元測試 | — |
+| `pnpm package-check` | 打包 → 裝進乾淨專案 → 在瀏覽器裡跑起來 | 瀏覽器 |
+| `pnpm site-check` | 首次可見、下載量、記憶體、與頁面共存、看不見時要停 | 瀏覽器 |
+| `pnpm visual-check` | 畫面與原生版的差異，四個模式各掃八個角度 | 瀏覽器 |
+
+**後面三道不在 `pnpm verify` 裡**，因為它們要建 app 跟開瀏覽器。而這一輪
+最嚴重的兩個 bug 都是「有量、沒有人擋」——分頁記憶體漲到 1 GB、畫面比對
+從來沒被跑過。所以它們現在有一個統一的入口，不必記四個指令。
+
 `node tools/package-check/verify.mjs` 把三個套件打包、裝進一個乾淨專案，
 import 之後真的跑一次 cook 並檢查產出的 `.wwm`，最後把它打包成一個網站在
 瀏覽器裡跑起來。工作區裡 `exports` 直指 `src/`，所以其餘檢查全部碰不到
