@@ -233,6 +233,10 @@ const HLOD_DEFAULT_BUDGET_BYTES = 32 * 1048576;
  */
 const SPHERE_DIRTY_RANGES = 8;
 
+/** `hlodOps` 的種類。 */
+const HLOD_OP_APPEND = 0;
+const HLOD_OP_DROP = 1;
+
 /** 自動 LOD 待補時，批次幾何要預留幾倍的空間。 */
 const LOD_RESERVE = 2;
 
@@ -365,6 +369,8 @@ export class InstancedMesh extends BatchedMesh {
   /** 走訪順序表。區塊路徑用恆等表（位置就是編號），空間格路徑用它的 order。 */
   private identityOrder = new Uint32Array(0);
   private usingBlocks = false;
+  /** 區塊變動的待辦：每三個一組（種類, a, b）。見 `updateHlodForBlocks`。 */
+  private readonly hlodOps: number[] = [];
   private readonly frustum: Frustum = createFrustum();
   private matricesArray: Float32Array;
   /** 單一 instance 的區域空間包圍球。 */
@@ -728,6 +734,7 @@ export class InstancedMesh extends BatchedMesh {
     // 逐個寫入不是「整段」的形狀，區塊的包圍球就過期了。**過期的包圍球會
     // 讓一整塊憑空消失**，所以這裡作廢而不是嘗試修補。
     this.blocks.invalidate();
+    this.resetBlockHlod();
     this.invalidateInstances(instanceId, instanceId + 1);
     return this;
   }
@@ -800,7 +807,14 @@ export class InstancedMesh extends BatchedMesh {
     const length = Math.floor(elements.length / 16);
     // 順手把這一塊的包圍球算出來。**那段記憶體本來就在手上**，所以這一趟
     // 幾乎是免費的 —— 而它省掉的是之後整份重新排序。
+    const wasCovering = this.blocks.count > 0;
     this.blocks.write(this.matricesArray, start, length, this.gridRadius);
+    if (this.blocks.count > 0) {
+      if (!wasCovering) this.resetBlockHlod();
+      this.hlodOps.push(HLOD_OP_APPEND, start, start + length);
+    } else {
+      this.resetBlockHlod();
+    }
     this.invalidateInstances(start, start + length);
   }
 
@@ -820,7 +834,11 @@ export class InstancedMesh extends BatchedMesh {
     this.matricesArray.copyWithin(to * 16, from * 16, (from + length) * 16);
     this.internals._matricesTexture.needsUpdate = true;
     this.lastMatrixVersion = this._instanceMatrix.version;
-    this.blocks.move(from, to, length);
+    if (this.blocks.move(from, to, length)) {
+      this.hlodOps.push(HLOD_OP_DROP, to, from);
+    } else {
+      this.resetBlockHlod();
+    }
     // 只有目的地那一段的內容變了。來源那一段還留著同樣的位元組，但它會被
     // 縮小的 count 排除在外，所以不必標。
     this.invalidateInstances(to, to + length);
@@ -851,6 +869,7 @@ export class InstancedMesh extends BatchedMesh {
       this.lastMatrixVersion = this.instanceMatrix.version;
       this.internals._matricesTexture.needsUpdate = true;
       this.blocks.invalidate();
+      this.resetBlockHlod();
       this.invalidateInstances();
     }
     // count 是普通欄位（`THREE.Mesh` 本來就有），沒有 setter 可掛，
@@ -900,6 +919,22 @@ export class InstancedMesh extends BatchedMesh {
     return this.usingBlocks ? this.identityOrder : this.grid.order;
   }
 
+  /**
+   * 區塊表作廢時，跟著它建的分組也一起丟。
+   *
+   * 分組的 `from`/`to` 指的是走訪位置，而走訪位置在退回空間格之後是另一套
+   * 編號 —— 留著就會合併到別人身上。
+   */
+  private resetBlockHlod(): void {
+    this.hlodOps.length = 0;
+    if (!this.usingBlocks && this.hlodGroups === null) return;
+    this.hlodGroups = null;
+    for (const slot of this.hlodSlots ?? []) {
+      slot.group = -1;
+      slot.lastUsed = -1;
+    }
+  }
+
   /** 恆等表長到夠用。只有區塊路徑會走到，而它只會長大。 */
   private ensureIdentityOrder(): void {
     if (this.identityOrder.length >= this.count) return;
@@ -938,6 +973,9 @@ export class InstancedMesh extends BatchedMesh {
     if (this.blocks.covers(this.count)) {
       this.usingBlocks = true;
       this.ensureIdentityOrder();
+      const hlodStarted = performance.now();
+      this.updateHlodForBlocks();
+      this._hlodBuildMs = performance.now() - hlodStarted;
       return this.blocks.update(this.frustum, _cameraLocal.x, _cameraLocal.y, _cameraLocal.z);
     }
     this.usingBlocks = false;
@@ -1123,8 +1161,6 @@ export class InstancedMesh extends BatchedMesh {
     // 烘完，否則就變成「先烘再看要不要用」。用已經快取好的逐 instance
     // 包圍球算，比烘便宜好幾個數量級。
     this.ensureSpheres();
-    const spheres = this.spheres;
-    const invBaseRadius = this.boundsRadius > 0 ? 1 / this.boundsRadius : 1;
 
     // 槽位一律一樣大 —— 大小不一的話回收之後就換不進去，池子會碎掉。
     // 預設是「最大那一格」，一格一個槽位。
@@ -1151,54 +1187,7 @@ export class InstancedMesh extends BatchedMesh {
 
     const groups: HlodGroup[] = [];
     for (let cell = 0; cell < cells; cell++) {
-      const cellFrom = ranges[cell * 2]!;
-      const cellTo = ranges[cell * 2 + 1]!;
-      for (let from = cellFrom; from < cellTo; from += chunk) {
-      const to = Math.min(from + chunk, cellTo);
-      // 一份只有一兩個 instance 的話，合併省不到什麼，卻照樣佔一個槽位。
-      if (to - from < HLOD_MIN_INSTANCES) continue;
-
-      let cx = 0;
-      let cy = 0;
-      let cz = 0;
-      for (let slot = from; slot < to; slot++) {
-        const s = slot * 4;
-        cx += spheres[s]!;
-        cy += spheres[s + 1]!;
-        cz += spheres[s + 2]!;
-      }
-      const n = to - from;
-      cx /= n;
-      cy /= n;
-      cz /= n;
-
-      // 半徑取「中心到每個 instance 的球心 + 那個 instance 的半徑」的最大值
-      // —— 保守地涵蓋整格。低估的方向是把不夠遠的格子當成夠遠，那會靜靜
-      // 降低畫質。
-      let radius = 0;
-      let maxScale = 0;
-      for (let slot = from; slot < to; slot++) {
-        const s = slot * 4;
-        const dx = spheres[s]! - cx;
-        const dy = spheres[s + 1]! - cy;
-        const dz = spheres[s + 2]! - cz;
-        const r = spheres[s + 3]!;
-        const reach = Math.sqrt(dx * dx + dy * dy + dz * dz) + r;
-        if (reach > radius) radius = reach;
-        if (r > maxScale) maxScale = r;
-      }
-
-      groups.push({
-        from,
-        to,
-        slot: -1,
-        centerX: cx,
-        centerY: cy,
-        centerZ: cz,
-        radius,
-        maxScale: maxScale * invBaseRadius,
-      });
-      }
+      this.makeGroups(ranges[cell * 2]!, ranges[cell * 2 + 1]!, chunk, groups);
     }
     if (groups.length === 0) return;
 
@@ -1249,6 +1238,157 @@ export class InstancedMesh extends BatchedMesh {
     for (const slot of slots) {
       slot.group = -1;
       slot.lastUsed = -1;
+    }
+  }
+
+  /**
+   * 區塊路徑下的遠景合併分組。
+   *
+   * ## 為什麼不能沿用「格子重建時整份重算」
+   *
+   * 區塊表存在的理由就是不必重建。分組若還是每次整份重算，那 22 ms 就原封
+   * 不動地留在那裡（實測 490,000 個常駐時整份分組是 21–24 ms）。
+   *
+   * 而區塊的變動形狀是已知的：**載入是接在後面，卸載是把洞後面的往前挪**。
+   * 兩者對分組的影響都是局部的 —— 前者只要替新那一段建組，後者只要刪掉那
+   * 幾組、把後面的編號整體平移。都是整數工作，與世界大小無關。
+   */
+  private updateHlodForBlocks(): void {
+    if (this.hlodOps.length === 0 && this.hlodGroups !== null) return;
+
+    const coarsest = this.coarsestGeometry;
+    if (!this.hlodEnabled || this.lodErrors.length < 2 || coarsest === null) {
+      this.hlodOps.length = 0;
+      return;
+    }
+    const chunk = Math.max(this.hlodSlotInstances ?? this.instancesPerCell, HLOD_MIN_INSTANCES);
+    // 槽位大小換了就整池作廢 —— 與空間格那條路同一個規則。
+    if (this.hlodChunkWanted !== chunk) {
+      const perInstance = mergedSize(coarsest, 1);
+      const slotVertices = chunk * perInstance.vertices;
+      const slotIndices = chunk * perInstance.indices;
+      this.hlodSlotVertices = slotVertices;
+      this.hlodSlotIndices = slotIndices;
+      this.hlodSlotBytes = slotVertices * perInstance.bytesPerVertex + slotIndices * 4;
+      this.hlodChunkWanted = chunk;
+    }
+
+    // 分組要讀包圍球快取，所以順序表與快取都得先就緒。
+    this.ensureSpheres();
+    const groups = this.hlodGroups ?? [];
+
+    for (let i = 0; i < this.hlodOps.length; i += 3) {
+      const kind = this.hlodOps[i]!;
+      const a = this.hlodOps[i + 1]!;
+      const b = this.hlodOps[i + 2]!;
+      if (kind === HLOD_OP_APPEND) {
+        this.makeGroups(a, b, chunk, groups);
+      } else {
+        this.dropGroups(groups, a, b);
+      }
+    }
+    this.hlodOps.length = 0;
+
+    this.hlodGroups = groups;
+    this._hlodGroupCount = groups.length;
+    this.hlodGroupCount = groups.length;
+    this._hlodCellMax = chunk;
+  }
+
+  /**
+   * 刪掉落在 `[from, to)` 裡的組，並把後面的組整體往前平移。
+   *
+   * **槽位的反向連結要一起修。** 槽位記的是「我裝的是第幾組」，組記的是
+   * 「我在第幾號槽位」。刪掉中間幾組之後編號整個位移，不修的話那些槽位會
+   * 指到別人身上 —— 症狀是遠景畫成別的地方的東西，而數量完全正常。
+   */
+  private dropGroups(groups: HlodGroup[], from: number, to: number): void {
+    const delta = to - from;
+    let first = groups.length;
+    let last = 0;
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i]!;
+      if (group.from >= from && group.to <= to) {
+        if (i < first) first = i;
+        if (i + 1 > last) last = i + 1;
+      }
+    }
+    const removed = Math.max(last - first, 0);
+
+    const slots = this.hlodSlots ?? [];
+    for (const slot of slots) {
+      if (slot.group < 0) continue;
+      if (slot.group >= first && slot.group < last) {
+        // 它裝的那一組不存在了。內容作廢，槽位回到可回收狀態。
+        slot.group = -1;
+        slot.lastUsed = -1;
+      } else if (slot.group >= last) {
+        slot.group -= removed;
+      }
+    }
+
+    if (removed > 0) groups.splice(first, removed);
+    for (let i = first; i < groups.length; i++) {
+      const group = groups[i]!;
+      group.from -= delta;
+      group.to -= delta;
+    }
+  }
+
+  /**
+   * 把 `[from, to)` 這段切成幾份，每份算出中心、半徑與最大縮放，附加到 `out`。
+   *
+   * 一份最多 `chunk` 個 —— 槽位一律一樣大，所以比 `chunk` 大的範圍要切開。
+   * 位置用的是**已經快取好的逐 instance 包圍球**，比烘便宜好幾個數量級，
+   * 而且「這一格夠不夠遠」必須在烘之前就答得出來。
+   */
+  private makeGroups(from: number, to: number, chunk: number, out: HlodGroup[]): void {
+    const spheres = this.spheres;
+    const invBaseRadius = this.boundsRadius > 0 ? 1 / this.boundsRadius : 1;
+    for (let start = from; start < to; start += chunk) {
+      const end = Math.min(start + chunk, to);
+      // 一份只有一兩個 instance 的話，合併省不到什麼，卻照樣佔一個槽位。
+      if (end - start < HLOD_MIN_INSTANCES) continue;
+
+      let cx = 0;
+      let cy = 0;
+      let cz = 0;
+      for (let slot = start; slot < end; slot++) {
+        const s = slot * 4;
+        cx += spheres[s]!;
+        cy += spheres[s + 1]!;
+        cz += spheres[s + 2]!;
+      }
+      const n = end - start;
+      cx /= n;
+      cy /= n;
+      cz /= n;
+
+      // 半徑取「中心到每個 instance 的球心 + 那個 instance 的半徑」的最大值
+      // —— 保守地涵蓋整份。低估的方向是把不夠遠的當成夠遠，那會靜靜降低畫質。
+      let radius = 0;
+      let maxScale = 0;
+      for (let slot = start; slot < end; slot++) {
+        const s = slot * 4;
+        const dx = spheres[s]! - cx;
+        const dy = spheres[s + 1]! - cy;
+        const dz = spheres[s + 2]! - cz;
+        const r = spheres[s + 3]!;
+        const reach = Math.sqrt(dx * dx + dy * dy + dz * dz) + r;
+        if (reach > radius) radius = reach;
+        if (r > maxScale) maxScale = r;
+      }
+
+      out.push({
+        from: start,
+        to: end,
+        slot: -1,
+        centerX: cx,
+        centerY: cy,
+        centerZ: cz,
+        radius,
+        maxScale: maxScale * invBaseRadius,
+      });
     }
   }
 
@@ -1387,7 +1527,7 @@ export class InstancedMesh extends BatchedMesh {
     // 實測：烘焙那一段花 1.742 ms，其中合併運算 **0.00 ms**、上傳 0.10 ms。
     // 剩下的全在找槽位。這也是「先量再做」擋下的一次錯誤決定 —— 我原本要把
     // 合併運算搬進 worker，而那一段根本不花時間。
-    const order = this.grid.order;
+    const order = this.traversalOrder;
     const deadline = performance.now() + this.hlodBakeMs;
     // **一幀至少烘一格。** 一格的成本可能超過整個預算（慢機器、重的最粗階），
     // 那時純看預算會永遠停在未合併的狀態 —— 而那是靜靜的效能退化。

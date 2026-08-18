@@ -166,6 +166,8 @@ export const streamingScene: SceneDefinition = {
     let hlodBuildOn = 0;
     let spheresOn = 0;
     let spheresAll = 0;
+    let mergedSum = 0;
+    let mergedInstSum = 0;
 
     // 折返點刻意不是 cell 邊界的倍數（×3.7），否則會停在邊界上反覆載入卸載。
     const legFrames = Math.max(Math.round((cellSize * 3.7 * 8) / speed), 2);
@@ -199,6 +201,8 @@ export const streamingScene: SceneDefinition = {
           gridSum += stats.cpuParts.grid;
           collectSum += stats.cpuParts.collect;
           spheresAll += stats.cpuParts.spheres;
+          mergedSum += stats.merged;
+          mergedInstSum += stats.mergedInstances;
           pendingPeak = Math.max(pendingPeak, stream.stats.pending);
         }
       },
@@ -220,6 +224,7 @@ export const streamingScene: SceneDefinition = {
           `[有格子時] 走訪 ${Math.round(testedOn / Math.max(spatialFrames, 1))} / ${Math.round(countOn / Math.max(spatialFrames, 1))}，` +
           `空間格 ${(gridOn / Math.max(spatialFrames, 1)).toFixed(3)}ms（其中 HLOD 分組 ${(hlodBuildOn / Math.max(spatialFrames, 1)).toFixed(3)}）` +
           ` + 走訪 ${(collectOn / Math.max(spatialFrames, 1)).toFixed(3)}ms（其中包圍球 ${(spheresOn / Math.max(spatialFrames, 1)).toFixed(3)}），` +
+          `合併 ${Math.round(mergedSum / Math.max(frames, 1))} 次涵蓋 ${Math.round(mergedInstSum / Math.max(frames, 1))} 個（槽位 ${rocks.stats.hlod.slots} / 可合併 ${rocks.stats.hlod.groups}），` +
           `載入 ${s.totalLoads} 卸載 ${s.totalUnloads} 常駐 ${s.resident} 佇列峰值 ${pendingPeak}`;
 
         // 內容沒進來的話所有數字都是零，而場景會顯得非常快。

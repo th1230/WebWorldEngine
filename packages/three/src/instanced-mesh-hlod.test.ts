@@ -311,3 +311,104 @@ describe('遠景合併', () => {
     expect(mesh.stats.merged).toBe(first);
   });
 });
+
+describe('遠景合併 — 串流的區塊路徑', () => {
+  /**
+   * 串流走的是區塊表而不是空間格，所以分組是另一條程式碼路徑。**同樣三個
+   * 失效方式全都看不出來**，所以這裡驗的還是同一組性質，只是內容改成整段
+   * 寫進來的。
+   */
+  const streamed = (cells: number, perCell: number, spread: number, options = {}): InstancedMesh => {
+    const mesh = new InstancedMesh({ lods: LODS, errors: ERRORS }, new MeshBasicMaterial(), cells * perCell, {
+      instancesPerCell: 64,
+      hlodBudgetMB: 256,
+      ...options,
+    });
+    const matrix = new Matrix4();
+    const side = Math.ceil(Math.sqrt(cells));
+    for (let c = 0; c < cells; c++) {
+      const block = new Float32Array(perCell * 16);
+      const cellX = ((c % side) / side - 0.5) * spread;
+      const cellZ = (Math.floor(c / side) / side - 0.5) * spread;
+      for (let i = 0; i < perCell; i++) {
+        matrix.makeTranslation(
+          cellX + ((i % 8) / 8) * (spread / side),
+          0,
+          cellZ + (Math.floor(i / 8) / 8) * (spread / side),
+        );
+        matrix.toArray(block, i * 16);
+      }
+      mesh.writeMatrices(c * perCell, block);
+    }
+    mesh.count = cells * perCell;
+    return mesh;
+  };
+
+  it('遠景一樣併成一次繪製，而且不必建空間格', () => {
+    const mesh = streamed(64, 64, 400);
+    renderFrom(mesh, 6000, WARM);
+
+    const stats = mesh.stats;
+    expect(stats.merged).toBeGreaterThan(0);
+    expect(stats.visible).toBeLessThan(stats.tested / 4);
+    // 這條路的重點：分割是現成的，所以一次格子都沒建。
+    expect(stats.cells).toBe(0);
+  });
+
+  it('合併過的不會再逐一送一次', () => {
+    const mesh = streamed(64, 64, 400);
+    renderFrom(mesh, 6000, WARM);
+
+    const stats = mesh.stats;
+    expect(stats.visible).toBeLessThanOrEqual(stats.tested);
+    expect(stats.merged).toBeLessThanOrEqual(stats.visible);
+  });
+
+  it('近到還有東西該用細階時就不合併', () => {
+    // 品質契約在這條路上一樣不能違反。掃距離 —— 單一距離測不出來。
+    const coarsest = LODS.length - 1;
+    let sawMixed = false;
+    for (const distance of [20, 40, 80, 120, 160, 240, 320]) {
+      const off = streamed(16, 64, 400, { hlod: false });
+      renderFrom(off, distance, WARM);
+      const finer = Array.from(off.stats.levels).reduce(
+        (sum, n, level) => (level < coarsest ? sum + n : sum),
+        0,
+      );
+      if (finer === 0) continue;
+
+      sawMixed = true;
+      const on = streamed(16, 64, 400);
+      renderFrom(on, distance, WARM);
+      expect(on.stats.levels[coarsest], `距離 ${distance}`).toBeLessThanOrEqual(
+        off.stats.levels[coarsest]! + on.stats.mergedInstances,
+      );
+    }
+    expect(sawMixed).toBe(true);
+  });
+
+  it('一路卸載之後合併仍然成立，而且沒有東西被畫兩次', () => {
+    // 分組的編號在卸載之後整個位移，而槽位記的是「我裝的是第幾組」。
+    //
+    // **這個測試看得到的只有「還在不在」與「有沒有畫兩次」。** 槽位指到
+    // 別人身上的那種錯（遠景畫成別的地方的東西）從 `stats` 看不出來 ——
+    // 數量、繪製次數全都正常。那一段只能靠程式碼本身撐著。
+    const mesh = streamed(64, 64, 400);
+    renderFrom(mesh, 6000, WARM);
+    expect(mesh.stats.merged).toBeGreaterThan(0);
+
+    for (let i = 0; i < 8; i++) {
+      const live = mesh.count;
+      mesh.moveInstances(64, 0, live - 64);
+      mesh.count = live - 64;
+      renderFrom(mesh, 6000, 6);
+      expect(mesh.stats.mergedInstances, `第 ${i} 次卸載`).toBeLessThanOrEqual(mesh.count);
+      expect(mesh.stats.visible).toBeLessThanOrEqual(mesh.stats.tested);
+      // 每個 instance 最多送一次。合併之後沒跳過原本那些的話會超過。
+      const drawn = Array.from(mesh.drawnInstances);
+      expect(new Set(drawn).size).toBe(drawn.length);
+    }
+    // 卸載掉八格之後仍然有東西在合併 —— 全垮掉的話這裡會是 0。
+    expect(mesh.stats.merged).toBeGreaterThan(0);
+  });
+});
