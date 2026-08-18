@@ -14,6 +14,7 @@ import {
   VectorKeyframeTrack,
 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { generateLodLevels } from './lod-generation.ts';
 import { bakeVertexAnimation, type BakedVertexAnimation } from './vertex-animation.ts';
 
 /**
@@ -173,5 +174,55 @@ describe('把骨骼動畫烘成頂點位置貼圖', () => {
     const { mesh } = makeRig();
     const baked = bakeVertexAnimation(mesh, new AnimationClip('x', 1, []), { frames: 1 });
     expect(baked.frameCount).toBe(2);
+  });
+});
+
+describe('烘好的幾何 + LOD', () => {
+  it('簡化之後每個頂點仍然帶著它原本的編號', async () => {
+    // 這是「VAT 能不能有 LOD」的關鍵：貼圖是用**原始頂點編號**索引的，
+    // 而簡化會丟掉頂點並重新編號。若 `wwVertexId` 沒有跟著走，每個頂點
+    // 都會讀到別人的位置 —— 模型當場爆開，而且不會報錯。
+    //
+    // 成立的原因是簡化器**只移除頂點、不生出新的**，而 `compact()` 會把
+    // 每一個 attribute 都帶過去。
+    const { mesh } = makeRig();
+    const baked = bakeVertexAnimation(mesh, new AnimationClip('x', 1, []), { frames: 4 });
+    const ids = baked.geometry.getAttribute('wwVertexId');
+    expect(ids).toBeDefined();
+
+    const levels = await generateLodLevels({
+      attributes: {
+        position: {
+          array: Float32Array.from(baked.geometry.getAttribute('position').array),
+          itemSize: 3,
+        },
+        wwVertexId: { array: Float32Array.from(ids.array), itemSize: 1 },
+      },
+      indices: Uint32Array.from(baked.geometry.getIndex()!.array),
+    });
+    expect(levels.length).toBeGreaterThan(0);
+
+    for (const level of levels) {
+      const kept = level.attributes['wwVertexId'];
+      expect(kept, '簡化後 wwVertexId 不見了').toBeDefined();
+      const count = level.attributes['position']!.array.length / 3;
+      // 每個頂點一個編號，而且都在合法範圍裡。
+      expect(kept!.array.length).toBe(count);
+      for (const id of kept!.array) {
+        expect(id).toBeGreaterThanOrEqual(0);
+        expect(id).toBeLessThan(baked.vertexCount);
+      }
+      // 編號不能重複 —— 重複代表兩個頂點被合併了，而它們的動畫可能不同。
+      expect(new Set(Array.from(kept!.array)).size).toBe(count);
+    }
+  });
+
+  it('烘完的幾何不再帶蒙皮的 attribute', () => {
+    // 留著沒有意義（位置已經烘進貼圖了），而且會觸發 InstancedMesh 的
+    // 「這個類別不會蒙皮」警告 —— 那句話在這條路上是錯的。
+    const { mesh } = makeRig();
+    const baked = bakeVertexAnimation(mesh, new AnimationClip('x', 1, []), { frames: 4 });
+    expect(baked.geometry.getAttribute('skinIndex')).toBeUndefined();
+    expect(baked.geometry.getAttribute('skinWeight')).toBeUndefined();
   });
 });

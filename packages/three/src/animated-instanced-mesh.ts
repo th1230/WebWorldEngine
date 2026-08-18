@@ -14,8 +14,21 @@ import type { Material, WebGLProgramParametersWithUniforms } from 'three';
  * 10 倍全部在逐 instance 那一側。
  *
  * 動畫烘進貼圖之後（`bakeVertexAnimation`），幾何就是靜態的了 —— 於是這個
- * 類別直接繼承 `InstancedMesh`，**批次、剔除、LOD 選階、遠景合併全部照舊**。
- * 這裡加的只有一段 vertex shader：從貼圖讀位置。
+ * 類別直接繼承 `InstancedMesh`，**批次、剔除、LOD 選階全部照舊**。這裡加的
+ * 只有一段 vertex shader：從貼圖讀位置。
+ *
+ * ## 實測（3,200 個，同一根 rig）
+ *
+ * | | GPU | 繪製 | 三角形 |
+ * | --- | ---: | ---: | ---: |
+ * | `THREE.SkinnedMesh` | 26.543 ms | 2,971 | 807,842 |
+ * | VAT（關 LOD，同樣的三角形數） | 4.993 ms | **2** | 803,762 |
+ * | VAT + LOD | **3.241 ms** | **2** | 94,562 |
+ *
+ * 兩個數字回答兩件事：**只算批次是省 81.2%**（同樣的幾何，只是不再一個一個
+ * 送），**整條路是省 87.8%**（LOD 也回來了）。
+ *
+ * 分開報是因為它們的來源不同 —— 混在一起的話「批次值多少」就永遠說不清楚。
  *
  * ## 每個 instance 各動各的
  *
@@ -54,10 +67,39 @@ export class AnimatedInstancedMesh extends InstancedMesh {
   ) {
     // 幾何是烘好的那份（多一個 `wwVertexId`），位置由 shader 從貼圖讀。
     //
-    // `autoLod` 預設關：簡化會重排並丟掉頂點，而貼圖是用**原本的頂點編號**
-    // 索引的 —— 兩者對不上的話每個頂點都會讀到別人的位置，模型當場爆開。
-    // 要 LOD 的話得連貼圖一起重烘，那是另一件事。
-    super(baked.geometry, material, count, { autoLod: false, ...options });
+    // ## LOD 是可以開的，而且不必重烘貼圖
+    //
+    // 一開始以為不行：簡化會重排並丟掉頂點，而貼圖是用**原本的頂點編號**
+    // 索引的。但簡化器**只會移除頂點，不會生出新的** —— 而
+    // `compact()` 會把每一個 attribute 都帶過去，包括 `wwVertexId`。
+    //
+    // 所以簡化後的每個頂點仍然帶著它原本的編號，同一張貼圖對每一階都成立。
+    // 實測：355 個頂點簡化到 100 個，100 個相異的 `wwVertexId`，一個都沒亂。
+    //
+    // ## 但只在**已經有索引**的幾何上開
+    //
+    // 沒有索引的話產生流程會先 `weld()`，而它的鍵值涵蓋每一個 attribute ——
+    // `wwVertexId` 逐頂點都不同，於是**一個都焊不起來**，簡化器找不到可以
+    // 塌陷的邊，回傳原樣。結果是「產生了 LOD 但每一階都跟第 0 階一樣」，
+    // 而那比沒有 LOD 更糟：統計上看起來 LOD 有在運作。
+    //
+    // 呼叫端當然可以自己覆寫。
+    // ## 遠景合併要關掉，而且理由是**正確性**不是相容性
+    //
+    // 合併是把一格的 instance 烘成一份幾何，然後當成**一個** instance 畫。
+    // 而這條路的動畫相位是逐 instance 的（從它的批次編號推出來）——合併之後
+    // 那一整格會共用一個相位，於是本來各動各的一群東西，會在合併的那一瞬間
+    // 突然同步。
+    //
+    // 那是看得見的跳動，而且沒有任何錯誤。要合併的話得連動畫一起烘進合併後
+    // 的幾何，那是另一件事。
+    //
+    // （順帶：`mergeInstances` 只處理 position/normal/uv/tangent 這四個固定
+    // 的 attribute，所以合併出來的幾何本來就會少掉 `wwVertexId`，然後被
+    // `BatchedMesh` 當場擋下。那是一個更早、更吵的失敗 —— 但即使修好它，
+    // 上面那個相位的問題還在。）
+    const indexed = baked.geometry.getIndex() !== null;
+    super(baked.geometry, material, count, { autoLod: indexed, hlod: false, ...options });
 
     const uniforms = {
       wwVat: { value: baked.texture },

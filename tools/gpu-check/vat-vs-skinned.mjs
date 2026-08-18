@@ -39,7 +39,8 @@ async function main() {
       const row = {};
       for (const [key, query] of [
         ['蒙皮', `?skinned=${count}&spread=120&orbit=90`],
-        ['VAT', `?vat=${count}&spread=120&orbit=90`],
+        ['VAT', `?vat=${count}&spread=120&orbit=90&vatLod=0`],
+        ['VAT+LOD', `?vat=${count}&spread=120&orbit=90`],
       ]) {
         const page = await browser.newPage();
         const errors = [];
@@ -68,13 +69,19 @@ async function main() {
       }
       const a = row['蒙皮'];
       const b = row['VAT'];
+      const c = row['VAT+LOD'];
       // 三角形數對不上就代表其中一邊沒畫對，那時比時間沒有意義。
       const sameGeometry = Math.abs(b.triangles - a.triangles) / Math.max(a.triangles, 1) < 0.02;
+      // 關掉 LOD 那一組是**同樣三角形數**的比較，回答「批次本身值多少」。
       console.log(
-        `        → GPU 省 ${((1 - b.ms / a.ms) * 100).toFixed(1)}%、繪製 ${a.calls} → ${b.calls}` +
+        `        → 只算批次（同樣三角形數）：省 ${((1 - b.ms / a.ms) * 100).toFixed(1)}%、繪製 ${a.calls} → ${b.calls}` +
           (sameGeometry ? '' : '   ⚠ 三角形數對不上，這個比較不成立'),
       );
-      if (b.vat) console.log(`        （貼圖 ${b.vat.textureMB} MB：${b.vat.vertices} 頂點 × ${b.vat.frames} 幀）`);
+      // 開 LOD 那一組是**整條路**的比較 —— 三角形數本來就會少，那是 LOD 的功勞。
+      console.log(
+        `           整條路（含 LOD）：省 ${((1 - c.ms / a.ms) * 100).toFixed(1)}%，三角形 ${a.triangles.toLocaleString('en-US')} → ${c.triangles.toLocaleString('en-US')}`,
+      );
+      if (c.vat) console.log(`          （貼圖 ${c.vat.textureMB} MB：${c.vat.vertices} 頂點 × ${c.vat.frames} 幀）`);
     }
   } finally {
     await browser.close();

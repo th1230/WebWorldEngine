@@ -66,6 +66,8 @@ const EXTEND_LOD = params.get('extendLod') === '1';
 const SKINNED = params.has('skinned') ? Number(params.get('skinned')) : 0;
 /** `?vat=N` 同樣的 rig，但烘成貼圖用 `WW.AnimatedInstancedMesh` 畫。 */
 const VAT = params.has('vat') ? Number(params.get('vat')) : 0;
+/** `?vatLod=0` 關掉 VAT 那條路的 LOD —— 要與蒙皮基準比同樣的三角形數時用。 */
+const VAT_LOD = params.get('vatLod') !== '0';
 
 /**
  * `?terrain=T` 換成一片地表，切成 T×T 塊。
@@ -285,7 +287,9 @@ const vatField = (() => {
   // 與 `?skinned=N` 用同一根 rig —— 兩條路比的必須是同一個東西。
   const rig = makeSkinnedRig(8);
   const baked = WW.bakeVertexAnimation(rig.mesh, rig.clip, { frames: 32 });
-  const mesh = new WW.AnimatedInstancedMesh(baked, rig.mesh.material as THREE.Material, VAT);
+  const mesh = new WW.AnimatedInstancedMesh(baked, rig.mesh.material as THREE.Material, VAT, {
+    ...(VAT_LOD ? {} : { autoLod: false }),
+  });
   const m = new THREE.Matrix4();
   let seed = 7;
   const r = (): number => {
