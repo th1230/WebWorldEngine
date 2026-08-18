@@ -2363,10 +2363,8 @@ localhost，headless + swiftshader  → requestAdapter 回傳 null
 讀成有效）、MultiMesh 沒呼叫 super（1.589 ms 像五倍勝利）、VAT 用了不存在的
 `batchId`（省 89.5%，比正確答案還好）。
 
-在那個紀錄之後盲寫一份 shader 然後說「應該可以」，是這一輪最不該做的事。
-
-> **這不是「還沒做」，是「這台機器上驗不了」。** 拿得到 WebGPU 的環境裡，
-> 這是一件有界的工作：同一條式子用 TSL 再寫一次，然後拿現有的畫面比對驗它。
+在那個紀錄之後盲寫一份 shader 然後說「應該可以」，會是這一輪最不該做的事 ——
+所以先把量測修對，再寫，再驗。三件事的順序不能換。
 
 順帶：`WW.MultiMesh` **兩條路都能用** —— 它只走 `BatchedMesh` 的公開介面，
 沒有任何 shader 注入。
