@@ -47,6 +47,40 @@ import { loadManifest, onClearAssetCache, pick, resolveAssetUrl } from './manife
  * （見 `specs/roadmap.md` 的範圍宣告）—— 行動裝置要的 ETC2/ASTC 沒有產生。
  */
 
+/**
+ * 這台裝置支不支援 BC 系列的壓縮貼圖。**探測一次就記住。**
+ *
+ * ## 為什麼要問
+ *
+ * 不問的話，不支援的裝置會走到「把壓縮資料交給 GPU，GPU 拒絕」——
+ * 而那條路上沒有人會丟例外：貼圖變黑或整個不見，材質看起來像沒接上，
+ * 而錯誤訊息（如果有的話）在 renderer 深處。
+ *
+ * 桌機以外幾乎都不支援 BC（手機要的是 ETC2/ASTC），而 cooker 目前只產 BC
+ * —— 那是**宣告過的範圍**，不是缺陷。但宣告過的範圍被踩到時要**大聲說**，
+ * 不能靜靜壞掉。
+ *
+ * ## 為什麼用 WebGL2 的擴充當判準
+ *
+ * 它問得到、同步、而且不需要拿到使用者的 renderer。WebGPU 那一側要非同步
+ * 查 adapter feature，而實務上桌機的 WebGPU 一定有 `texture-compression-bc`
+ * —— 會缺的是行動裝置，而那裡 WebGL2 的擴充同樣會缺。**這是代理指標，
+ * 不是保證**，所以訊息裡講的是「這台裝置看起來不支援」。
+ */
+let bcSupport: boolean | null = null;
+
+function supportsBlockCompression(): boolean {
+  if (bcSupport !== null) return bcSupport;
+  if (typeof document === "undefined") return (bcSupport = true);
+  const gl = document.createElement("canvas").getContext("webgl2");
+  if (gl === null) return (bcSupport = true);
+  bcSupport =
+    gl.getExtension("WEBGL_compressed_texture_s3tc") !== null &&
+    gl.getExtension("EXT_texture_compression_rgtc") !== null &&
+    gl.getExtension("EXT_texture_compression_bptc") !== null;
+  return bcSupport;
+}
+
 /** Vulkan 那一側的格式 → Three 的常數。 */
 const THREE_FORMAT = {
   'bc1-rgb': RGB_S3TC_DXT1_Format,
@@ -184,6 +218,17 @@ async function fetchTexture(
   const problems = validateTexture(decoded, textureId);
   if (problems.length > 0) {
     throw new Error(`WW.loadTexture: ${textureId} 的資料不一致\n  ${problems.join('\n  ')}`);
+  }
+
+  if (!supportsBlockCompression()) {
+    throw new Error(
+      [
+        "WW.loadTexture: 這台裝置看起來不支援 BC 壓縮貼圖（" + textureId + " 是 " + decoded.format + "）。",
+        "cook 目前只產 BC 系列，那是宣告過的範圍：桌機。行動裝置要的 ETC2/ASTC 還沒有產生。",
+        "在那之前，這些裝置上請走未壓縮的貼圖路徑（自己 load 一張 PNG 給 material）——",
+        "其餘的 LOD、剔除、串流完全不受影響。",
+      ].join("\n"),
+    );
   }
 
   const texture = new CompressedTexture(
