@@ -831,6 +831,37 @@ describe('InstancedMesh — 包圍球快取的增量更新', () => {
     }
   });
 
+  it('搬移之後包圍球跟著搬 —— 搬進來的東西不會用舊位置做剔除', () => {
+    // **這是「跟著搬」唯一測得到的方式：讓新舊位置的可見性相反。**
+    //
+    // 前半段放在相機**背後**，後半段放在**前方**。把後半段搬到前半段的
+    // 位置之後，那些編號的內容是「看得見的」；快取沒跟著搬的話它們還留著
+    // 背後那份包圍球，於是整批被剔掉 —— 畫面破洞，數字全正常。
+    const geometry = unitBox();
+    const mesh = new InstancedMesh(geometry, material(), 400, { dynamic: true, autoLod: false });
+    const m = new Matrix4();
+    for (let i = 0; i < 200; i++) mesh.setMatrixAt(i, m.makeTranslation((i % 20) * 3 - 30, 0, 400));
+    for (let i = 200; i < 400; i++) mesh.setMatrixAt(i, m.makeTranslation((i % 20) * 3 - 30, 0, -400));
+
+    const camera = makeCamera();
+    camera.position.set(0, 0, 0);
+    camera.lookAt(0, 0, -1);
+    draw(mesh, camera);
+    // 先確認前半真的看不見、後半真的看得見 —— 不然這個測試什麼都沒驗到。
+    const first = new Set(Array.from(mesh.drawnInstances));
+    expect([...first].some((id) => id < 200)).toBe(false);
+    expect([...first].some((id) => id >= 200)).toBe(true);
+
+    mesh.moveInstances(200, 0, 200);
+    mesh.count = 200;
+    draw(mesh, camera);
+
+    const drawn = new Set(Array.from(mesh.drawnInstances));
+    const lost = [...referenceVisible(mesh, camera, geometry)].filter((id) => !drawn.has(id));
+    expect(lost).toEqual([]);
+    expect(drawn.size).toBeGreaterThan(0);
+  });
+
   it('髒區間超過上限就整份重算，不是靜靜漏掉', () => {
     const geometry = unitBox();
     const mesh = new InstancedMesh(geometry, material(), 400, { dynamic: true, autoLod: false });

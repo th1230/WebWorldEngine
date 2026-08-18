@@ -834,14 +834,61 @@ export class InstancedMesh extends BatchedMesh {
     this.matricesArray.copyWithin(to * 16, from * 16, (from + length) * 16);
     this.internals._matricesTexture.needsUpdate = true;
     this.lastMatrixVersion = this._instanceMatrix.version;
+    // ## 包圍球跟著搬，不要重算
+    //
+    // 矩陣是一次 `copyWithin` 搬過去的 —— 那些 instance 的**內容完全沒變**，
+    // 只是換了編號。快取依編號排的時候（區塊路徑就是），同樣一次搬移就對了。
+    //
+    // 不搬而標髒的話，卸載一格要重算的是「洞後面的全部」，平均是半個世界。
+    // 實測 490,000 個常駐時那一項是 3.8 ms/幀，而真正變動的是零個。
+    if (this.shiftSpheres(from, to, length)) {
+      this.blocksMoved(from, to, length);
+      return;
+    }
+    this.blocksMoved(from, to, length);
+    this.invalidateInstances(to, to + length);
+  }
+
+  /** 區塊表與分組要跟著這次搬移更新。 */
+  private blocksMoved(from: number, to: number, length: number): void {
     if (this.blocks.move(from, to, length)) {
       this.hlodOps.push(HLOD_OP_DROP, to, from);
     } else {
       this.resetBlockHlod();
     }
-    // 只有目的地那一段的內容變了。來源那一段還留著同樣的位元組，但它會被
-    // 縮小的 count 排除在外，所以不必標。
-    this.invalidateInstances(to, to + length);
+  }
+
+  /**
+   * 把包圍球快取照同樣的方式搬過去。搬得動就回傳 true。
+   *
+   * 只有快取**依編號排**而且目前是乾淨的才搬得動 —— 依走訪順序排時「第幾號」
+   * 對不到「第幾格」，而髒區間跨在搬移邊界上時也對不回去。那兩種情況退回
+   * 標髒重算，永遠是正確的，只是慢。
+   */
+  private shiftSpheres(from: number, to: number, length: number): boolean {
+    if (this.spheresByOrder || this.spheresAllDirty) return false;
+    if (this.spheres.length < (from + length) * 4) return false;
+    const delta = from - to;
+    if (delta <= 0) return false;
+
+    // 髒區間也要跟著搬。整段落在搬移範圍裡的往前移，落在洞之前的不動，
+    // 跨在邊界上的對不回去 —— 那時只能整份重算。
+    for (let i = 0; i < this.dirtyCount; i++) {
+      const lo = this.dirtyLo[i]!;
+      const hi = this.dirtyHi[i]!;
+      if (hi <= to) continue;
+      if (lo >= from && hi <= from + length) {
+        this.dirtyLo[i] = lo - delta;
+        this.dirtyHi[i] = hi - delta;
+        continue;
+      }
+      return false;
+    }
+
+    this.spheres.copyWithin(to * 4, from * 4, (from + length) * 4);
+    this.grid.invalidate();
+    this.moveCount++;
+    return true;
   }
 
   override onBeforeRender(
@@ -1539,6 +1586,15 @@ export class InstancedMesh extends BatchedMesh {
       if (group === undefined || group.slot >= 0) continue;
 
       // 從上次停的地方往前找一個「這一幀沒畫到」的槽位。
+      //
+      // ## 只回收「這一幀沒畫到」的，不是「先來的留著」
+      //
+      // 試過只填空槽位、不回收 —— 池子裝不下工作集時，槽位會被暖機期那批
+      // 早到的組佔住，而它們早就不在視野裡了。實測 490,000 個常駐、槽位
+      // 1,365 / 7,238 組：合併次數從 248 掉到 **14**，而幀時間沒有變好。
+      //
+      // 所以還是回收。池子夠大時本來就沒人會被踢（穩態下全部裝得下），
+      // 這條規則只影響裝不下的情形。
       //
       // 走過一圈都沒有就是真的沒有 —— 那時停手，下一幀再說。這比掃全部
       // 找最舊的便宜得多，而且**任何沒畫到的槽位都是合法的回收對象**，
