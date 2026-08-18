@@ -25,7 +25,6 @@ import type {
 import { requestLodLevels } from './lod-service.ts';
 import { mergeInstances, mergedSize, placeholderLike } from './hlod.ts';
 import { assertBatchedMeshInternals, type BatchedMeshInternals } from './three-internals.ts';
-import { installMaterialDetail } from './material-detail.ts';
 
 /** 自動產生 LOD 的成本拆解。 */
 export interface LodStats {
@@ -120,20 +119,28 @@ export interface InstancedMeshOptions {
    * 預算剩多少。所以慢機器不會永遠停在未合併的狀態。
    */
   hlodBakeMs?: number;
-  /**
-   * 貼圖被縮到這個程度以下就不再取樣 normal 與 ORM。**預設關。**
-   *
-   * 值是「一個 fragment 跨過多少 UV」。直覺換算：`1 / 貼圖寬度` 大約是
-   * 「一個 fragment 對一個 texel」，所以 1024² 的貼圖給 `0.004` 大約是
-   * 縮到四分之一大小的時候。
-   *
-   * 實測這兩張貼圖在物件很大時佔 GPU 的 27%，只有幾個像素時只佔 8% ——
-   * 這筆錢只在貼圖真的看得到時才付得有價值。
-   *
-   * 但少取樣會讓表面變平，**那是改變畫面**，所以門檻由你訂，引擎不猜。
-   * 不設就完全不碰你的材質。
-   */
-  materialDetailUvPerPixel?: number;
+  // ## 這裡曾經有一個 `materialDetailUvPerPixel`，量完之後拿掉了
+  //
+  // 它的想法是：貼圖被縮到看不出細節時，就在 fragment shader 裡跳過 normal
+  // 與 ORM 的取樣。整套都做完了、畫質也在契約內 —— 但接上真的 GPU 計時之後
+  // （`pnpm gpu-check`）數字是這樣：
+  //
+  // | | 注入要多少 | 少取樣省多少 | **使用者拿到的** |
+  // | --- | ---: | ---: | ---: |
+  // | 近景 | +22.8% | −2.2% | **−20.2%** |
+  // | 遠景 | +24.7% | −7.1% | **−15.7%** |
+  //
+  // 兩種內容都是淨虧，而原因是前提整個反了：**貼圖被縮小時本來就是便宜的
+  // 那一邊**。縮小代表取到小的 mip，而小的 mip 一直在快取裡；真正貴的是被
+  // 放大的那些，也就是這個判準一定會保留的那些。於是它在貴的路徑上加一個
+  // 分支，去省便宜的工作。
+  //
+  // 分支本身要 16%（拆開量過：`textureGrad` 只佔 6%，其餘是動態分支），而
+  // 省下來的上限就是取樣佔的那一點。這個帳永遠不會正。
+  //
+  // 正確的做法不是逐 fragment 分支，而是**讓遠的東西走另一個 shader** ——
+  // 沒有分支就沒有那 16%。這個引擎裡遠景本來就已經被合併成獨立的繪製了
+  // （HLOD），所以那份材質可以直接簡化。那是下一步，不是這一個。
 }
 
 /**
@@ -344,7 +351,6 @@ export class InstancedMesh extends BatchedMesh {
   private slotCursor = 0;
   private readonly hlodEnabled: boolean;
   private readonly hlodBudgetBytes: number | null;
-  private readonly materialDetailUv: number | undefined;
   private readonly hlodSlotInstances: number | null;
   private readonly hlodBakeMs: number;
   private _mergedDraws = 0;
@@ -489,7 +495,6 @@ export class InstancedMesh extends BatchedMesh {
       options.hlodBudgetMB === undefined ? null : options.hlodBudgetMB * 1048576;
     this.hlodSlotInstances = options.hlodSlotInstances ?? null;
     this.hlodBakeMs = options.hlodBakeMs ?? HLOD_BAKE_BUDGET_MS;
-    this.materialDetailUv = options.materialDetailUvPerPixel;
     this._capacity = count;
     this.count = count;
     this._levelCounts = new Int32Array(prepared.length);
@@ -535,9 +540,6 @@ export class InstancedMesh extends BatchedMesh {
     }
     this.coarsestGeometry = prepared[prepared.length - 1]!;
     this.boundsRadius = maxRadius;
-    if (this.materialDetailUv !== undefined) {
-      installMaterialDetail(material, { uvPerPixel: this.materialDetailUv });
-    }
     this.gridRadius = this.boundsCenter.length() + maxRadius;
 
     // 全部 instance 一次配置好。`setMatrixAt` 要求 instance 已存在，而

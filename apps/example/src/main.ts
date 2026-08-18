@@ -52,10 +52,6 @@ const COUNT = Number(params.get('count') ?? 60_000);
 const NO_HLOD = params.get('hlod') === '0';
 const SINGLE_LOD = params.get('lodLevels') === '1';
 
-const MATERIAL_DETAIL_UV = params.has('materialDetail')
-  ? Number(params.get('materialDetail'))
-  : undefined;
-
 const HLOD_BUDGET_MB = params.has('hlodBudgetMB')
   ? Number(params.get('hlodBudgetMB'))
   : undefined;
@@ -171,15 +167,26 @@ const usedSource: WW.GeometrySource = SINGLE_LOD
       : source)
   : source;
 
+/**
+ * 原生那條路要用的幾何 —— **強化版拿到的那條鏈的第 0 階**，不是模組頂層的
+ * `lods`。
+ *
+ * `?cooked=1` 時強化版吃的是 cook 過的鏈，而 `lods` 是程序化的那一份。拿
+ * `lods[0]` 當對照的話，兩邊畫的是**不同的模型**：實測原生 300,002 個三角形、
+ * 強化版 2,188,802 個，而那個 7.3 倍會被讀成「強化版比較慢」。
+ *
+ * 這個坑 `verifyQuality` 那邊踩過一次、修好了，這裡是同一個坑的另一半。
+ */
+const nativeGeometry = Array.isArray((usedSource as { lods?: unknown[] }).lods)
+  ? (usedSource as unknown as { lods: THREE.BufferGeometry[] }).lods[0]!
+  : (usedSource as THREE.BufferGeometry);
+
 const rocks = enhanced
   ? new WW.InstancedMesh(usedSource, material, COUNT, {
       ...(NO_HLOD ? { hlod: false } : {}),
       ...(HLOD_BUDGET_MB === undefined ? {} : { hlodBudgetMB: HLOD_BUDGET_MB }),
-      ...(MATERIAL_DETAIL_UV === undefined
-        ? {}
-        : { materialDetailUvPerPixel: MATERIAL_DETAIL_UV }),
     })
-  : new THREE.InstancedMesh(lods[0]!, material, COUNT);
+  : new THREE.InstancedMesh(nativeGeometry, material, COUNT);
 // ─────────────────────────────────────────────────────────────────────
 
 const matrix = new THREE.Matrix4();
@@ -465,6 +472,63 @@ async function measureStreamDrift(ticks = 400): Promise<unknown> {
     after,
     cellsTravelled: after.loads - before.loads,
     stats: world.streaming!.stats,
+  };
+}
+
+/**
+ * 這一幀 GPU 花了多少毫秒。
+ *
+ * ## 為什麼需要它
+ *
+ * `pnpm bench` 有 GPU 計時，但它跑的是 benchmark app（WebGPU）。而
+ * 而 `onBeforeCompile` 注入的東西只在 WebGL 那條路上生效 —— **實作在這邊，
+ * 計時在那邊**，於是「開了省多少」量不到。`pnpm gpu-check` 用的就是這個。
+ *
+ * ## 為什麼不能用 performance.now 包住 render
+ *
+ * GPU 是非同步的：`render()` 送完就回來了，所以那樣量到的是 CPU。實測
+ * 開關兩邊都是 0.13 ms，而 GPU 那邊差很多。
+ *
+ * `EXT_disjoint_timer_query_webgl2` 是直接問 GPU 的。它會回報 `disjoint`
+ * ——那代表期間發生了會讓計時失真的事（換頻率、被搶佔），那種樣本要丟掉
+ * 而不是照用。
+ */
+async function measureGpuMs(t = 0, frames = 120): Promise<unknown> {
+  const gl = renderer.getContext() as WebGL2RenderingContext;
+  const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as {
+    TIME_ELAPSED_EXT: number;
+    GPU_DISJOINT_EXT: number;
+  } | null;
+  if (ext === null) return { skipped: '這個瀏覽器沒有 EXT_disjoint_timer_query_webgl2' };
+
+  const samples: number[] = [];
+  let disjoint = 0;
+  for (let i = 0; i < frames; i++) {
+    const query = gl.createQuery()!;
+    gl.beginQuery(ext.TIME_ELAPSED_EXT, query);
+    step(t);
+    gl.endQuery(ext.TIME_ELAPSED_EXT);
+    // 等這一顆查詢回來再送下一幀 —— 不等的話會累積幾百顆沒讀的查詢。
+    for (let spin = 0; spin < 1000; spin++) {
+      if (gl.getQueryParameter(query, gl.QUERY_RESULT_AVAILABLE) === true) break;
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    if (gl.getParameter(ext.GPU_DISJOINT_EXT) === true) {
+      disjoint++;
+    } else if (gl.getQueryParameter(query, gl.QUERY_RESULT_AVAILABLE) === true) {
+      samples.push(gl.getQueryParameter(query, gl.QUERY_RESULT) / 1e6);
+    }
+    gl.deleteQuery(query);
+  }
+
+  if (samples.length === 0) return { skipped: '一顆查詢都沒回來', disjoint };
+  samples.sort((a, b) => a - b);
+  return {
+    p50: +samples[Math.floor(samples.length / 2)]!.toFixed(3),
+    p95: +samples[Math.floor(samples.length * 0.95)]!.toFixed(3),
+    samples: samples.length,
+    // 丟掉的樣本數要報出來 —— 丟太多的話中位數也不可信。
+    disjoint,
   };
 }
 
@@ -778,6 +842,7 @@ Object.assign(window, {
     get totalFrames() {
       return totalFrames;
     },
+    measureGpuMs,
     verifyQuality,
     measureStreamDrift,
     measureLodBlocking,

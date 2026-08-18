@@ -207,19 +207,6 @@ const MODES = [
   { name: '有貼圖・近景', query: '?cooked=1&count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512&verify=1', missing: 0.3, ratio: 4 },
   // 門檻 1 = 一個 fragment 要跨過整張貼圖才會停 → **永遠都取樣**，也就是
   // 注入必須完全沒有作用。數字要跟上面那組一樣（0%）。
-  //
-  // 這一條擋的是「注入寫壞了但看起來還好」，而它抓到過三次：
-  //   1. 替換的是展開後的內容，但 onBeforeCompile 拿到的還沒展開 include
-  //   2. 參考影像共用同一個材質物件 → 材質層級的改動在比對裡是隱形的
-  //   3. 導數那兩行沒包在 #ifdef 裡 → 沒有那張貼圖的材質直接編譯失敗
-  //
-  // 三次的症狀都一樣：**三個設定量出來完全同分**。
-  {
-    name: '材質細節降級（門檻 1，應完全無作用）',
-    query: '?cooked=1&count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512&materialDetail=1&verify=1',
-    missing: 0.3,
-    ratio: 4,
-  },
 ];
 
 async function run(browser, url, mode) {
