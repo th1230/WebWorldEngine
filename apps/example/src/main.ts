@@ -51,6 +51,9 @@ const ERROR_PIXELS = params.has('errorPixels')
   ? Number(params.get('errorPixels'))
   : undefined;
 
+/** `?extendLod=1` 開啟引擎自己接更粗的階（套件裡預設關）。 */
+const EXTEND_LOD = params.get('extendLod') === '1';
+
 const NO_HLOD = params.get('hlod') === '0';
 const SINGLE_LOD = params.get('lodLevels') === '1';
 
@@ -210,6 +213,7 @@ const rocks = enhanced
       ...(NO_HLOD ? { hlod: false } : {}),
       ...(HLOD_BUDGET_MB === undefined ? {} : { hlodBudgetMB: HLOD_BUDGET_MB }),
       ...(ERROR_PIXELS === undefined ? {} : { errorPixels: ERROR_PIXELS }),
+      ...(EXTEND_LOD ? { extendLodChain: true } : {}),
     })
   : new THREE.InstancedMesh(nativeGeometry, material, COUNT);
 // ─────────────────────────────────────────────────────────────────────
