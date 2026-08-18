@@ -261,7 +261,7 @@ addEventListener('resize', () => {
   composer?.setSize(innerWidth, innerHeight);
 });
 
-renderer.setAnimationLoop((time) => {
+const animate = (time: number): void => {
   const t = time / 1000;
   const radius = ORBIT;
   camera.position.set(Math.cos(t * 0.12) * radius, 14 * SIZE, Math.sin(t * 0.12) * radius);
@@ -279,7 +279,8 @@ renderer.setAnimationLoop((time) => {
     windowFrames = 0;
     updateHud();
   }
-});
+};
+renderer.setAnimationLoop(animate);
 
 function updateHud(): void {
   const info = renderer.info.render;
@@ -469,6 +470,15 @@ async function verifyQuality(
   //
   // `stopStream` 只停止載入卸載，已經在的東西留著，所以凍住之後比的
   // 仍然是一個真實的串流畫面。
+  // ## 先把動畫迴圈停掉
+  //
+  // `capture()` 中間有 `await`（等 PNG 解碼），而動畫迴圈會在那段空檔裡
+  // 繼續跑 —— 它會把相機移到別的地方、重新烘遠景、改變可見格。於是
+  // 「同一個 t 量兩次」實際上量的是兩個不同的狀態。
+  //
+  // 實測：連續呼叫 `verifyQuality(8.0)` 三次，相機矩陣是
+  // 0.235566 / 0.275634 / 0.310396 —— 每一次都不一樣。
+  renderer.setAnimationLoop(null);
   if (useStream && world !== null) world.stopStream();
   // 串流時真正活著的是 `rocks.count`，不是建構時的容量。
   const live = rocks.count;
@@ -561,6 +571,8 @@ async function verifyQuality(
 
   return {
     instances: live,
+    // 量完把動畫迴圈接回去，不然頁面就停在那一幀。
+    ...(renderer.setAnimationLoop(animate), {}),
     streaming: useStream,
     ...forward,
     missing: backward.outsideContract,
