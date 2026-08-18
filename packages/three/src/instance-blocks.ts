@@ -54,6 +54,21 @@ export class InstanceBlocks {
     return this._count;
   }
 
+  /**
+   * 每一塊的包圍球跟著世界平移。給大世界的原點重定位用。
+   *
+   * **不能用 `invalidate()` 代替。** 那會把整張表丟掉，而重建它需要
+   * 重新掃過每一個 instance 的矩陣 —— 這張表存在的理由就是不必那樣做
+   * （見檔案開頭）。而球心只是平移，半徑完全不變，所以直接搬就對了。
+   */
+  translate(x: number, y: number, z: number): void {
+    for (let i = 0; i < this._count; i++) {
+      this.spheres[i * 4]! += x;
+      this.spheres[i * 4 + 1]! += y;
+      this.spheres[i * 4 + 2]! += z;
+    }
+  }
+
   /** 整張表作廢。有人用不是「整段寫入」的方式改過矩陣時呼叫。 */
   invalidate(): void {
     this._count = 0;

@@ -1,6 +1,10 @@
 import { Vector3, type Camera, type Object3D } from 'three';
 import { InstancedMesh } from './instanced-mesh.ts';
+import { OriginRebase, type OriginRebaseOptions } from './origin.ts';
 import { WorldStream, type StreamOptions } from './streaming.ts';
+
+/** 沒開重定位時 `origin` 回傳的常數。不配置新物件，也改不壞。 */
+const ORIGIN_ZERO = Object.freeze(new Vector3()) as Vector3;
 
 /**
  * 一個 scene 上的共用上下文。
@@ -23,9 +27,53 @@ export class World {
   readonly scene: Object3D;
 
   private _stream: WorldStream | null = null;
+  private _origin: OriginRebase | null = null;
 
   constructor(scene: Object3D) {
     this.scene = scene;
+  }
+
+  /**
+   * 開啟大世界的原點重定位。
+   *
+   * ## 為什麼是「開」的而不是預設
+   *
+   * 跨過門檻的那一幀要重寫**所有** instance 的矩陣。對一個只在原點附近
+   * 幾百單位的場景那是純粹的浪費 —— 而多數 Three.js 專案是那樣的。
+   *
+   * 反過來，做大世界的人不開它就一定會撞到精度塌陷，所以它也不能藏起來。
+   * 這是準則的「可以宣告的就要求宣告」：世界有多大只有你知道。
+   *
+   * 開了之後每幀呼叫 `updateOrigin(camera)`，並在 `onRebase` 裡把**自己的**
+   * 東西一起搬（光源、你自己的 mesh、物理剛體、任何存著世界座標的資料）。
+   */
+  rebaseOrigin(options: OriginRebaseOptions = {}): OriginRebase {
+    this._origin ??= new OriginRebase(options);
+    return this._origin;
+  }
+
+  /**
+   * 相機走遠了就把世界搬回它腳下。每幀呼叫，通常什麼都不做。
+   *
+   * 場景裡的 `WW.InstancedMesh` **會自己被找到**，不必註冊 —— 那是這個套件
+   * 的基本承諾（加進 scene 就運作）。要求逐一註冊的話，漏掉一個的症狀是
+   * 那一批東西整個跳走，而且是在走遠之後才發生。
+   */
+  updateOrigin(camera: Camera): boolean {
+    const rebase = this._origin;
+    if (rebase === null) return false;
+    // 走訪只在真的要搬的那一幀做。平常這裡就只是一次長度平方的比較。
+    if (camera.position.lengthSq() < rebase.thresholdSq) return false;
+
+    this.scene.traverse((object) => {
+      if (object instanceof InstancedMesh) rebase.add(object);
+    });
+    return rebase.update(camera);
+  }
+
+  /** 目前的原點在真正的世界座標裡的哪裡。沒開重定位就是零。 */
+  get origin(): Vector3 {
+    return this._origin?.origin ?? ORIGIN_ZERO;
   }
 
   /**
@@ -54,6 +102,9 @@ export class World {
     }
 
     const stream = new WorldStream(options);
+    // 串流寫進來的矩陣要先減掉原點才轉成 float32 —— 見 `place` 那一段。
+    // 用 getter 而不是傳值：原點會在重定位時改變，而串流是一直活著的。
+    stream.useOrigin(() => this.origin);
     this._stream = stream;
 
     const previous = this.scene.onBeforeRender.bind(this.scene);

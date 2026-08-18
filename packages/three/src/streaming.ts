@@ -53,6 +53,9 @@ import type { InstancedMesh } from './instanced-mesh.ts';
  */
 export type PlaceFn = (mesh: InstancedMesh, matrix: Matrix4) => void;
 
+/** 沒開原點重定位時用的常數。 */
+const ZERO = { x: 0, y: 0, z: 0 };
+
 export interface StreamStats {
   /** 目前常駐的 cell 數。 */
   resident: number;
@@ -169,6 +172,18 @@ export class WorldStream {
    */
   private baselineMs = Infinity;
 
+  /**
+   * 目前的原點在世界座標的哪裡。由 `World` 提供，預設是零。
+   *
+   * 見 `place` 裡那一段：這是**大世界精度**的另外一半。
+   */
+  private origin: () => { x: number; y: number; z: number } = () => ZERO;
+
+  /** @internal `World` 開串流時把原點接進來。 */
+  useOrigin(origin: () => { x: number; y: number; z: number }): void {
+    this.origin = origin;
+  }
+
   constructor(options: StreamOptions) {
     this.load = options.load;
     const unloadRadius = options.unloadRadius ?? options.radius * 1.25;
@@ -259,10 +274,27 @@ export class WorldStream {
    */
   private async loadCell(cx: number, cz: number): Promise<CellBlocks[]> {
     const staged = new Map<InstancedMesh, number[]>();
+    // ## 這裡是大世界精度的另外一半
+    //
+    // 原點重定位修的是「相機與世界都很大時，兩者相減掉精度」——也就是畫面
+    // 在抖。但**內容寫進來的那一刻**還有另一次損失：使用者用世界座標描述
+    // 這一格有什麼（那是唯一自然的寫法），而矩陣最後存進 `Float32Array`。
+    // 在 200,000 那裡，float32 的間距是 0.0156 —— 公分級的擺放全毀。
+    //
+    // 而這裡正好是最後一個還是 double 的地方：`buffer` 是普通的 JS 陣列。
+    // 在轉成 float32 之前先減掉原點，存進去的就是一個小數字。
+    //
+    // 於是使用者那一側完全不必知道原點的存在：他照世界座標寫，引擎負責
+    // 讓它存得下。
     const place: PlaceFn = (mesh, matrix) => {
       let buffer = staged.get(mesh);
       if (buffer === undefined) staged.set(mesh, (buffer = []));
-      matrix.toArray(buffer, buffer.length);
+      const at = buffer.length;
+      matrix.toArray(buffer, at);
+      const origin = this.origin();
+      buffer[at + 12]! -= origin.x;
+      buffer[at + 13]! -= origin.y;
+      buffer[at + 14]! -= origin.z;
     };
 
     await this.load(cx, cz, place);

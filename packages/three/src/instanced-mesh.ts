@@ -1030,6 +1030,59 @@ export class InstancedMesh extends BatchedMesh {
   }
 
   /**
+   * 把所有 instance 的位置平移 `offset`。給大世界的原點重定位用。
+   *
+   * ## 為什麼只動平移那三個數
+   *
+   * 矩陣的旋轉與縮放（前 12 個元素）與原點無關，重寫它們只是白花時間，
+   * 而且**每一次浮點來回都會掉一點精度** —— 而這整件事就是為了精度。
+   *
+   * 4×4 的欄主序裡平移在 12/13/14。
+   *
+   * ## 為什麼快取全部要作廢
+   *
+   * 包圍球是**世界座標**的，空間格的格子邊界也是。平移之後兩者都過期，
+   * 而過期的包圍球症狀是**整片東西被剔掉**（那顆球還留在舊位置，落在
+   * 視錐外）。這是這個專案犯過的錯裡最貴的一種：畫面少一塊，而幀時間
+   * 反而變好看。
+   *
+   * 遠景合併烘的是相對格子中心的座標，中心存在 `hlodGroups` 裡，所以
+   * 那一份也要跟著搬 —— 漏掉的話合併好的那幾格會留在原地。
+   */
+  translateInstances(offset: Vector3): void {
+    const { x, y, z } = offset;
+    if (x === 0 && y === 0 && z === 0) return;
+
+    // **整個矩陣陣列一起搬，不是只搬 `[0, capacity)`。**
+    //
+    // 遠景合併的槽位是用 `addInstance` 配出來的，編號落在使用者的容量之後。
+    // 只搬前半段的話，合併好的那幾格會留在原地 —— 而那是遠處，最不容易
+    // 被看到的地方。
+    //
+    // 一起搬還有一個好處：槽位的矩陣就是「平移到那一格的中心」，跟著搬
+    // 之後自然與下面搬過的中心一致，不必再回頭改一次。
+    const m = this.matricesArray;
+    for (let at = 0; at + 15 < m.length; at += 16) {
+      m[at + 12]! += x;
+      m[at + 13]! += y;
+      m[at + 14]! += z;
+    }
+    this.internals._matricesTexture.needsUpdate = true;
+    this._instanceMatrix.needsUpdate = true;
+
+    // 分組記的中心也是世界座標，下一輪烘焙與選階都要用它。
+    for (const group of this.hlodGroups ?? []) {
+      group.centerX += x;
+      group.centerY += y;
+      group.centerZ += z;
+    }
+
+    // 區塊表的包圍球也是世界座標的。
+    this.blocks.translate(x, y, z);
+    this.invalidateInstances();
+  }
+
+  /**
    * 把 `[from, from + length)` 的矩陣搬到 `to`。範圍不可重疊。
    *
    * 串流卸載一個 cell 之後會留下一個洞。用遮罩跳過那些槽位要在每個

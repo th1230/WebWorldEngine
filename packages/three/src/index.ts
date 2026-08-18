@@ -26,6 +26,12 @@ export {
   type BakeOptions,
 } from './vertex-animation.ts';
 export { worldFor, World, type WorldStats } from './world.ts';
+export {
+  OriginRebase,
+  translateObject,
+  type OriginRebaseOptions,
+  type Rebasable,
+} from './origin.ts';
 export { isLodChain, pixelsPerUnit, selectLevel, type GeometrySource, type LodChain } from './lod-chain.ts';
 export { sphericalLodErrors } from './spherical-error.ts';
 export { load } from './load.ts';
