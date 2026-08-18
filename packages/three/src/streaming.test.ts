@@ -273,3 +273,79 @@ describe('World.stream', () => {
     expect(stats.failedLoads).toBe(0);
   });
 });
+
+describe('串流 — 載入很慢的時候', () => {
+  /**
+   * 網速是不可控的，但**慢下來時的行為是套件的決定**。
+   *
+   * 會出事的三種形態，而且三種在快網路上都看不出來：
+   *
+   * - 佇列無限長：相機一直走，每一格都排進去，記憶體與延遲一起爆
+   * - 卡死：某一格永遠不回來，之後整條線就停在那裡
+   * - 悶著：追不上了，而開發者從 `stats` 看不出來
+   */
+  const slowWorld = (): {
+    scene: Scene;
+    cam: PerspectiveCamera;
+    world: World;
+    resolve: () => void;
+    started: () => number;
+  } => {
+    const scene = new Scene();
+    const rocks = mesh();
+    scene.add(rocks);
+    const world = worldFor(scene);
+    const waiting: Array<() => void> = [];
+    const m = new Matrix4();
+    world.stream({
+      cellSize: 100,
+      radius: 150,
+      load: async (cx, cz, place) => {
+        // 一直不回來，直到測試放行 —— 那就是「網路很慢」。
+        await new Promise<void>((r) => waiting.push(r));
+        place(rocks, m.makeTranslation(cx, cz, 0));
+      },
+    });
+    return {
+      scene,
+      cam: camera(),
+      world,
+      resolve: () => {
+        for (const r of waiting.splice(0)) r();
+      },
+      started: () => waiting.length,
+    };
+  };
+
+  it('同時在飛的數量有上限，佇列不會無限長', () => {
+    const w = slowWorld();
+    // 一路往前走，每一步都跨好幾格 —— 快網路下這會是幾十次載入。
+    for (let step = 0; step < 40; step++) tick(w.scene, w.cam, step * 120, 0);
+
+    const stats = w.world.streaming!.stats;
+    // 真正在飛的必須有上限（預設 16），不是「相機走過幾格就幾個」。
+    expect(stats.loading).toBeLessThanOrEqual(16);
+    expect(w.started()).toBeLessThanOrEqual(16);
+    // 而排隊的要**看得到**。悶著追不上是最糟的一種 —— 開發者無從得知。
+    expect(stats.pending).toBeGreaterThan(0);
+  });
+
+  it('慢的那幾格回來之後接得上，不會卡死', () => {
+    const w = slowWorld();
+    for (let step = 0; step < 6; step++) tick(w.scene, w.cam, step * 120, 0);
+    const before = w.world.streaming!.stats;
+    expect(before.totalLoads).toBe(0);
+    expect(before.loading).toBeGreaterThan(0);
+
+    w.resolve();
+    return Promise.resolve().then(async () => {
+      // 讓 microtask 跑完，再推一幀讓串流器處理完成的那幾格。
+      await Promise.resolve();
+      await Promise.resolve();
+      tick(w.scene, w.cam, 5 * 120, 0);
+      const after = w.world.streaming!.stats;
+      expect(after.totalLoads).toBeGreaterThan(0);
+      expect(after.failedLoads).toBe(0);
+    });
+  });
+});
