@@ -1,5 +1,5 @@
 import * as WW from '@webworld/three';
-import { makeSkinnedField } from './skinned.ts';
+import { makeSkinnedField, makeSkinnedRig } from './skinned.ts';
 import { makeTerrain } from './terrain.ts';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -64,6 +64,8 @@ const EXTEND_LOD = params.get('extendLod') === '1';
  * 才知道有沒有值得做的東西、以及上限在哪。
  */
 const SKINNED = params.has('skinned') ? Number(params.get('skinned')) : 0;
+/** `?vat=N` 同樣的 rig，但烘成貼圖用 `WW.AnimatedInstancedMesh` 畫。 */
+const VAT = params.has('vat') ? Number(params.get('vat')) : 0;
 
 /**
  * `?terrain=T` 換成一片地表，切成 T×T 塊。
@@ -278,6 +280,27 @@ if (skinnedField !== null) {
   scene.add(skinnedField.root);
 }
 
+const vatField = (() => {
+  if (VAT <= 0) return null;
+  // 與 `?skinned=N` 用同一根 rig —— 兩條路比的必須是同一個東西。
+  const rig = makeSkinnedRig(8);
+  const baked = WW.bakeVertexAnimation(rig.mesh, rig.clip, { frames: 32 });
+  const mesh = new WW.AnimatedInstancedMesh(baked, rig.mesh.material as THREE.Material, VAT);
+  const m = new THREE.Matrix4();
+  let seed = 7;
+  const r = (): number => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  for (let i = 0; i < VAT; i++) {
+    m.makeTranslation((r() - 0.5) * SPREAD, 0, (r() - 0.5) * SPREAD);
+    mesh.setMatrixAt(i, m);
+  }
+  rocks.visible = false;
+  scene.add(mesh);
+  return { mesh, baked };
+})();
+
 const terrain = TERRAIN > 0 ? makeTerrain(2400, TERRAIN, TERRAIN_SEG, enhanced, TERRAIN_MULTI) : null;
 if (terrain !== null) {
   rocks.visible = false;
@@ -479,6 +502,7 @@ function step(t = 0): void {
   }
   // 骨頭要真的動 —— 姿勢不變的話量到的不是動畫的成本。
   skinnedField?.update(t);
+  if (vatField !== null) vatField.mesh.time = t;
   renderFrame();
 }
 
@@ -1020,6 +1044,15 @@ Object.assign(window, {
     measureGpuMs,
     measureFillBound,
     terrain: terrain === null ? null : { tiles: terrain.tiles, triangles: terrain.triangles },
+    vat:
+      vatField === null
+        ? null
+        : {
+            count: VAT,
+            frames: vatField.baked.frameCount,
+            vertices: vatField.baked.vertexCount,
+            textureMB: +((vatField.baked.vertexCount * vatField.baked.frameCount * 16) / 1048576).toFixed(2),
+          },
     skinned: skinnedField === null
       ? null
       : { count: SKINNED, triangles: skinnedField.triangles, bones: skinnedField.bones },

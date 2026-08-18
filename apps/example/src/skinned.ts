@@ -23,6 +23,17 @@ import * as THREE from 'three';
  * 「先造內容再量」會讓內容決定結論，所以這裡刻意只回答「怎麼成長」這一個問題。
  */
 
+/**
+ * 一根蒙皮圓柱加一段擺動的動畫，用來烘 VAT。
+ *
+ * 與 `makeSkinnedField` 用**同一根 rig**，所以兩條路比的是同一個東西 ——
+ * 一邊逐 instance 送骨骼矩陣，一邊當成靜態幾何批次畫。
+ */
+export interface SkinnedRig {
+  mesh: THREE.SkinnedMesh;
+  clip: THREE.AnimationClip;
+}
+
 export interface SkinnedField {
   root: THREE.Group;
   /** 每一幀要呼叫，讓骨頭動起來 —— 不動的話量到的不是動畫的成本。 */
@@ -37,6 +48,73 @@ export interface SkinnedField {
  * 每一份都是獨立的 `SkinnedMesh` + 獨立的 `Skeleton` —— 那正是今天用
  * Three.js 做一群會動的東西時的樣子，也就是要被量的基準。
  */
+export function makeSkinnedRig(boneCount = 8): SkinnedRig {
+  const { geometry, bones, height, segment } = buildRig(boneCount);
+  const mesh = new THREE.SkinnedMesh(
+    geometry,
+    new THREE.MeshStandardMaterial({ color: 0x9aa7b5, roughness: 0.7 }),
+  );
+  mesh.add(bones[0]!);
+  mesh.bind(new THREE.Skeleton(bones));
+  mesh.updateMatrixWorld(true);
+  void height;
+  void segment;
+
+  // 每根骨頭一條四元數軌道，擺動一個週期。與 `update()` 裡的動作同形。
+  const tracks: THREE.KeyframeTrack[] = [];
+  const steps = 9;
+  for (let b = 1; b < bones.length; b++) {
+    const times: number[] = [];
+    const values: number[] = [];
+    const q = new THREE.Quaternion();
+    for (let k = 0; k < steps; k++) {
+      const t = k / (steps - 1);
+      times.push(t * 2);
+      q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.sin(t * Math.PI * 2 + b * 0.4) * 0.18);
+      values.push(q.x, q.y, q.z, q.w);
+    }
+    tracks.push(new THREE.QuaternionKeyframeTrack(`${bones[b]!.name}.quaternion`, times, values));
+  }
+
+  return { mesh, clip: new THREE.AnimationClip('sway', 2, tracks) };
+}
+
+/** 幾何 + 一條骨鏈。兩條路共用，所以比的是同一個 rig。 */
+function buildRig(boneCount: number): {
+  geometry: THREE.BufferGeometry;
+  bones: THREE.Bone[];
+  height: number;
+  segment: number;
+} {
+  const height = 4;
+  const geometry = new THREE.CylinderGeometry(0.5, 0.5, height, 8, boneCount * 2);
+  const position = geometry.getAttribute('position');
+  const skinIndices: number[] = [];
+  const skinWeights: number[] = [];
+  const segment = height / boneCount;
+  for (let i = 0; i < position.count; i++) {
+    const y = position.getY(i) + height / 2;
+    const bone = Math.min(Math.floor(y / segment), boneCount - 1);
+    const blend = (y % segment) / segment;
+    skinIndices.push(bone, Math.min(bone + 1, boneCount - 1), 0, 0);
+    skinWeights.push(1 - blend, blend, 0, 0);
+  }
+  geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+  geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+
+  const bones: THREE.Bone[] = [];
+  let parent: THREE.Bone | null = null;
+  for (let b = 0; b < boneCount; b++) {
+    const bone = new THREE.Bone();
+    bone.name = `bone${b}`;
+    bone.position.y = b === 0 ? -height / 2 : segment;
+    if (parent !== null) parent.add(bone);
+    bones.push(bone);
+    parent = bone;
+  }
+  return { geometry, bones, height, segment };
+}
+
 export function makeSkinnedField(count: number, spread: number, boneCount = 8): SkinnedField {
   const height = 4;
   const geometry = new THREE.CylinderGeometry(0.5, 0.5, height, 8, boneCount * 2);

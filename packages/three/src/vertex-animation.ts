@@ -1,5 +1,5 @@
-import { DataTexture, FloatType, RGBAFormat, NearestFilter, Vector3 } from 'three';
-import type { AnimationClip, SkinnedMesh } from 'three';
+import { BufferAttribute, DataTexture, FloatType, NearestFilter, RGBAFormat, Vector3 } from 'three';
+import type { AnimationClip, BufferGeometry, SkinnedMesh } from 'three';
 
 /**
  * 把一段骨骼動畫烘成一張**頂點位置貼圖**（VAT）。
@@ -40,6 +40,18 @@ import type { AnimationClip, SkinnedMesh } from 'three';
  */
 
 export interface BakedVertexAnimation {
+  /**
+   * 可以直接拿去畫的幾何：原本的 attribute，加上一個 `wwVertexId`。
+   *
+   * ## 為什麼需要那個 attribute 而不是用 `gl_VertexID`
+   *
+   * 這份幾何最後會被塞進 `BatchedMesh` 的共用頂點緩衝裡，而 `gl_VertexID`
+   * 在那裡是**整個批次**的索引，不是這份幾何自己的第幾個頂點。用它去查貼圖
+   * 會查到別的模型的位置 —— 而症狀是模型爆開成一團亂線，不是報錯。
+   *
+   * 所以編號在烘的時候就寫進 attribute，跟著幾何一起走。
+   */
+  geometry: BufferGeometry;
   /**
    * 位置貼圖。寬 = 頂點數，高 = 幀數，`RGBA32F`。
    *
@@ -116,6 +128,17 @@ export function bakeVertexAnimation(
     }
   }
 
+  // 幾何本身不改（位置由 shader 從貼圖讀），只多掛一個頂點編號。
+  const geometry = mesh.geometry.clone();
+  const ids = new Float32Array(vertexCount);
+  for (let v = 0; v < vertexCount; v++) ids[v] = v;
+  geometry.setAttribute('wwVertexId', new BufferAttribute(ids, 1));
+  // 蒙皮的 attribute 留著沒有意義 —— 位置已經烘進貼圖了，而它們每個頂點
+  // 佔 12 bytes。更重要的是：留著會讓 `InstancedMesh` 警告「這個類別不會
+  // 蒙皮」，而那句話在這裡是錯的（這條路本來就不靠蒙皮）。
+  geometry.deleteAttribute('skinIndex');
+  geometry.deleteAttribute('skinWeight');
+
   const texture = new DataTexture(data, vertexCount, frames, RGBAFormat, FloatType);
   // **不能用線性過濾。** 貼圖的一個維度是頂點編號，相鄰的兩個頂點在空間上
   // 沒有任何關係 —— 內插它們會把兩個不相干的頂點混在一起，而症狀是模型上
@@ -125,7 +148,7 @@ export function bakeVertexAnimation(
   texture.generateMipmaps = false;
   texture.needsUpdate = true;
 
-  return { texture, frameCount: frames, duration, vertexCount };
+  return { geometry, texture, frameCount: frames, duration, vertexCount };
 }
 
 /**

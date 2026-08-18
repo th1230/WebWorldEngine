@@ -17,6 +17,10 @@
 export { InstancedMesh, type InstancedMeshOptions } from './instanced-mesh.ts';
 export { MultiMesh, type MultiMeshOptions } from './multi-mesh.ts';
 export {
+  AnimatedInstancedMesh,
+  type AnimatedInstancedMeshOptions,
+} from './animated-instanced-mesh.ts';
+export {
   bakeVertexAnimation,
   type BakedVertexAnimation,
   type BakeOptions,
