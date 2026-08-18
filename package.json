@@ -28,7 +28,8 @@
     "cook:real": "tsx packages/cook/src/cli.ts assets/source/props --out apps/benchmark/public/cooked-real",
     "site-check": "node tools/site-check/verify.mjs",
     "cook:sponza": "tsx packages/cook/src/cli.ts assets/source/sponza --out apps/benchmark/public/cooked-sponza",
-    "bench:capacity": "tsx tools/benchmark-runner/src/cli.ts run --scene ab-ww-real --repeat 1"
+    "bench:capacity": "tsx tools/benchmark-runner/src/cli.ts run --scene ab-ww-real --repeat 1",
+    "visual-check": "node tools/visual-check/verify.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

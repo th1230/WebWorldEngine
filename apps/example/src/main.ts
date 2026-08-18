@@ -419,6 +419,17 @@ async function measureStreamDrift(ticks = 400): Promise<unknown> {
 async function verifyQuality(t = 2, radiusPixels = 2, threshold = 8): Promise<unknown> {
   if (!enhanced) return { skipped: '這個模式本身就是原生版，沒有東西可以比' };
 
+  // ## 串流的內容要先凍住
+  //
+  // 兩張圖之間如果還有 cell 在載入卸載，差的就不是畫質而是內容 —— 那種
+  // 比對永遠會紅，然後整個檢查就會被當成雜訊忽略。
+  //
+  // `stopStream` 只停止載入卸載，已經在的東西留著，所以凍住之後比的
+  // 仍然是一個真實的串流畫面。
+  if (useStream && world !== null) world.stopStream();
+  // 串流時真正活著的是 `rocks.count`，不是建構時的容量。
+  const live = rocks.count;
+
   const width = 640;
   const height = 360;
   renderer.setSize(width, height, false);
@@ -427,6 +438,17 @@ async function verifyQuality(t = 2, radiusPixels = 2, threshold = 8): Promise<un
   composer?.setSize(width, height);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
+
+  // ## 擷取之前要先讓合併穩定下來
+  //
+  // 上面把畫布改成 640×360，而每像素的投影比例變了就會改變「哪幾格夠遠到
+  // 可以合併」—— 於是縮放完的第一幀正好落在重新烘焙的中間。
+  //
+  // 那不是畫質問題，但它會讓這個檢查的數字每次都不一樣（實測鄰域外像素在
+  // 959 與 1990 之間跳，梯度比 8.7 對 4.2）。一個會晃兩倍的檢查沒有人擋得住
+  // 任何東西。
+  const SETTLE_FRAMES = 60;
+  for (let i = 0; i < SETTLE_FRAMES; i++) step(t);
 
   const capture = (): Promise<ImageData> => {
     step(t);
@@ -449,10 +471,11 @@ async function verifyQuality(t = 2, radiusPixels = 2, threshold = 8): Promise<un
   const enhancedPixels = await capture();
 
   // 參考：原生 InstancedMesh，最細的幾何，不剔除、不選階
-  const reference = new THREE.InstancedMesh(lods[0]!, material, COUNT);
+  const reference = new THREE.InstancedMesh(lods[0]!, material, Math.max(live, 1));
+  reference.count = live;
   reference.castShadow = rocks.castShadow;
   const copy = new THREE.Matrix4();
-  for (let i = 0; i < COUNT; i++) {
+  for (let i = 0; i < live; i++) {
     (rocks as WW.InstancedMesh).getMatrixAt(i, copy);
     reference.setMatrixAt(i, copy);
   }
@@ -463,7 +486,11 @@ async function verifyQuality(t = 2, radiusPixels = 2, threshold = 8): Promise<un
   reference.dispose();
   rocks.visible = true;
 
-  return compare(enhancedPixels.data, nativePixels.data, width, height, radiusPixels, threshold);
+  return {
+    instances: live,
+    streaming: useStream,
+    ...(compare(enhancedPixels.data, nativePixels.data, width, height, radiusPixels, threshold) as object),
+  };
 }
 
 function compare(
