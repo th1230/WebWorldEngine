@@ -72,11 +72,15 @@ export function makeTerrain(
   tiles: number,
   segments: number,
   enhanced: boolean,
+  /** 用 `WW.MultiMesh` 把所有塊裝進**同一個批次**，而不是一塊一個物件。 */
+  multi = false,
 ): Terrain {
   const root = new THREE.Group();
   const material = new THREE.MeshStandardMaterial({ color: 0x6f7a63, roughness: 0.95 });
   const tileSize = size / tiles;
   let triangles = 0;
+  const pieces: THREE.BufferGeometry[] = [];
+  const offsets: [number, number][] = [];
 
   for (let tz = 0; tz < tiles; tz++) {
     for (let tx = 0; tx < tiles; tx++) {
@@ -97,6 +101,13 @@ export function makeTerrain(
 
       // 每一塊都是一份**相異**的幾何，所以只能一塊一個物件 —— 這正是
       // `InstancedMesh(geometry, material, count)` 的形狀接不住的地方。
+      if (multi) {
+        // 全部收起來，最後一次交給 MultiMesh —— 那才是「一個批次」。
+        pieces.push(geometry);
+        offsets.push([originX + tileSize / 2, originZ + tileSize / 2]);
+        continue;
+      }
+
       const mesh = enhanced
         ? new WW.InstancedMesh(geometry, material, 1)
         : new THREE.Mesh(geometry, material);
@@ -110,6 +121,13 @@ export function makeTerrain(
       }
       root.add(mesh);
     }
+  }
+
+  if (multi) {
+    const mesh = new WW.MultiMesh(pieces, material);
+    const m = new THREE.Matrix4();
+    for (const [i, [x, z]] of offsets.entries()) mesh.setPieceMatrixAt(i, m.makeTranslation(x, 0, z));
+    root.add(mesh);
   }
 
   return { root, triangles, tiles: tiles * tiles };

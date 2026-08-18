@@ -74,6 +74,8 @@ const SKINNED = params.has('skinned') ? Number(params.get('skinned')) : 0;
 const TERRAIN = params.has('terrain') ? Number(params.get('terrain')) : 0;
 /** 每一塊切幾格。總三角形數 = terrain² × seg² × 2，兩種擺法要固定它才可比。 */
 const TERRAIN_SEG = Number(params.get('terrainSeg') ?? 64);
+/** `?terrainMulti=1` 把所有塊裝進同一個 `WW.MultiMesh`，而不是一塊一個物件。 */
+const TERRAIN_MULTI = params.get('terrainMulti') === '1';
 
 const NO_HLOD = params.get('hlod') === '0';
 const SINGLE_LOD = params.get('lodLevels') === '1';
@@ -276,7 +278,7 @@ if (skinnedField !== null) {
   scene.add(skinnedField.root);
 }
 
-const terrain = TERRAIN > 0 ? makeTerrain(2400, TERRAIN, TERRAIN_SEG, enhanced) : null;
+const terrain = TERRAIN > 0 ? makeTerrain(2400, TERRAIN, TERRAIN_SEG, enhanced, TERRAIN_MULTI) : null;
 if (terrain !== null) {
   rocks.visible = false;
   scene.add(terrain.root);

@@ -15,6 +15,7 @@
  * 沒有初始化、沒有 `update()`。契約見 specs/api.md。
  */
 export { InstancedMesh, type InstancedMeshOptions } from './instanced-mesh.ts';
+export { MultiMesh, type MultiMeshOptions } from './multi-mesh.ts';
 export { worldFor, World, type WorldStats } from './world.ts';
 export { isLodChain, pixelsPerUnit, selectLevel, type GeometrySource, type LodChain } from './lod-chain.ts';
 export { sphericalLodErrors } from './spherical-error.ts';
