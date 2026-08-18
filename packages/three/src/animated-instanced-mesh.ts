@@ -1,6 +1,7 @@
 import { InstancedMesh } from './instanced-mesh.ts';
 import type { InstancedMeshOptions } from './instanced-mesh.ts';
 import type { BakedVertexAnimation } from './vertex-animation.ts';
+import { applyVertexAnimationNode } from './vertex-animation-node.ts';
 import type { Material, WebGLProgramParametersWithUniforms } from 'three';
 
 /**
@@ -15,7 +16,21 @@ import type { Material, WebGLProgramParametersWithUniforms } from 'three';
  *
  * 動畫烘進貼圖之後（`bakeVertexAnimation`），幾何就是靜態的了 —— 於是這個
  * 類別直接繼承 `InstancedMesh`，**批次、剔除、LOD 選階全部照舊**。這裡加的
- * 只有一段 vertex shader：從貼圖讀位置。
+ * 只有一段從貼圖讀位置的程式碼。
+ *
+ * ## 兩條後端都有，而且兩份都驗過
+ *
+ * | | 怎麼接 | 誰在守 |
+ * | --- | --- | --- |
+ * | WebGL | `onBeforeCompile` 注入 GLSL | `pnpm gpu-check` + 注入字串的單元測試 |
+ * | WebGPU | `positionNode`（TSL，動態 import） | `pnpm webgpu-check` |
+ *
+ * **只做一邊的症狀是「一群停在綁定姿勢、完全不動的模型」**，而且不報錯、
+ * 幀時間還特別好看。這個專案在材質那條軸上踩過同一個坑（實作在 WebGL、
+ * 量測在 WebGPU，兩邊碰不到），所以這次兩邊一起做、兩邊一起驗。
+ *
+ * 而 `webgpu-check` 的判準刻意不是「有沒有跑完」——它比**兩個時間點的畫面**，
+ * 因為沒接上的時候「跑完了」與「沒有錯誤」都成立。
  *
  * ## 實測（3,200 個，同一根 rig）
  *
@@ -57,7 +72,14 @@ export interface AnimatedInstancedMeshOptions extends InstancedMeshOptions {
 }
 
 export class AnimatedInstancedMesh extends InstancedMesh {
-  private readonly _time = { value: 0 };
+  private _time: { value: number } = { value: 0 };
+  /**
+   * node 材質那條路把 `positionNode` 接上去的時機。WebGL 那條路是已完成的。
+   *
+   * 開出來是為了讓測試**等得到它有沒有接上** —— 沒有這個的話「接上了」與
+   * 「靜靜失敗了」在外面看起來一模一樣。
+   */
+  nodeReady: Promise<void> = Promise.resolve();
 
   constructor(
     baked: BakedVertexAnimation,
@@ -123,15 +145,32 @@ export class AnimatedInstancedMesh extends InstancedMesh {
     // 這個專案在材質那條軸上已經踩過同一個坑：實作在 WebGL、量測在 WebGPU，
     // 兩邊碰不到，而症狀是「開了旋鈕但沒省」。
     if ((material as { isNodeMaterial?: boolean }).isNodeMaterial === true) {
-      console.warn(
-        [
-          'WW.AnimatedInstancedMesh: 這是 node 材質（WebGPURenderer 那條路），',
-          '而頂點動畫是靠 onBeforeCompile 注入的 —— node 材質不經過那個鉤子。',
-          '結果會是**一群停在綁定姿勢、完全不動的模型**，而且不會有任何錯誤。',
-          '批次、剔除、LOD 選階都照常運作，只有動畫不會播。',
-          'WebGPU 上目前請改用 THREE.SkinnedMesh。',
-        ].join('\n'),
+      // node 材質走另一份實作（TSL）—— `onBeforeCompile` 對它完全無效，
+      // 而只做 WebGL 那一份的症狀是「一群停在綁定姿勢的模型」，不報錯。
+      //
+      // 那份是**動態 import** 的：`three/tsl` 只有 WebGPU 用得到，靜態拉進來
+      // 的話每個只用 WebGL 的人也要下載它。
+      //
+      // 代價是接上去變成非同步，最初幾幀停在綁定姿勢 —— 安全的方向（畫面
+      // 正確，只是還沒動）。`nodeReady` 讓測試等得到它，不然「接上了」與
+      // 「靜靜失敗了」在外面看起來一模一樣。
+      this.nodeReady = applyVertexAnimationNode(
+        material as unknown as { positionNode?: unknown; needsUpdate?: boolean },
+        baked,
+        { phaseSpread: options.phaseSpread ?? 1, time: this._time },
+      ).then(
+        (nodeTime): void => {
+          // TSL 那份回傳它自己的 uniform，接回來之後 `time` 才改得動。
+          this._time = nodeTime;
+        },
+        (error: unknown): void => {
+          console.warn(
+            'WW.AnimatedInstancedMesh: node 材質的頂點動畫沒有接上，模型會停在綁定姿勢。',
+            error instanceof Error ? error.message : error,
+          );
+        },
       );
+      return;
     }
 
     const previous = material.onBeforeCompile;

@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
 /**
@@ -15,7 +16,19 @@ export default defineConfig({
   },
   preview: { port: 4174, strictPort: true },
   publicDir: 'public',
-  build: { target: 'esnext', sourcemap: true },
+  build: {
+    target: 'esnext',
+    sourcemap: true,
+    // 第二個進入點：WebGPU 那條路的驗證頁。主範例跑的是 `WebGLRenderer`，
+    // 所以它永遠驗不到 node 材質那份實作 —— 而兩份的失效方式一模一樣
+    // （模型停在綁定姿勢、不報錯、幀時間還特別好看）。
+    rollupOptions: {
+      input: {
+        main: resolve(import.meta.dirname, 'index.html'),
+        webgpu: resolve(import.meta.dirname, 'webgpu.html'),
+      },
+    },
+  },
   esbuild: { target: 'esnext' },
   plugins: [
     {

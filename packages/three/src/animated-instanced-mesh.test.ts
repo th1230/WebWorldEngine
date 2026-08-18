@@ -73,26 +73,60 @@ describe('把 VAT 取樣插進 vertex shader', () => {
   });
 });
 
-describe('AnimatedInstancedMesh — node 材質', () => {
-  it('大聲說「動畫不會播」，因為 onBeforeCompile 在那條路上不會被呼叫', () => {
-    // 靜靜不生效的症狀是**一群停在綁定姿勢的模型** —— 那看起來像動畫資料
-    // 有問題，最不可能被懷疑的就是「這條路在這個 renderer 上沒接上」。
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+describe('AnimatedInstancedMesh — node 材質（WebGPU 那條路）', () => {
+  it('接上 positionNode，而不是只印一句警告', async () => {
+    // `onBeforeCompile` 對 node 材質完全無效，所以那條路要另一份實作。
+    // 只做 WebGL 那一份的症狀是**一群停在綁定姿勢的模型** —— 不報錯、
+    // 幀時間還特別好看。
+    //
+    // 這裡只驗「有沒有接上」；「畫面有沒有真的在動」要真的 GPU，那在
+    // `pnpm webgpu-check` 裡比兩個時間點的像素。
     const material = new MeshBasicMaterial();
     (material as unknown as { isNodeMaterial: boolean }).isNodeMaterial = true;
 
     const geometry = new BoxGeometry(1, 1, 1);
-    geometry.setAttribute('wwVertexId', new Float32BufferAttribute(new Float32Array(geometry.getAttribute('position').count), 1));
+    const n = geometry.getAttribute('position').count;
+    geometry.setAttribute('wwVertexId', new Float32BufferAttribute(new Float32Array(n), 1));
+
+    const mesh = new AnimatedInstancedMesh(
+      {
+        geometry,
+        texture: new DataTexture(new Float32Array(n * 2 * 4), n, 2),
+        frameCount: 2,
+        duration: 1,
+        vertexCount: n,
+      } as never,
+      material,
+      4,
+    );
+    await mesh.nodeReady;
+
+    // 接上了就會有 positionNode。沒接上的話它還是 undefined，而畫面上是
+    // 一群不動的模型 —— 外面看起來與「接上了」一模一樣。
+    expect((material as unknown as { positionNode?: unknown }).positionNode).toBeDefined();
+  });
+
+  it('node 那條路不會去掛 onBeforeCompile', () => {
+    // 掛了也不會被呼叫，但留著會讓人以為那條路有在跑。
+    const material = new MeshBasicMaterial();
+    (material as unknown as { isNodeMaterial: boolean }).isNodeMaterial = true;
+    const before = material.onBeforeCompile;
+
+    const geometry = new BoxGeometry(1, 1, 1);
+    const n = geometry.getAttribute('position').count;
+    geometry.setAttribute('wwVertexId', new Float32BufferAttribute(new Float32Array(n), 1));
     new AnimatedInstancedMesh(
-      { geometry, texture: new DataTexture(), frameCount: 2, duration: 1, vertexCount: 8 } as never,
+      {
+        geometry,
+        texture: new DataTexture(new Float32Array(n * 2 * 4), n, 2),
+        frameCount: 2,
+        duration: 1,
+        vertexCount: n,
+      } as never,
       material,
       4,
     );
 
-    expect(warn).toHaveBeenCalled();
-    const said = warn.mock.calls.map((c) => String(c[0])).join('\n');
-    expect(said).toContain('綁定姿勢');
-    expect(said).toContain('SkinnedMesh');
-    warn.mockRestore();
+    expect(material.onBeforeCompile).toBe(before);
   });
 });
