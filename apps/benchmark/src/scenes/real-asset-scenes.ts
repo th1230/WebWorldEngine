@@ -12,7 +12,10 @@ import {
   PerspectiveCamera,
   Scene,
   type CompressedTexture,
+  MeshBasicMaterial,
+  MeshStandardMaterial as StandardMaterial,
   type MeshStandardMaterial,
+  type Material,
   type Texture,
 } from 'three/webgpu';
 import { applyOrbitPath } from '../camera-path.ts';
@@ -153,6 +156,48 @@ function materialProblems(material: MeshStandardMaterial): string[] {
   return problems;
 }
 
+/**
+ * 材質剝層：同一份幾何、同一條相機路徑，只換材質。
+ *
+ * ## 為什麼要這個
+ *
+ * W4 量到真實 PBR 只跑到幾何天花板的 58% —— **四成的吞吐掉在材質上**。
+ * 但那只說了「掉了多少」，沒說「掉在哪」。要動手就得先知道那四成裡
+ * 貼圖取樣佔多少、光照計算佔多少。
+ *
+ * 一層一層剝掉，每一層的差額就是那一層的價碼：
+ *
+ * | | 拿掉了什麼 |
+ * | --- | --- |
+ * | `full` | 什麼都沒拿掉（albedo + normal + ORM） |
+ * | `albedo` | normal 與 ORM 兩張貼圖 |
+ * | `flat` | 全部貼圖，只剩 PBR 光照 |
+ * | `basic` | 光照本身 |
+ *
+ * **這是儀器不是功能。** 引擎不會自己把材質換掉 —— 那會改變畫面，
+ * 而那是開發者的決定（四問的第一問）。這裡只回答「你付了多少錢」。
+ */
+function stripMaterial(source: MeshStandardMaterial, level: string): Material {
+  if (level === "full") return source;
+  if (level === "albedo") {
+    const m = source.clone();
+    m.normalMap = null;
+    m.roughnessMap = null;
+    m.metalnessMap = null;
+    m.aoMap = null;
+    return m;
+  }
+  if (level === "flat") {
+    const m = new StandardMaterial();
+    m.color.copy(source.color);
+    m.roughness = source.roughness;
+    m.metalness = source.metalness;
+    return m;
+  }
+  if (level === "basic") return new MeshBasicMaterial({ color: source.color });
+  throw new Error(`不認得的 material 參數：${level}（full / albedo / flat / basic）`);
+}
+
 async function loadAsset(
   meshId: string,
 ): Promise<{ chain: LodChain; material: MeshStandardMaterial }> {
@@ -225,9 +270,12 @@ export const wwRealAssetScene: SceneDefinition = {
     const hlodSlot = numberParam(ctx.params, 'hlodSlot', 0, 0, 100_000);
     // 0 = 不指定，讓套件由內容決定。
     const hlodBudgetMB = numberParam(ctx.params, 'hlodBudgetMB', 0, 0, 8192);
+    // 材質剝層。預設 full —— 頭條數字不受影響。
+    const materialLevel = ctx.params.get('material') ?? 'full';
     const meshId = ctx.params.get('mesh') ?? DEFAULT_MESH;
 
-    const { chain, material } = await loadAsset(meshId);
+    const { chain, material: fullMaterial } = await loadAsset(meshId);
+    const material = stripMaterial(fullMaterial, materialLevel) as MeshStandardMaterial;
     const { scene, camera } = buildCommon(ctx.aspect, spread);
 
     const scale = normalizingScale(chain);
@@ -273,6 +321,7 @@ export const wwRealAssetScene: SceneDefinition = {
         errorPixels,
         triangles,
         hlod,
+        material: materialLevel,
       },
       notes: [
         `真實資產：${meshId}，LOD ${chain.lods.map((g) => g.getIndex()!.count / 3).join('/')}。`,
