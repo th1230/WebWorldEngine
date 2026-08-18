@@ -1,5 +1,7 @@
 import {
   BoxGeometry,
+  CylinderGeometry,
+  Float32BufferAttribute,
   Frustum,
   Matrix4,
   IcosahedronGeometry,
@@ -12,6 +14,7 @@ import {
   Sphere,
   SphereGeometry,
   Uint8BufferAttribute,
+  Uint16BufferAttribute,
   type Vector2,
   Vector3,
   type BufferGeometry,
@@ -1283,5 +1286,44 @@ describe('InstancedMesh — 同一頁上兩個引擎實例', () => {
     worldFor(sceneA).stopStream();
     expect(worldFor(sceneA).streaming).toBeNull();
     expect(worldFor(sceneB).streaming).not.toBeNull();
+  });
+});
+
+describe('InstancedMesh — 蒙皮', () => {
+  it('有骨骼權重時大聲說「動畫不會發生」，而不是只講 LOD', async () => {
+    // ## 這是最危險的那一類失效
+    //
+    // 底層的 `BatchedMesh` 沒有蒙皮，所以 `skinIndex` / `skinWeight` 會被當成
+    // 兩個沒人讀的 attribute 帶著走。畫面上是**綁定姿勢的靜止模型**，動畫
+    // 完全不發生 —— 沒有錯誤、沒有例外、幀時間還特別好看。
+    //
+    // 原本唯一會講話的是 LOD 那條路（「不能自動產生 LOD（有骨骼權重）」），
+    // 而那句話講的是別的事，會讓人以為只是少了 LOD。
+    const geometry = new CylinderGeometry(0.5, 0.5, 4, 8, 8);
+    const n = geometry.getAttribute('position').count;
+    geometry.setAttribute('skinIndex', new Uint16BufferAttribute(new Uint16Array(n * 4), 4));
+    geometry.setAttribute('skinWeight', new Float32BufferAttribute(new Float32Array(n * 4), 4));
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const mesh = new InstancedMesh(geometry, material(), 4);
+    await mesh.lodReady;
+
+    expect(warn).toHaveBeenCalled();
+    const said = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    // 要講到「不會蒙皮」，不能只說 LOD 產生不了。
+    expect(said).toContain('不會蒙皮');
+    // 而且要給出路，不是只說做不到。
+    expect(said).toContain('SkinnedMesh');
+
+    warn.mockRestore();
+    info.mockRestore();
+  });
+
+  it('沒有骨骼權重就不要多嘴', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    new InstancedMesh(unitBox(), material(), 4, { autoLod: false });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

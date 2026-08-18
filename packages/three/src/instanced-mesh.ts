@@ -691,6 +691,9 @@ export class InstancedMesh extends BatchedMesh {
           )
         : Promise.resolve();
     if (!generateChain && prepared.length === 1) this.warnSingleLevel();
+    // 放在最後：前面的 info 講的是 LOD，而這一句講的是「動畫不會發生」。
+    // 先講小事再講大事的話，大事會被當成同一件事的補充。
+    warnSkinned(geometries);
   }
 
   /**
@@ -2297,6 +2300,45 @@ export class InstancedMesh extends BatchedMesh {
         '空間分割剔除照常運作。要啟用 LOD，傳入 { lods: [細…粗], errors: [0, …] }。',
     );
   }
+}
+
+/**
+ * 有骨骼權重就大聲說出來 —— **這個類別不會蒙皮**。
+ *
+ * ## 為什麼這是 warn 不是 info
+ *
+ * 它底層是 `BatchedMesh`，而 `BatchedMesh` 沒有蒙皮這回事：`skinIndex` 與
+ * `skinWeight` 會被當成兩個沒人讀的 attribute 帶著走。於是畫面上是
+ * **綁定姿勢的靜止模型**，動畫完全不發生。
+ *
+ * 沒有錯誤、沒有例外、幀時間還特別好看 —— 使用者看到的是「我的角色不會動」，
+ * 而最不可能被懷疑的就是那一行 `THREE.SkinnedMesh` → `WW.InstancedMesh`。
+ *
+ * 原本唯一會講話的是 LOD 那條路（「不能自動產生 LOD（有骨骼權重）」），
+ * 而那句話講的是**別的事**，會讓人以為只是少了 LOD。
+ *
+ * ## 為什麼不是丟例外
+ *
+ * 「用了更好，不用也能動」的另一面是**不要在使用者的既有程式裡丟例外**。
+ * 他可能正在遷移、正在試、或那個網格根本不會播動畫。所以照畫，但把話講死。
+ *
+ * 這條軸的量測結果與 VAT 的計畫寫在 specs/roadmap.md。
+ */
+function warnSkinned(geometries: readonly BufferGeometry[]): void {
+  const skinned = geometries.some(
+    (geometry) =>
+      geometry.getAttribute('skinIndex') !== undefined ||
+      geometry.getAttribute('skinWeight') !== undefined,
+  );
+  if (!skinned) return;
+  console.warn(
+    [
+      'WW.InstancedMesh: 這份幾何有骨骼權重，而這個類別**不會蒙皮** ——',
+      '它底層是 THREE.BatchedMesh，而 BatchedMesh 沒有蒙皮。畫面上會是',
+      '綁定姿勢的靜止模型，動畫不會發生，而且不會有任何錯誤。',
+      '會動的東西目前請繼續用 THREE.SkinnedMesh。',
+    ].join('\n'),
+  );
 }
 
 /**
