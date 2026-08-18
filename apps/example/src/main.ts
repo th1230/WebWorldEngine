@@ -32,18 +32,6 @@ const COOKED_MANIFEST = '/cooked/assets.manifest.json';
 const COOKED_MESH = params.get('mesh') ?? 'mesh:rock-large';
 const COUNT = Number(params.get('count') ?? 60_000);
 /**
- * 遠景合併的記憶體預算，MB。省略就用套件的預設。
- *
- * `tools/visual-check` 會把它調大 —— 預設值下這份程序化內容的槽位遠少於
- * 可合併的格數（實測 60 對 443），於是**哪幾格是合併的每一幀都在變**，
- * 畫面比對就永遠不穩。兩種畫法都在契約內，但那讓檢查讀不出程式碼的差異。
- */
-/**
- * 遠處停止取樣 normal / ORM 的門檻，像素。省略就完全不啟用。
- *
- * 這會**改變畫面**（遠處變平），所以它是宣告出來的，不是引擎自己決定的。
- */
-/**
  * 分離變因用的兩個開關。
  *
  * 強化版與原生版的畫面差異可能來自三件事：批次幾何的屬性佈局、LOD 選階、
@@ -52,6 +40,13 @@ const COUNT = Number(params.get('count') ?? 60_000);
 const NO_HLOD = params.get('hlod') === '0';
 const SINGLE_LOD = params.get('lodLevels') === '1';
 
+/**
+ * 遠景合併的記憶體預算，MB。省略就用套件的預設。
+ *
+ * `tools/visual-check` 會把它調大 —— 預設值下這份程序化內容的槽位遠少於
+ * 可合併的格數（實測 60 對 443），於是**哪幾格是合併的每一幀都在變**，
+ * 畫面比對就永遠不穩。兩種畫法都在契約內，但那讓檢查讀不出程式碼的差異。
+ */
 const HLOD_BUDGET_MB = params.has('hlodBudgetMB')
   ? Number(params.get('hlodBudgetMB'))
   : undefined;
@@ -493,6 +488,78 @@ async function measureStreamDrift(ticks = 400): Promise<unknown> {
  * ——那代表期間發生了會讓計時失真的事（換頻率、被搶佔），那種樣本要丟掉
  * 而不是照用。
  */
+/**
+ * 跑到**遠景合併不再變動**為止，不是跑固定幾幀。
+ *
+ * 烘焙有每幀時間預算，所以「要幾幀」取決於有幾格要烘、機器多快 —— 固定
+ * 幀數在這裡就是一個作者訂的數字，而且它訂錯過：60 幀不夠烘 443 組，於是
+ * 掃角度時前面幾個角度量到的是烘到一半的狀態，同一個角度換個順序就得到
+ * 不同的數字。
+ *
+ * 判準是「這一幀有沒有在烘」，不是「合併數量有沒有變」—— 後者在烘看不見
+ * 的那幾組時是不動的，於是會提早判定穩定了。
+ */
+function settleHlod(t: number): void {
+  if (!enhanced) return;
+  let quiet = 0;
+  for (let i = 0; i < 900 && quiet < 10; i++) {
+    step(t);
+    quiet = (rocks as WW.InstancedMesh).stats.cpuParts.bake < 0.01 ? quiet + 1 : 0;
+  }
+}
+
+/**
+ * 這個內容是被 fragment 綁住還是被幾何綁住 —— **換解析度就問得出來**。
+ *
+ * ## 為什麼這個問題決定後面所有的優先順序
+ *
+ * 剩下的每一條軸（叢集 LOD、地表、遮蔽剔除）省的都是**幾何那一側**。如果
+ * GPU 時間其實是跟著像素數走的，那它們的上限就是幾何佔的那一小塊，不管
+ * 演算法多漂亮。
+ *
+ * Sponza 那次已經用拆解算過一次（幾何只佔 7.5%），但那是推的。這個是直接
+ * 量的：把畫布縮成一半的邊長（四分之一的像素），時間怎麼變。
+ *
+ * | 時間變成 | 代表 |
+ * | --- | --- |
+ * | 約四分之一 | 被 fragment 綁住 —— 幾何那側的優化上限很低 |
+ * | 幾乎不變 | 被幾何／繪製呼叫綁住 —— 那些優化有得做 |
+ *
+ * 改完尺寸要等合併穩定下來再量：每像素的投影比例變了，「哪幾格夠遠到可以
+ * 合併」就跟著變，於是縮放完的第一幀正好落在重新烘焙的中間。
+ */
+async function measureFillBound(t = 0): Promise<unknown> {
+  renderer.setAnimationLoop(null);
+  const full = { w: renderer.domElement.width, h: renderer.domElement.height };
+  const out: Record<string, unknown> = {};
+
+  for (const [name, scale] of [
+    ['full', 1],
+    ['half', 0.5],
+    ['quarter', 0.25],
+  ] as const) {
+    const w = Math.round(full.w * scale);
+    const h = Math.round(full.h * scale);
+    renderer.setSize(w, h, false);
+    composer?.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    settleHlod(t);
+
+    renderer.info.reset();
+    step(t);
+    const { triangles, calls } = renderer.info.render;
+    const gpu = (await measureGpuMs(t, 60)) as { p50?: number };
+    out[name] = { pixels: w * h, ms: gpu.p50 ?? null, triangles, calls };
+  }
+
+  renderer.setSize(full.w, full.h, false);
+  composer?.setSize(full.w, full.h);
+  camera.aspect = full.w / full.h;
+  camera.updateProjectionMatrix();
+  return out;
+}
+
 async function measureGpuMs(t = 0, frames = 120): Promise<unknown> {
   const gl = renderer.getContext() as WebGL2RenderingContext;
   const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as {
@@ -597,11 +664,7 @@ async function verifyQuality(
   // 幾個角度量到的是烘到一半的狀態，同一個角度換個順序就得到不同的數字。
   // 判準是「這一幀有沒有在烘」，不是「合併數量有沒有變」—— 後者在烘
   // 看不見的那幾組時是不動的，於是會提早判定穩定了。
-  let quiet = 0;
-  for (let i = 0; i < 900 && quiet < 10; i++) {
-    step(t);
-    quiet = (rocks as WW.InstancedMesh).stats.cpuParts.bake < 0.01 ? quiet + 1 : 0;
-  }
+  settleHlod(t);
 
   const capture = (): Promise<ImageData> => {
     step(t);
@@ -843,6 +906,7 @@ Object.assign(window, {
       return totalFrames;
     },
     measureGpuMs,
+    measureFillBound,
     verifyQuality,
     measureStreamDrift,
     measureLodBlocking,
