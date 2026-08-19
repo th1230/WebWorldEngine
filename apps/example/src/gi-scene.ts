@@ -41,10 +41,27 @@ export interface GiScene {
    * 判準同一個道理）。
    */
   moveBlocker: (x: number, y: number, z: number) => number;
+  /**
+   * 螢幕空間那條路：把場景畫一次，收集間接光，回傳量到的顏色。
+   *
+   * 與探針那條路量的是**同一件事**（白箱子的背光面沾到多少紅），所以
+   * 兩邊的數字直接可比。
+   */
+  measureScreenSpace: (
+    renderer: THREE.WebGLRenderer,
+    scene: THREE.Scene,
+    camera: THREE.Camera,
+    rect: [number, number, number, number],
+  ) => { r: number; g: number; b: number; perFrameMs: number };
   /** 一直烘到沒有過期的為止。回傳烘了幾顆。 */
   bakeStale: (renderer: THREE.WebGLRenderer, scene: THREE.Scene) => Promise<number>;
   /** 用 CPU 那份公式在同一個位置求值 —— 拿來分辨「烘的不一樣」還是「著色的不一樣」。 */
   sampleCpu: (p: [number, number, number], n: [number, number, number]) => [number, number, number];
+}
+
+/** SSGI 的輸出 target —— 量測要讀它，而那不是公開介面。 */
+function ssgiTargetOf(ssgi: WW.ScreenSpaceGI): THREE.WebGLRenderTarget {
+  return (ssgi as unknown as { gatherTarget: THREE.WebGLRenderTarget }).gatherTarget;
 }
 
 const ROOM = 40;
@@ -164,6 +181,78 @@ export function makeGiScene(
       blocker.updateMatrixWorld(true);
       marked += volume.invalidateAround(blocker.position, 14);
       return marked;
+    },
+    measureScreenSpace: (renderer, scene, camera, rect) => {
+      // ## 先把場景畫進一張 target，那就是 SSGI 的輸入
+      //
+      // SSGI 收集的是**畫面上已經有的像素**，所以它需要一張畫好的場景。
+      // 直接拿畫布是不行的：畫布不是貼圖。
+      const size = new THREE.Vector2();
+      renderer.getDrawingBufferSize(size);
+      const sceneTarget = new THREE.WebGLRenderTarget(size.x, size.y, {
+        type: THREE.HalfFloatType,
+      });
+      const previous = renderer.getRenderTarget();
+      renderer.setRenderTarget(sceneTarget);
+      renderer.clear(true, true, true);
+      renderer.render(scene, camera);
+
+      const params = new URLSearchParams(location.search);
+      const ssgi = new WW.ScreenSpaceGI({
+        radius: Number(params.get('ssgiRadius') ?? 40),
+        scale: Number(params.get('ssgiScale') ?? 0.5),
+      });
+      // 先跑幾次暖機（著色器編譯、target 配置），再計時。第一次一定最慢，
+      // 而拿第一次當代表會把編譯時間算成每幀成本。
+      for (let warm = 0; warm < 3; warm++) ssgi.render(renderer, scene, camera, sceneTarget.texture);
+      renderer.getContext().finish();
+      const started = performance.now();
+      const ROUNDS = 20;
+      for (let i = 0; i < ROUNDS; i++) ssgi.render(renderer, scene, camera, sceneTarget.texture);
+      renderer.getContext().finish();
+      const perFrameMs = (performance.now() - started) / ROUNDS;
+      const indirect = ssgi.render(renderer, scene, camera, sceneTarget.texture);
+
+      // 把收集到的那張讀回來量。讀的是 SSGI 的輸出本身 —— 合成之後再量
+      // 的話混著直接光，分不出是誰貢獻的。
+      const readTarget = (indirect as unknown as { source?: unknown });
+      void readTarget;
+      // ## 緩衝型別要跟 target 的型別對上
+      //
+      // gather target 是 HalfFloat，用 Float32Array 去讀會拿到全 0 —— 而 0
+      // 看起來像「SSGI 什麼都沒收集到」，我照著那個假數字查了三個半徑才發現。
+      //
+      // 同一個坑今天已經踩過一次（烘探針的解碼），只是那次是反過來：把半精度
+      // 的位元樣式當成數值用。
+      // ## 讀的矩形要換算到收集圖的解析度
+      //
+      // 傳進來的是**畫布**座標，而收集圖預設是半解析度。不換算的話讀到的是
+      // 別的地方（甚至整個出界），而出界讀回來是全 0 —— 又一次「量錯地方」，
+      // 而且長得完全像「SSGI 什麼都沒收集到」。
+      const target = ssgiTargetOf(ssgi);
+      const ratioX = target.width / size.x;
+      const ratioY = target.height / size.y;
+      const rx = Math.max(0, Math.floor(rect[0] * ratioX));
+      const ry = Math.max(0, Math.floor(rect[1] * ratioY));
+      const rw = Math.max(1, Math.floor(rect[2] * ratioX));
+      const rh = Math.max(1, Math.floor(rect[3] * ratioY));
+      const buffer = new Uint16Array(rw * rh * 4);
+      renderer.setRenderTarget(target);
+      renderer.readRenderTargetPixels(target, rx, ry, rw, rh, buffer);
+      renderer.setRenderTarget(previous);
+
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let i = 0; i < buffer.length; i += 4) {
+        r += THREE.DataUtils.fromHalfFloat(buffer[i]!);
+        g += THREE.DataUtils.fromHalfFloat(buffer[i + 1]!);
+        b += THREE.DataUtils.fromHalfFloat(buffer[i + 2]!);
+      }
+      const n = buffer.length / 4;
+      ssgi.dispose();
+      sceneTarget.dispose();
+      return { r: r / n, g: g / n, b: b / n, perFrameMs };
     },
     bakeStale: async (renderer, scene) => {
       let total = 0;

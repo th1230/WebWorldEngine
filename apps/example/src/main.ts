@@ -1512,6 +1512,8 @@ Object.assign(window, {
             sampleCpu: (p: [number, number, number], n: [number, number, number]) => giScene.sampleCpu(p, n),
             moveBlocker: (x: number, y: number, z: number) => giScene.moveBlocker(x, y, z),
             bakeStale: () => giScene.bakeStale(renderer, scene),
+            measureScreenSpace: (rect: [number, number, number, number]) =>
+              giScene.measureScreenSpace(renderer, scene, camera, rect),
             /**
              * 量畫面上一塊區域的平均顏色。
              *
