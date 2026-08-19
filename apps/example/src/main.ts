@@ -167,9 +167,22 @@ const hud = document.querySelector<HTMLDivElement>('#hud')!;
  *
  * 只在驗證時開：它會讓瀏覽器多留一份緩衝，那是真實網站不需要付的成本。
  */
+/**
+ * `?aa=0` 關掉抗鋸齒。
+ *
+ * 存在的理由是一個具體的問題：`extendLodChain` 量到省 27.7%，但它預設關，
+ * 因為 visual-check 的「多畫」是 0.471% 而門檻是 0.45%。roadmap 當時留下
+ * 兩個都成立的解釋 ——（a）誤差還有殘餘的低估，（b）更多輪廓落在容忍邊界上，
+ * 於是抗鋸齒把更多像素推到界外。
+ *
+ * 那兩個分得開：如果是（b），關掉抗鋸齒之後那個數字應該掉下來，而**乾淨
+ * 基準不會掉一樣多**。所以這個開關不是為了跑得快，是為了問一個問題。
+ */
+const NO_AA = params.get('aa') === '0';
+
 const renderer = new THREE.WebGLRenderer({
   canvas,
-  antialias: true,
+  antialias: !NO_AA,
   preserveDrawingBuffer: params.get('verify') === '1',
 });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));

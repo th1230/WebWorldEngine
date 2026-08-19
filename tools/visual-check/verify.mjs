@@ -158,7 +158,7 @@ async function main() {
   const browser = await launch();
   const failures = [];
   try {
-    for (const mode of MODES) {
+    for (const mode of modes()) {
       const result = await run(browser, server.url, mode);
       const problem = judge(mode, result);
       if (problem !== null) failures.push(problem);
@@ -173,7 +173,20 @@ async function main() {
   }
   // 模式數寫死過一次，加到七個之後它還在說「四個」—— 一個會說謊的檢查，
   // 它報的通過範圍比實際跑的小。
-  console.log(`\nOK: ${MODES.length} 個模式的畫面都在品質契約內`);
+  console.log(`\nOK: ${modes().length} 個模式的畫面都在品質契約內`);
+}
+
+/**
+ * 平常跑的是 `MODES`。設了 `WW_VISUAL_MODES`（一份 JSON 陣列）就改跑那一組。
+ *
+ * 開這個口是為了**拿這把尺去做實驗**，而不是再寫一把差不多的尺 —— 兩把尺
+ * 遲早會在「怎麼算多畫」上分岔，而那種分岔不會報錯。
+ *
+ * 關卡本身不受影響：沒設環境變數就是原本那一組。
+ */
+function modes() {
+  const override = process.env.WW_VISUAL_MODES;
+  return override === undefined ? MODES : JSON.parse(override);
 }
 
 const MODES = [

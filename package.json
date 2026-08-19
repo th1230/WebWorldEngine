@@ -38,7 +38,8 @@
     "gi-check": "node tools/gi-check/verify.mjs",
     "occlusion-probe": "node tools/gpu-check/occlusion-saving.mjs",
     "occlusion-net": "node tools/gpu-check/occlusion-net.mjs",
-    "split-value": "node tools/gpu-check/split-value.mjs"
+    "split-value": "node tools/gpu-check/split-value.mjs",
+    "impostor-ceiling": "node tools/gpu-check/impostor-ceiling.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
