@@ -41,6 +41,7 @@ export {
   bakeIrradiance,
   applyIrradiance,
   irradianceNodeReady,
+  disposeBakeCache,
   type IrradianceVolumeOptions,
   type IrradianceBakeOptions,
 } from './irradiance.ts';

@@ -437,7 +437,9 @@ if (bigMesh !== null) {
   rocks.visible = false;
 }
 
-const giScene: GiScene | null = GI ? makeGiScene() : null;
+const giScene: GiScene | null = GI
+  ? makeGiScene(undefined, 1, Number(params.get('probeFace') ?? 16))
+  : null;
 if (giScene !== null) {
   scene.add(giScene.root);
   rocks.visible = false;

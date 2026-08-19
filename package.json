@@ -39,7 +39,8 @@
     "occlusion-probe": "node tools/gpu-check/occlusion-saving.mjs",
     "occlusion-net": "node tools/gpu-check/occlusion-net.mjs",
     "split-value": "node tools/gpu-check/split-value.mjs",
-    "impostor-ceiling": "node tools/gpu-check/impostor-ceiling.mjs"
+    "impostor-ceiling": "node tools/gpu-check/impostor-ceiling.mjs",
+    "probe-cost": "node tools/gpu-check/probe-cost.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

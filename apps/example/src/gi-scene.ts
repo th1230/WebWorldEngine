@@ -56,6 +56,8 @@ export function makeGiScene(
    * `irradiance-node.ts`），所以 WebGPU 上的 A/B 是靠開兩次頁面做的。
    */
   intensity = 1,
+  /** cubemap 每面邊長 —— 拿來量「烘的成本是被像素還是被讀回綁住」。 */
+  faceSize = 16,
 ): GiScene {
   const root = new THREE.Group();
 
@@ -115,7 +117,7 @@ export function makeGiScene(
   return {
     root,
     volume,
-    bake: (renderer, scene) => WW.bakeIrradiance(renderer, scene, volume, { budgetMs: 12 }),
+    bake: (renderer, scene) => WW.bakeIrradiance(renderer, scene, volume, { budgetMs: 12, faceSize }),
     setEnabled: async (on) => {
       // 強度歸零就等於沒有間接光，而且**走的是同一條 shader 路徑** ——
       // 換材質做 A/B 的話比的是兩個不同的著色器，那個比較沒有意義。

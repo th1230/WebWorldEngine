@@ -10,6 +10,7 @@ import {
   CubeCamera,
 } from 'three';
 import type { Material, Object3D, Scene, WebGLRenderer } from 'three';
+import { projectCubeToSH, type FacePixels } from './cube-sh.ts';
 
 /**
  * 間接光：烘出來的輻照度探針體積。
@@ -356,14 +357,21 @@ export interface IrradianceBakeOptions {
   /**
    * 這一次呼叫最多花多久，毫秒。預設 8。
    *
-   * ## 為什麼一定要分幀
+   * ## 這個預算管的是「發出去」，不是「等回來」
    *
-   * 每顆探針都要把場景**畫六次**（cubemap 的六個面）再讀回來。8,192 顆
-   * 就是 49,152 次繪製加 8,192 次 GPU→CPU 讀回。一次做完會凍住畫面好幾
-   * 十秒，而那看起來像當掉。
+   * 每顆探針要把場景畫六次（cubemap 的六個面）再讀回來。**畫六次只要
+   * 0.3 ms，讀回才是大頭** —— 而讀回是非同步的，等它的時候主執行緒是
+   * 空的。
    *
-   * 所以這裡每幀烘一點，用時間預算控制。烘的過程中畫面照樣是流暢的，只是
-   * 間接光會**逐漸浮現** —— 那是可以接受的、而且看得懂的行為。
+   * 所以這個預算計時的是「排命令」那一段：排到超過預算就停手，然後一次
+   * 把這一輪發出去的讀回全部等完。實測一輪塞得下約七顆（12 ms 預算），
+   * 平均一顆 2.7 ms。
+   *
+   * 第一版把它寫成「每幀最多花這麼久」，而那時候一顆探針要 37 ms ——
+   * 預設 8 ms 的預算每次超出四倍半，這行說明是假的。修法見 roadmap
+   * 「烘探針快了 13.7 倍」那一節。
+   *
+   * 烘的過程中間接光會**逐漸浮現**，那是可以接受、而且看得懂的行為。
    */
   budgetMs?: number;
   /**
@@ -371,6 +379,9 @@ export interface IrradianceBakeOptions {
    *
    * 探針記的是**低頻**的間接光（SH L1 只有 4 個係數），所以拍很大張沒有
    * 意義 —— 投影完就丟掉了。16 已經遠超 L1 表達得出來的細節。
+   *
+   * 調小也**幾乎不會變快**：實測面寬 4 與 32（像素差 64 倍）一顆探針的
+   * 時間差不到 10%，因為成本在讀回的同步點上，不在像素數上。
    */
   faceSize?: number;
   /** 近裁面。預設 0.1。 */
@@ -398,6 +409,54 @@ export interface IrradianceBakeOptions {
  *
  * @returns 這一次烘了幾顆。
  */
+/**
+ * 烘用的 render target 與 cube camera，照 renderer 與面寬快取。
+ *
+ * 每次重開的成本與「畫六次」同一個量級 —— 而這個函式每幀都會被呼叫。
+ */
+const bakeCaches = new WeakMap<
+  object,
+  Map<number, { target: WebGLCubeRenderTarget; camera: CubeCamera }>
+>();
+
+async function bakeCache(
+  renderer: WebGLRenderer,
+  faceSize: number,
+  options: IrradianceBakeOptions,
+): Promise<{ target: WebGLCubeRenderTarget; camera: CubeCamera }> {
+  let bySize = bakeCaches.get(renderer);
+  if (bySize === undefined) {
+    bySize = new Map();
+    bakeCaches.set(renderer, bySize);
+  }
+  const existing = bySize.get(faceSize);
+  if (existing !== undefined) return existing;
+
+  const isWebGL = (renderer as { isWebGLRenderer?: boolean }).isWebGLRenderer === true;
+  const target = isWebGL
+    ? new WebGLCubeRenderTarget(faceSize)
+    : new ((await import('three/webgpu')) as unknown as {
+        CubeRenderTarget: new (size: number) => WebGLCubeRenderTarget;
+      }).CubeRenderTarget(faceSize);
+  target.texture.type = HalfFloatType;
+  const camera = new CubeCamera(options.near ?? 0.1, options.far ?? 1000, target);
+  const entry = { target, camera };
+  bySize.set(faceSize, entry);
+  return entry;
+}
+
+/**
+ * 放掉某個 renderer 的烘焙暫存。烘完之後不再需要就可以呼叫。
+ *
+ * 不呼叫也不會漏 —— `WeakMap` 會跟著 renderer 一起走。
+ */
+export function disposeBakeCache(renderer: WebGLRenderer): void {
+  const bySize = bakeCaches.get(renderer);
+  if (bySize === undefined) return;
+  for (const { target } of bySize.values()) target.dispose();
+  bakeCaches.delete(renderer);
+}
+
 export async function bakeIrradiance(
   renderer: WebGLRenderer,
   scene: Scene,
@@ -409,49 +468,92 @@ export async function bakeIrradiance(
   const budgetMs = options.budgetMs ?? 8;
   const faceSize = options.faceSize ?? 16;
 
-  const { LightProbeGenerator } = await import('three/addons/lights/LightProbeGenerator.js');
-
-  // ## cube render target 要跟著 renderer 走
+  // ## render target 與 cube camera 要重複用，而且**讀回要一次等完**
   //
-  // `WebGLCubeRenderTarget` 是 WebGL 那條路的型別；`WebGPURenderer` 要的是
-  // `three/webgpu` 的 `CubeRenderTarget`（它繼承的是 `RenderTarget`，不是
-  // 前者）。拿錯的話 `readRenderTargetPixelsAsync` 讀不出東西。
+  // 第一版逐顆探針呼叫 addon 的 `fromCubeRenderTarget`，而它在自己的迴圈裡
+  // 逐面 await —— 六個面就是六次 GPU→CPU 同步。拆開量：
   //
-  // `LightProbeGenerator.fromCubeRenderTarget` 自己就分了這兩條路（它看
-  // `renderer.isWebGLRenderer`，也處理座標系的翻轉），所以這裡只要把對的
-  // 容器給它。
-  const isWebGL = (renderer as { isWebGLRenderer?: boolean }).isWebGLRenderer === true;
-  const target = isWebGL
-    ? new WebGLCubeRenderTarget(faceSize)
-    : new ((await import('three/webgpu')) as unknown as {
-        CubeRenderTarget: new (size: number) => WebGLCubeRenderTarget;
-      }).CubeRenderTarget(faceSize);
-  target.texture.type = HalfFloatType;
-  const camera = new CubeCamera(options.near ?? 0.1, options.far ?? 1000, target);
+  // | | 時間 |
+  // | --- | ---: |
+  // | 把場景畫六次 | **0.3 ms** |
+  // | 投影＋讀回 | **36.8 ms** |
+  //
+  // 而且面寬從 4 開到 32（像素多 64 倍）那 36.8 ms 完全不動 —— 它不是在算，
+  // 是在等。
+  //
+  // 所以這裡改成：先把這一輪所有探針的畫與讀回**全部發出去**，最後一次等完
+  // 再投影。`readRenderTargetPixelsAsync` 在呼叫的當下就把 readPixels 排進
+  // 命令流（進 PBO）並下 fence，所以後面那顆探針重畫同一張 target **不會**
+  // 蓋掉前一顆的資料 —— 命令是照順序執行的。
+  const cache = await bakeCache(renderer, faceSize, options);
+  const { target, camera } = cache;
   const at = new Vector3();
+  const isWebGL = (renderer as { isWebGLRenderer?: boolean }).isWebGLRenderer === true;
+  const flip = isWebGL ? -1 : 1;
+  const faceTexels = faceSize * faceSize * 4;
 
+  const pending: { index: number; faces: FacePixels[]; waits: Promise<unknown>[] }[] = [];
   const started = performance.now();
-  let done = 0;
-  try {
-    while (volume.baked + done < volume.probeCount) {
-      const index = volume.baked + done;
-      volume.probePosition(index, at);
-      camera.position.copy(at);
-      camera.updateMatrixWorld(true);
-      camera.update(renderer, scene);
 
-      const probe = await LightProbeGenerator.fromCubeRenderTarget(renderer, target);
-      volume.setProbe(index, probe.sh.coefficients);
-      done++;
+  while (volume.baked + pending.length < volume.probeCount) {
+    const index = volume.baked + pending.length;
+    volume.probePosition(index, at);
+    camera.position.copy(at);
+    camera.updateMatrixWorld(true);
+    camera.update(renderer, scene);
 
-      // 預算檢查放在**烘完一顆之後**：一顆烘到一半停下來的話那顆是空的，
-      // 而空探針是全黑的 —— 畫面上會出現一個黑塊。
-      if (performance.now() - started >= budgetMs) break;
+    const faces: FacePixels[] = [];
+    const waits: Promise<unknown>[] = [];
+    for (let face = 0; face < 6; face++) {
+      if (isWebGL) {
+        // 每一顆探針要自己的緩衝 —— 共用的話還沒等到就被下一顆蓋掉。
+        const buffer = new Uint16Array(faceTexels);
+        faces.push(buffer);
+        // **不 await。** 這一行同步把 readPixels 排進命令流，剩下的是等 fence。
+        waits.push(
+          (renderer as unknown as {
+            readRenderTargetPixelsAsync: (...args: unknown[]) => Promise<unknown>;
+          }).readRenderTargetPixelsAsync(target, 0, 0, faceSize, faceSize, buffer, face),
+        );
+      } else {
+        // WebGPU 那條路是把資料**回傳**，不是填進傳進去的緩衝。
+        const slot = faces.length;
+        faces.push(new Uint16Array(0));
+        waits.push(
+          (renderer as unknown as {
+            readRenderTargetPixelsAsync: (...args: unknown[]) => Promise<FacePixels>;
+          })
+            .readRenderTargetPixelsAsync(target, 0, 0, faceSize, faceSize, 0, face)
+            .then((data) => {
+              faces[slot] = data;
+            }),
+        );
+      }
     }
-  } finally {
-    target.dispose();
+    pending.push({ index, faces, waits });
+
+    // 預算只管**發出去**這一段（一顆約 0.3 ms）。等待那一段是非同步的，
+    // 不佔主執行緒 —— 拿它去卡預算的話一顆就爆掉，而那正是第一版的問題。
+    if (performance.now() - started >= budgetMs) break;
   }
 
+  // 一次等完。六次同步變成一輪一次。
+  await Promise.all(pending.flatMap((entry) => entry.waits));
+
+  // ## 解碼看的是**貼圖的型別**，不是哪個 renderer
+  //
+  // 第一版寫成「WebGL 用 fromHalfFloat、WebGPU 不解碼」，而兩邊的 target 都是
+  // HalfFloat —— 於是 WebGPU 那條路把半精度的位元樣式當成數值用，係數變成
+  // 24,178（1.0 的半精度位元樣式是 15360），畫面整片爆白。
+  //
+  // 兩件事本來就沒有關係：翻轉看座標系，解碼看像素怎麼存。
+  const decode =
+    target.texture.type === HalfFloatType ? DataUtils.fromHalfFloat : (value: number): number => value;
+  for (const entry of pending) {
+    const sh = projectCubeToSH(entry.faces, { faceSize, flip, decode });
+    volume.setProbe(entry.index, sh.coefficients);
+  }
+  const done = pending.length;
   volume.markBaked(done);
   volume.upload();
   return done;
