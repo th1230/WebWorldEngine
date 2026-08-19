@@ -87,6 +87,9 @@ importers:
 
   apps/example:
     dependencies:
+      '@dimforge/rapier3d-compat':
+        specifier: ^0.12.0
+        version: 0.12.0
       '@webworld/three':
         specifier: workspace:*
         version: link:../../packages/three

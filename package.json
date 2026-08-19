@@ -22,7 +22,7 @@
     "package-check": "node tools/package-check/verify.mjs",
     "site-check": "node tools/site-check/verify.mjs",
     "visual-check": "node tools/visual-check/verify.mjs",
-    "verify:all": "pnpm verify && pnpm package-check && pnpm site-check && pnpm visual-check && pnpm gpu-check && pnpm webgpu-check",
+    "verify:all": "pnpm verify && pnpm package-check && pnpm site-check && pnpm visual-check && pnpm physics-check && pnpm gpu-check && pnpm webgpu-check",
     "bench": "tsx tools/benchmark-runner/src/cli.ts run --profile hardware",
     "bench:smoke": "tsx tools/benchmark-runner/src/cli.ts run --profile smoke",
     "bench:baseline": "tsx tools/benchmark-runner/src/cli.ts baseline",
@@ -33,7 +33,8 @@
     "cook:sponza": "tsx packages/cook/src/cli.ts assets/source/sponza --out apps/benchmark/public/cooked-sponza",
     "bench:capacity": "tsx tools/benchmark-runner/src/cli.ts run --scene ab-ww-real --repeat 1",
     "gpu-check": "node tools/gpu-check/verify.mjs",
-    "webgpu-check": "node tools/gpu-check/webgpu-vat.mjs"
+    "webgpu-check": "node tools/gpu-check/webgpu-vat.mjs",
+    "physics-check": "node tools/physics-check/verify.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

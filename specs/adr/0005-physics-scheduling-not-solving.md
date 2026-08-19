@@ -8,8 +8,20 @@
 哪些剛體該算、串流的內容怎麼跟著載入卸載、遠處要不要簡化、原點重定位時
 物理世界怎麼跟著搬。
 
-求解器用 [Rapier](https://rapier.rs)（Rust／WASM），而且是 **peer dependency**
-——不用物理的人一個位元組都不必下載。
+求解器建議用 [Rapier](https://rapier.rs)（Rust／WASM）。
+
+**而套件對它連 peer dependency 都不是 —— 一行都沒有 import。**
+
+這一句原本寫成「peer dependency」，回頭核對才發現實際上更乾淨：
+`PhysicsScheduler` 進出的只有 **id**（`onActivate(id)` / `onDeactivate(id)`），
+剛體長什麼樣、由誰算，它完全不知道。
+
+所以它對任何求解器都成立 —— Rapier、cannon-es、自己寫的、甚至不是物理
+（「這些 id 現在該載入音效」也是同一個形狀）。**不用物理的人一個位元組
+都不必下載**，而且用別的求解器的人也不必繞過我們。
+
+寫錯的那個方向值得記：「peer dependency」聽起來已經夠鬆了，所以沒有人去
+問「有沒有可能連那個都不需要」。
 
 ## 理由
 

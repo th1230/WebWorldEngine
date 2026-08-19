@@ -137,6 +137,14 @@ describe('CPU 與 GPU 用的是同一組參數', () => {
 
 describe('浮力', () => {
   const flat = new Water({ level: 0, waves: [] });
+  /**
+   * 驗「公式本身」的時候要把上限拿掉。
+   *
+   * 這些案例用的是 1 kg 配半徑 1 m —— 密度比是四千倍，現實裡沒有這種東西，
+   * 但拿來驗 ρVg 最乾淨。預設的 20 倍重力上限會夾住它們，所以這裡明講不夾，
+   * 而上限本身另外驗（見下面那條）。
+   */
+  const unclamped = { maxLiftG: Infinity };
 
   it('完全出水的不回傳 —— 一片海上大多數東西不在水裡', () => {
     const forces = computeBuoyancy(flat, [{ id: 1, x: 0, y: 50, z: 0, radius: 1, mass: 10 }], 0);
@@ -151,7 +159,7 @@ describe('浮力', () => {
     const expected = volume * 1000 * 9.81;
 
     for (const mass of [1, 500]) {
-      const [f] = computeBuoyancy(flat, [{ id: 1, x: 0, y: -10, z: 0, radius, mass }], 0);
+      const [f] = computeBuoyancy(flat, [{ id: 1, x: 0, y: -10, z: 0, radius, mass }], 0, unclamped);
       expect(f!.submerged).toBe(1);
       expect(f!.y).toBeCloseTo(expected, 3);
     }
@@ -162,7 +170,7 @@ describe('浮力', () => {
     // 歸零、掉回去又滿力。這一條驗的就是它是連續的。
     const radius = 1;
     const full = (4 / 3) * Math.PI * radius ** 3 * 1000 * 9.81;
-    const [f] = computeBuoyancy(flat, [{ id: 1, x: 0, y: 0, z: 0, radius, mass: 1 }], 0);
+    const [f] = computeBuoyancy(flat, [{ id: 1, x: 0, y: 0, z: 0, radius, mass: 1 }], 0, unclamped);
     expect(f!.submerged).toBeCloseTo(0.5, 9);
     expect(f!.y).toBeCloseTo(full * 0.5, 3);
   });
@@ -190,6 +198,46 @@ describe('浮力', () => {
     expect(f!.z).toBeGreaterThan(0);
     // y 是浮力減阻尼，浮力大得多，所以仍然向上。
     expect(f!.y).toBeGreaterThan(0);
+  });
+
+  it('浮力夾在重力的倍數上 —— 否則顯式積分會把東西射到天上', () => {
+    // 這一條擋的是實測過的爆炸：Rapier 的碰撞體預設密度是 1、水是 1000，
+    // 於是照預設建的箱子拿到 760 倍體重的力，20 秒飛到 y = 183,996。
+    //
+    // 夾住不是為了物理正確（它本來就不正確 —— 密度設錯了），是為了讓症狀
+    // 從「東西消失」變成「浮得太用力」加一行說明白的警告。
+    const mass = 3;
+    const [f] = computeBuoyancy(flat, [{ id: 1, x: 0, y: -10, z: 0, radius: 1, mass }], 0, {
+      maxLiftG: 20,
+    });
+    expect(f!.y).toBeCloseTo(mass * 9.81 * 20, 6);
+  });
+
+  it('密度合理的物體會真的停在水面上 —— 積分過才算數', () => {
+    // ## 為什麼要真的積分
+    //
+    // 上面每一條驗的都是「這一刻的力對不對」，而力對了模擬還是可能爆掉：
+    // 實測就發生過兩次 —— 一次是力太大（密度沒設），一次是力被重複累加
+    // （Rapier 的 addForce 是持續的，不清就是第 N 幀 N 倍）。
+    //
+    // 兩次的每一幀回報的力都是對的。只有把時間跑過去才看得到。
+    //
+    // 這裡用半隱式 Euler（跟 Rapier 同一種），不引進求解器相依。
+    const radius = 1.86; // 等體積球：(4/3)πr³ = 27 m³
+    const mass = 27 * 600; // 3×3×3 的木頭，600 kg/m³
+    let y = 20;
+    let vy = 0;
+    const dt = 1 / 60;
+    for (let i = 0; i < 1200; i++) {
+      const [f] = computeBuoyancy(flat, [{ id: 1, x: 0, y, z: 0, radius, mass, velocityY: vy }], 0);
+      // **每一步的力都是重新算的** —— 這正是持續力那個坑的反面。
+      vy += (-9.81 + (f ? f.y / mass : 0)) * dt;
+      y += vy * dt;
+    }
+    // 平衡點：浮力 = 重量 → 沉沒比例 = 16200 / (1000 × 27) = 0.6
+    expect(y).toBeGreaterThan(-2);
+    expect(y).toBeLessThan(1);
+    expect(Math.abs(vy)).toBeLessThan(0.1); // 停得下來，不是還在振盪
   });
 
   it('浮力跟著波動的水面走，不是跟著靜水位', () => {

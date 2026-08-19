@@ -72,19 +72,60 @@ export interface BuoyancyOptions {
    * 而它是可以調的。
    */
   linearDamping?: number;
+  /**
+   * 浮力最多能產生幾倍重力的加速度。預設 20。
+   *
+   * ## 為什麼需要這個上限
+   *
+   * 浮力是 ρVg，與物體質量無關。所以一個「很輕但體積很大」的物體會拿到
+   * 遠大於自身重量的力 —— 而力除以質量就是加速度，於是它在一個時間步裡
+   * 被彈到極高的速度。
+   *
+   * 這**不是假設性的**：Rapier 的碰撞體預設密度是 1，而水是 1000。照預設
+   * 建一個 3×3×3 的箱子是 27 kg，排開 20.6 m³ 的水得到 202,000 N ——
+   * **760 倍體重**。實測那顆箱子在 20 秒內飛到 y = 370,000 還在加速。
+   *
+   * 顯式積分下這種剛度必然爆炸，而症狀是「東西射到天上不見了」，看起來
+   * 像物理引擎壞了。
+   *
+   * ## 為什麼是夾住而不是只警告
+   *
+   * 兩個都做。警告說清楚原因（幾乎一定是密度沒設），夾住讓模擬還能跑 ——
+   * 一個爆掉的模擬比一個稍微不準的模擬糟得多，而且爆掉之後那個警告也沒
+   * 人看得到了。
+   *
+   * 20 倍重力是「非常浮」但還能積分的量級。真的要模擬氣球的人自己調大。
+   */
+  maxLiftG?: number;
 }
 
 /**
  * 算一批物體這一刻受到的浮力與阻尼。
  *
+ * ## 施加方式：**每幀先清掉上一幀的力**
+ *
  * ```js
+ * for (const body of allBodies) body.resetForces(true);   // ← 少了這行會爆炸
  * const forces = computeBuoyancy(water, bodies, t);
  * for (const f of forces) rigidBody(f.id).addForce({ x: f.x, y: f.y, z: f.z }, true);
+ * world.step();
  * ```
+ *
+ * Rapier（以及多數求解器）的 `addForce` 是**持續**的：加上去之後每一步都
+ * 會施加，直到被清掉。每幀再加一次的話，第 N 幀的力是 N 倍。
+ *
+ * 症狀是東西**加速射向天空**：實測那顆箱子 20 秒飛到 y = 183,996，而且
+ * 還在加速 —— 但每一幀我們回報的力都是正確的 5,297 N。看程式碼看不出來，
+ * 因為錯的不是這裡，是「上一幀的力還在」。
+ *
+ * 想避開這件事的話用 `applyImpulse(F × dt)` —— 衝量是一次性的。
  *
  * **完全出水的不會出現在結果裡** —— 一片海上大多數東西不在水裡，而回傳
  * 一堆零向量會讓呼叫端每幀白跑一次迴圈。
  */
+/** 只警告一次 —— 每幀每個物體都吼會把主控台淹掉。 */
+let warned = false;
+
 export function computeBuoyancy(
   water: Water,
   bodies: readonly BuoyancyBody[],
@@ -94,6 +135,7 @@ export function computeBuoyancy(
   const density = options.density ?? 1000;
   const gravity = options.gravity ?? 9.81;
   const damping = options.linearDamping ?? 2.5;
+  const maxLiftG = options.maxLiftG ?? 20;
 
   const out: BuoyancyForce[] = [];
   for (const body of bodies) {
@@ -110,7 +152,29 @@ export function computeBuoyancy(
 
     // 排開的體積 × 密度 × 重力。球體積 = 4/3 π r³。
     const volume = (4 / 3) * Math.PI * radius * radius * radius * submerged;
-    const lift = volume * density * gravity;
+    let lift = volume * density * gravity;
+
+    // ## 夾住浮力，否則顯式積分會把它射到天上
+    //
+    // 浮力與質量無關，所以「輕而大」的物體會拿到遠超自身重量的力。
+    // Rapier 的碰撞體預設密度是 1 而水是 1000 —— 照預設建的箱子會拿到
+    // **760 倍體重**的力，一個時間步就彈到幾千 m/s。
+    const maxLift = body.mass * gravity * maxLiftG;
+    if (lift > maxLift) {
+      lift = maxLift;
+      if (!warned) {
+        warned = true;
+        console.warn(
+          [
+            'WW.computeBuoyancy: 浮力大到會讓模擬爆掉，已經夾在 ' + maxLiftG + ' 倍重力。',
+            '這幾乎一定是**密度沒設**：物理引擎的碰撞體密度預設常常是 1，而水是 1000，',
+            '於是物體排開的水比它自己重上百倍，一個時間步就被彈到幾千 m/s。',
+            '解法是給剛體真實的密度（木頭約 600、人體約 1000），或把 radius 調成',
+            '真正排開的體積 —— 那個半徑是「近似成球」用的，不是碰撞體的大小。',
+          ].join('\n'),
+        );
+      }
+    }
 
     // 阻尼與沉沒比例成正比：出水的部分不該有水的阻力。
     const k = damping * submerged * body.mass;

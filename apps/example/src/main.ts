@@ -1,6 +1,7 @@
 import * as WW from '@webworld/three';
 import { makeSkinnedField, makeSkinnedRig } from './skinned.ts';
 import { makeWaterScene } from './water-scene.ts';
+import { makePhysicsScene, type PhysicsScene } from './physics-scene.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -88,6 +89,8 @@ const VAT = params.has('vat') ? Number(params.get('vat')) : 0;
 const REBASE = params.has('rebase') ? Number(params.get('rebase')) : 0;
 /** `?water=1` 畫一片會動的水，並讓一批球浮在上面。 */
 const WATER = params.get('water') === '1';
+/** `?physics=1` 有碰撞的地表 + 會掉會浮的箱子（求解器用 Rapier）。 */
+const PHYSICS = params.get('physics') === '1';
 /** `?scatter=1` 用規則式擺放代替亂數灑點。 */
 const SCATTER = params.get('scatter') === '1';
 /** `?vatLod=0` 關掉 VAT 那條路的 LOD —— 要與蒙皮基準比同樣的三角形數時用。 */
@@ -394,6 +397,12 @@ async function loadSkinnedGlb(name: string): Promise<{ mesh: THREE.SkinnedMesh; 
 
 const loadedRig = GLB !== null && VAT > 0 ? await loadSkinnedGlb(GLB) : null;
 
+const physicsScene: PhysicsScene | null = PHYSICS ? await makePhysicsScene() : null;
+if (physicsScene !== null) {
+  scene.add(physicsScene.root);
+  rocks.visible = false;
+}
+
 const waterScene = WATER ? makeWaterScene(SPREAD * 0.9, 40) : null;
 if (waterScene !== null) {
   scene.add(waterScene.root);
@@ -475,6 +484,9 @@ const ground = new THREE.Mesh(
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -1;
 scene.add(ground);
+
+// 物理場景有自己的地表，原本那片平地會穿插在中間。
+if (physicsScene !== null) ground.visible = false;
 
 if (useShadows || useCsm) {
   rocks.castShadow = true;
@@ -720,6 +732,7 @@ function renderFrame(): void {
   // 陰影會留在開場那一幀的位置 —— 相機走遠之後整片陰影就不見了。
   csm?.update();
   waterScene?.update(lastT);
+  physicsScene?.update(lastT);
   // 相機走遠了就把世界搬回它腳下。平常這裡只是一次長度比較。
   if (rebase !== null) WW.worldFor(scene).updateOrigin(camera);
   if (composer !== null) composer.render();
@@ -1286,6 +1299,7 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    physics: (): unknown => physicsScene?.stats() ?? null,
     renderer,
     scene,
     camera,
