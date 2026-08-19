@@ -117,6 +117,9 @@ export class IrradianceVolume {
    * 移動時，中間那幾顆每幀都會被標到。
    */
   private readonly _stale = new Set<number>();
+  /** 日夜循環用的關鍵幀，照相位排序。空的代表沒在用那條路。 */
+  private readonly _keyframes: { phase: number; sh: Float32Array }[] = [];
+  private _phase = 0;
   private dirty = true;
   /**
    * uniform 物件**建一次就不再換**。
@@ -269,6 +272,128 @@ export class IrradianceVolume {
   }
 
   /**
+   * 把現在烘好的整份 SH 收成一個**關鍵幀**，掛在 `phase` 這個值上。
+   *
+   * ## 為什麼日夜循環不能用重烘解決
+   *
+   * `invalidateAround` 處理的是「東西移動」——影響附近那十幾顆。太陽移動
+   * 影響的是**每一顆**：幾何沒動，但收到的光全變了。
+   *
+   * 量過了：整份重烘 256 顆要 693 ms，而且那不是可以攤掉的 —— 一邊跑一邊
+   * 持續重烘，**每幀多付 12.1 ms**（交錯 A/B 量的）。太陽不會停，所以那筆
+   * 錢也不會停。烘出來的東西要求每幀重烘，等於沒有烘。
+   *
+   * ## 所以改成先烘幾個角度，執行期內插
+   *
+   * 太陽的路徑是**事先知道的**（那正是日夜循環的定義），所以可以在載入時
+   * 把幾個角度各烘一份，執行期在兩份之間內插。
+   *
+   * 代價與收益：
+   *
+   * | | |
+   * | --- | --- |
+   * | 載入時多烘 N 份 | 一份 693 ms，8 份約 5.5 秒（漸進，不卡幀） |
+   * | 記憶體 | 一份 256 顆是 **6 KB**，八份 49 KB |
+   * | 執行期改變太陽 | 3,072 次內插 + 一次小上傳，**不重烘** |
+   * | 著色器 | **完全不動** —— 混完寫回同一批貼圖 |
+   *
+   * 著色器不動這一點是刻意的：日夜循環不該讓取樣端多付任何東西，而且不動
+   * 就不會有「WebGL 會動 WebGPU 不會」那類兩條路分岔的問題。
+   *
+   * ## 這條路的限制要講清楚
+   *
+   * 它只支援**事先知道的**光照變化。玩家拿著手電筒亂晃不在這條路上 ——
+   * 那是動態光，走的是重烘或螢幕空間那邊。
+   *
+   * @param phase 這一份對應的相位。通常用 0–1 表示一天，但只要單調就行。
+   */
+  saveKeyframe(phase: number): void {
+    const existing = this._keyframes.findIndex((k) => k.phase === phase);
+    const entry = { phase, sh: this.sh.slice() };
+    if (existing >= 0) this._keyframes[existing] = entry;
+    else this._keyframes.push(entry);
+    this._keyframes.sort((a, b) => a.phase - b.phase);
+  }
+
+  /** 存了幾個關鍵幀。0 代表沒在用日夜那條路。 */
+  get keyframeCount(): number {
+    return this._keyframes.length;
+  }
+
+  /**
+   * 現在的相位。設它會在關鍵幀之間內插，寫回探針並上傳。
+   *
+   * 沒有關鍵幀的話這個值沒有作用 —— 那是「沒在用日夜循環」的正常狀態，
+   * 不是錯誤。
+   *
+   * **要與你自己的太陽同步。** 這個套件不動你的燈光（那是 Three 的物件，
+   * 也是你的場景），所以相位與太陽角度的對應是呼叫端維持的。對不上的症狀
+   * 是「間接光的方向與影子的方向不一致」——看起來像烘壞了。
+   */
+  get phase(): number {
+    return this._phase;
+  }
+
+  set phase(value: number) {
+    this._phase = value;
+    if (this._keyframes.length === 0) return;
+
+    const frames = this._keyframes;
+    // 夾在兩端之間。超出去就用最近的那一份 —— 外插會讓亮度跑到負的。
+    if (value <= frames[0]!.phase) {
+      this.writeSH(frames[0]!.sh);
+      return;
+    }
+    const last = frames[frames.length - 1]!;
+    if (value >= last.phase) {
+      this.writeSH(last.sh);
+      return;
+    }
+    let hi = 1;
+    while (hi < frames.length && frames[hi]!.phase < value) hi++;
+    const a = frames[hi - 1]!;
+    const b = frames[hi]!;
+    const span = b.phase - a.phase;
+    const t = span <= 0 ? 0 : (value - a.phase) / span;
+    this.blendSH(a.sh, b.sh, t);
+  }
+
+  /** 把一份 SH 原封不動寫回探針。 */
+  private writeSH(source: Float32Array): void {
+    this.sh.set(source);
+    this.encodeAll();
+  }
+
+  /** 兩份 SH 線性混合寫回探針。 */
+  private blendSH(a: Float32Array, b: Float32Array, t: number): void {
+    const sh = this.sh;
+    for (let i = 0; i < sh.length; i++) sh[i] = a[i]! + (b[i]! - a[i]!) * t;
+    this.encodeAll();
+  }
+
+  /**
+   * 把 `sh` 整份重新編碼進貼圖資料。
+   *
+   * 逐顆走 `setProbe` 也可以，但那會多做一次係數物件的包裝 —— 而這一支是
+   * 每幀可能被呼叫的（相位一直在變）。
+   */
+  private encodeAll(): void {
+    const sh = this.sh;
+    for (let index = 0; index < this.probeCount; index++) {
+      const base = index * COEFFICIENTS * 3;
+      const texel = index * 4;
+      for (let c = 0; c < COEFFICIENTS; c++) {
+        const data = this.data[c]!;
+        data[texel] = DataUtils.toHalfFloat(sh[base + c * 3]!);
+        data[texel + 1] = DataUtils.toHalfFloat(sh[base + c * 3 + 1]!);
+        data[texel + 2] = DataUtils.toHalfFloat(sh[base + c * 3 + 2]!);
+        data[texel + 3] = 0x3c00;
+      }
+    }
+    this.dirty = true;
+  }
+
+  /**
    * 把一個範圍內的探針標成過期，下次烘的時候優先重烘。
    *
    * ## 這是「會動的東西不反彈光」那個限制的解法
@@ -358,9 +483,22 @@ export class IrradianceVolume {
    *
    * @returns 探針編號，沒有要烘的就回 −1。
    */
-nextToBake(): number {
-    for (const index of this._stale) return index;
-    return this._baked < this.probeCount ? this._baked : -1;
+nextToBake(exclude?: ReadonlySet<number>): number {
+    // ## `exclude` 是「這一輪已經挑走的」
+    //
+    // 少了它，一輪就只烘得動**一顆**：烘焙是先發射再一次等完的，所以挑的
+    // 當下還不能標記完成 —— 於是下一次呼叫又回同一顆。
+    //
+    // 而那個退化只在「過期」這條路上發生（東西移動、光源移動），「還沒烘過」
+    // 那條路因為有 `_baked` 在推進所以看不出來。實測整份重烘 256 顆跑了
+    // **256 輪**，每輪各付一次 GPU 同步 —— 每顆 10.19 ms，而批次正常時是 2.7。
+    for (const index of this._stale) {
+      if (exclude === undefined || !exclude.has(index)) return index;
+    }
+    for (let index = this._baked; index < this.probeCount; index++) {
+      if (exclude === undefined || !exclude.has(index)) return index;
+    }
+    return -1;
   }
 
   /** 這一顆烘完了。過期佇列裡的移掉，沒烘過的推進度。 */
@@ -611,7 +749,7 @@ export async function bakeIrradiance(
   // 所以用一個本地的集合擋掉重複挑到同一顆。
   const claimed = new Set<number>();
   for (;;) {
-    const index = nextUnclaimed(volume, claimed);
+    const index = volume.nextToBake(claimed);
     if (index < 0) break;
     claimed.add(index);
     volume.probePosition(index, at);
@@ -676,22 +814,6 @@ export async function bakeIrradiance(
   return done;
 }
 
-/**
- * 下一顆還沒被這一輪挑走的。
- *
- * `volume.nextToBake()` 每次都回同一顆（它要等烘完才會前進），所以同一輪
- * 裡要自己記住挑過誰 —— 不記的話一輪會把同一顆烘七次。
- */
-function nextUnclaimed(volume: IrradianceVolume, claimed: ReadonlySet<number>): number {
-  const first = volume.nextToBake();
-  if (first < 0) return -1;
-  if (!claimed.has(first)) return first;
-  // 過期的那幾顆挑完了，往還沒烘過的接下去。
-  for (let index = volume.baked; index < volume.probeCount; index++) {
-    if (!claimed.has(index)) return index;
-  }
-  return -1;
-}
 
 /**
  * 把 `root` 底下每個材質接上這個體積的間接光。

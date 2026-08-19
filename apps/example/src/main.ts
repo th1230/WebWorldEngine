@@ -1876,6 +1876,11 @@ Object.assign(window, {
             sampleCpu: (p: [number, number, number], n: [number, number, number]) => giScene.sampleCpu(p, n),
             moveBlocker: (x: number, y: number, z: number) => giScene.moveBlocker(x, y, z),
             bakeStale: () => giScene.bakeStale(renderer, scene),
+            invalidateAll: () => giScene.invalidateAll(),
+            setSun: (phase: number) => giScene.setSun(phase),
+            saveKeyframe: (phase: number) => giScene.volume.saveKeyframe(phase),
+            keyframes: () => giScene.volume.keyframeCount,
+            setPhase: (t: number) => giScene.volumePhase(t),
             measureScreenSpace: (rect: [number, number, number, number]) =>
               giScene.measureScreenSpace(renderer, scene, camera, rect),
             /**

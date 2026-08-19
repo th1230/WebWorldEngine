@@ -40,6 +40,21 @@ export interface GiScene {
    * 藍色在這個場景裡沒有別的來源，所以它是個乾淨的訊號（與紅房間那一條
    * 判準同一個道理）。
    */
+  /**
+   * 把**每一顆**探針標成過期。
+   *
+   * 這正是太陽移動的形狀：東西沒動，但每一顆探針收到的光都變了。
+   * `invalidateAround` 是局部的（東西移動），這一支是全域的（光源移動）。
+   */
+  invalidateAll: () => number;
+  /**
+   * 把太陽移到某個角度（0–1 掃過一段天空），並讓每一顆探針過期。
+   *
+   * 日夜循環的驗證用具：烘兩個角度各存一份關鍵幀，然後看內插對不對。
+   */
+  setSun: (phase: number) => void;
+  /** 直接讀探針在某一點的輻照度 —— 相位內插對不對要看這個。 */
+  volumePhase: (t: number) => void;
   moveBlocker: (x: number, y: number, z: number) => number;
   /**
    * 螢幕空間那條路：把場景畫一次，收集間接光，回傳量到的顏色。
@@ -173,6 +188,23 @@ export function makeGiScene(
       materials,
       stale: volume.stale,
     }),
+    setSun: (phase) => {
+      // 從一側掃到另一側。角度差夠大，間接光的顏色才分得出來。
+      const angle = Math.PI * (0.2 + phase * 0.6);
+      sun.position.set(Math.cos(angle) * 90, 80, Math.sin(angle) * 90);
+      sun.updateMatrixWorld(true);
+      const centre = volume.min.clone().addScaledVector(volume.size, 0.5);
+      volume.invalidateAround(centre, volume.size.length());
+    },
+    volumePhase: (t) => {
+      volume.phase = t;
+      volume.upload();
+    },
+    invalidateAll: () => {
+      // 半徑給整個體積的對角線，一次蓋滿 —— 太陽移動就是這個形狀。
+      const centre = volume.min.clone().addScaledVector(volume.size, 0.5);
+      return volume.invalidateAround(centre, volume.size.length());
+    },
     moveBlocker: (x, y, z) => {
       // **搬之前也要標**：板子原本站的地方那幾顆探針記著它的藍色，
       // 不重烘的話它走了藍色還留在原地。

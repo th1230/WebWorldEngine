@@ -115,6 +115,137 @@ describe('SH 求值', () => {
   });
 });
 
+describe('日夜循環：先烘幾個角度，執行期內插', () => {
+  // 太陽移動會讓**每一顆**探針過期，而整份重烘量到 693 ms、持續重烘每幀
+  // 多付 12.1 ms。太陽不會停，所以那筆錢也不會停 —— 一個要求每幀重烘的
+  // 烘焙等於沒有烘。所以改成先烘幾個相位，執行期在它們之間內插。
+
+  it('沒有關鍵幀的時候設相位不會動到探針', () => {
+    // 這是「沒在用日夜循環」的正常狀態，不是錯誤 —— 不能把探針清成 0。
+    const volume = unit();
+    fill(volume, uniformProbe(3));
+    volume.phase = 0.7;
+    expect(volume.keyframeCount).toBe(0);
+    expect(volume.sampleAt(new Vector3(5, 5, 5), new Vector3(0, 1, 0)).x).toBeCloseTo(3, 5);
+  });
+
+  it('兩個關鍵幀中間拿到的是兩者的內插', () => {
+    const volume = unit();
+    fill(volume, uniformProbe(2));
+    volume.saveKeyframe(0);
+    fill(volume, uniformProbe(6));
+    volume.saveKeyframe(1);
+    expect(volume.keyframeCount).toBe(2);
+
+    const n = new Vector3(0, 1, 0);
+    const at = new Vector3(5, 5, 5);
+    volume.phase = 0;
+    expect(volume.sampleAt(at, n).x).toBeCloseTo(2, 4);
+    volume.phase = 1;
+    expect(volume.sampleAt(at, n).x).toBeCloseTo(6, 4);
+    volume.phase = 0.5;
+    expect(volume.sampleAt(at, n).x).toBeCloseTo(4, 4);
+    volume.phase = 0.25;
+    expect(volume.sampleAt(at, n).x).toBeCloseTo(3, 4);
+  });
+
+  it('超出兩端用最近的那一份，不外插', () => {
+    // 外插會讓亮度跑到負的，而負的輻照度在畫面上是黑洞。
+    const volume = unit();
+    fill(volume, uniformProbe(2));
+    volume.saveKeyframe(0);
+    fill(volume, uniformProbe(6));
+    volume.saveKeyframe(1);
+
+    const n = new Vector3(0, 1, 0);
+    const at = new Vector3(5, 5, 5);
+    volume.phase = -5;
+    expect(volume.sampleAt(at, n).x).toBeCloseTo(2, 4);
+    volume.phase = 99;
+    expect(volume.sampleAt(at, n).x).toBeCloseTo(6, 4);
+  });
+
+  it('同一個相位存兩次是取代，不是疊兩份', () => {
+    const volume = unit();
+    fill(volume, uniformProbe(1));
+    volume.saveKeyframe(0.5);
+    fill(volume, uniformProbe(9));
+    volume.saveKeyframe(0.5);
+    expect(volume.keyframeCount).toBe(1);
+    volume.phase = 0.5;
+    expect(volume.sampleAt(new Vector3(5, 5, 5), new Vector3(0, 1, 0)).x).toBeCloseTo(9, 4);
+  });
+
+  it('關鍵幀存進去的順序不影響結果', () => {
+    // 呼叫端沒有義務照順序烘（漸進式烘焙可能是亂序完成的）。
+    const volume = unit();
+    fill(volume, uniformProbe(8));
+    volume.saveKeyframe(1);
+    fill(volume, uniformProbe(0));
+    volume.saveKeyframe(0);
+    volume.phase = 0.5;
+    expect(volume.sampleAt(new Vector3(5, 5, 5), new Vector3(0, 1, 0)).x).toBeCloseTo(4, 4);
+  });
+
+  it('相位改了之後貼圖裡的資料也真的變了', () => {
+    // 只改 CPU 那份的話畫面停在上一版，而數字全部正確 —— 這個專案最怕的
+    // 形狀。所以直接檢查半精度那份。
+    const volume = unit();
+    fill(volume, uniformProbe(2));
+    volume.saveKeyframe(0);
+    fill(volume, uniformProbe(6));
+    volume.saveKeyframe(1);
+
+    volume.phase = 0;
+    volume.upload();
+    const low = (volume.textures[0]!.image.data as Uint16Array)[0];
+    volume.phase = 1;
+    volume.upload();
+    const high = (volume.textures[0]!.image.data as Uint16Array)[0];
+    expect(high).not.toBe(low);
+  });
+});
+
+describe('一輪要挑得動好幾顆過期的探針', () => {
+  it('挑走的排除掉之後會換下一顆，不是一直回同一顆', () => {
+    // ## 這條是回歸測試
+    //
+    // 烘焙是「先把整輪發射出去、最後一次等完」——所以挑的當下還不能標記
+    // 完成（那要等讀回）。少了排除清單，`nextToBake()` 每次都回同一顆，
+    // 於是一輪只烘得動一顆，每顆各付一次 GPU 同步。
+    //
+    // 而這個退化**只在過期這條路上發生**：「還沒烘過」那條有 `_baked` 在
+    // 推進，看不出問題。實測整份重烘 256 顆跑了 256 輪、每顆 10.19 ms，
+    // 而批次正常時是 2.7 ms。
+    const volume = unit();
+    // 先全部烘完，這樣唯一的來源就是過期佇列。
+    volume.markBaked(volume.probeCount);
+    expect(volume.nextToBake()).toBe(-1);
+
+    volume.invalidateAround(new Vector3(5, 5, 5), 100); // 全部
+
+    const claimed = new Set<number>();
+    for (let i = 0; i < volume.probeCount; i++) {
+      const index = volume.nextToBake(claimed);
+      expect(index).toBeGreaterThanOrEqual(0);
+      expect(claimed.has(index)).toBe(false);
+      claimed.add(index);
+    }
+    // 全部挑完之後就沒有了。
+    expect(volume.nextToBake(claimed)).toBe(-1);
+  });
+
+  it('沒給排除清單時行為不變', () => {
+    const volume = unit();
+    volume.markBaked(volume.probeCount);
+    volume.invalidateAround(new Vector3(0, 0, 0), 1);
+    const first = volume.nextToBake();
+    expect(first).toBeGreaterThanOrEqual(0);
+    // 沒標完成，所以再問一次還是同一顆 —— 呼叫端靠它知道「這顆還沒好」。
+    expect(volume.nextToBake()).toBe(first);
+  });
+});
+
 describe('三線性內插', () => {
   it('兩顆探針中間拿到的是兩者的平均', () => {
     const volume = new IrradianceVolume({
