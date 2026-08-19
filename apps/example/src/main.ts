@@ -480,6 +480,31 @@ const rewriteProbe = {
 };
 const rewriteMatrix = new Matrix4();
 
+/**
+ * `?churn=P&churnCount=M`：大約 P% 的幀（交錯）走一次**真正的串流寫入路徑**。
+ *
+ * ## 為什麼不能用 setMatrixAt
+ *
+ * 上一個實驗用 `setMatrixAt` 重寫矩陣，量不到任何成本。但串流走的不是那條路
+ * ——它走 `writeMatrices`，而那一支除了寫矩陣還會重算區塊表（`blocks.write`）
+ * 並推一個 HLOD 的 append 操作。
+ *
+ * 也就是說上一個實驗**測錯了路徑**：它證明的是「寫矩陣本身不貴」，而那本來
+ * 就不是串流做的全部。
+ *
+ * 這裡改成呼叫 `writeMatrices`，而且寫回**一模一樣的內容**（開場抄一份留著）。
+ * 畫面因此完全不變，唯一多出來的就是那條路徑本身。
+ */
+const churnProbe = {
+  every: Number(params.get('churn') ?? 0),
+  count: Number(params.get('churnCount') ?? 400),
+  frame: 0,
+  lastMs: 0,
+  didChurn: false,
+  /** 開場抄下來的那一段矩陣。內容不變，所以只抄一次。 */
+  block: null as Float32Array | null,
+};
+
 const vtCamera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
 /** 驗證用的離屏目標。用到才建。 */
 let vtProbeTarget: WebGLRenderTarget | null = null;
@@ -683,6 +708,8 @@ const streamProbe = {
     triangles: number;
     rewrote: boolean;
     rewriteMs: number;
+    churned: boolean;
+    churnMs: number;
   }[],
   recording: false,
 };
@@ -794,6 +821,29 @@ const animate = (time: number): void => {
   }
   rewriteProbe.frame++;
 
+  // 真正的串流寫入路徑，交錯地跑。
+  const churnRoll = ((churnProbe.frame * 2246822519) >>> 0) % 100;
+  if (churnProbe.every > 0 && churnRoll < churnProbe.every) {
+    const mesh = rocks as WW.InstancedMesh;
+    if (churnProbe.block === null) {
+      const n = Math.min(churnProbe.count, mesh.count);
+      const block = new Float32Array(n * 16);
+      for (let i = 0; i < n; i++) {
+        mesh.getMatrixAt(i, rewriteMatrix);
+        block.set(rewriteMatrix.elements, i * 16);
+      }
+      churnProbe.block = block;
+    }
+    const start = performance.now();
+    mesh.writeMatrices(0, churnProbe.block);
+    churnProbe.lastMs = performance.now() - start;
+    churnProbe.didChurn = true;
+  } else {
+    churnProbe.lastMs = 0;
+    churnProbe.didChurn = false;
+  }
+  churnProbe.frame++;
+
   if (streamProbe.recording) {
     // **這一幀的，不是上一幀的。** 本來寫在 animate 結尾，而取樣在那之前
     // ——於是每一筆記到的都是前一幀的值。症狀很明顯卻很容易看漏：renderMs
@@ -821,6 +871,8 @@ const animate = (time: number): void => {
         triangles: renderer.info.render.triangles,
         rewrote: rewriteProbe.didWrite,
         rewriteMs: rewriteProbe.lastMs,
+        churned: churnProbe.didChurn,
+        churnMs: churnProbe.lastMs,
       });
     }
     lastProbeTime = time;

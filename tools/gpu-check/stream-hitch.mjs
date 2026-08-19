@@ -98,35 +98,62 @@ try {
   const longTasks = measured.longTasks;
 
   if (out.length === 0) throw new Error('沒有取到樣本');
+
+  // ## 幀間隔與回呼要錯開一格配對
+  //
+  // rAF 的 `time` 是**這一幀開始**的時刻，所以 `frameMs = time(N) - time(N-1)`
+  // 量的是「第 N 次回呼之前那一段」。而第 N 筆記下來的回呼時間與引擎分項，
+  // 描述的是第 N 次回呼**自己**。
+  //
+  // 兩者差一格。直接配在一起的話，一個很慢的回呼會把**下一筆**的 frameMs
+  // 撐大，於是看起來像「慢的那幾幀回呼反而比較短」—— 而我確實得到過那個
+  // 結論，還把它寫進 roadmap。是 CDP 的 trace 打臉才發現的。
+  //
+  // 這裡把工作量往後挪一格：第 N-1 次回呼做的事，配第 N 筆的間隔。
+  const shifted = out
+    .slice(1)
+    .map((sample, i) => ({ ...out[i], frameMs: sample.frameMs }))
+    // 前 60 幀是暖機（分頁剛回到前景、著色器還在編、HLOD 還沒烘完），丟掉。
+    .slice(60);
+
+  // ## 用中位數，不用平均
+  //
+  // 實測有一次量到單一 1004 ms 的樣本（分頁排程的一次性打嗝），而它一個人
+  // 就把平均整個帶走 —— 同一個設定前一次跑還是乾淨的。一個會因為一顆離群
+  // 值就翻掉的統計量，等於一個會隨機紅的關卡（doctrine 第 17 條）。
+  const mid = (xs, f) => {
+    if (xs.length === 0) return 0;
+    const sortedValues = xs.map(f).sort((a, b) => a - b);
+    return sortedValues[sortedValues.length >> 1];
+  };
   console.log(`── ${label}`);
 
-  const sorted = out.map((s) => s.frameMs).sort((a, b) => a - b);
+  const sorted = shifted.map((s) => s.frameMs).sort((a, b) => a - b);
   const p = (q) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
   const p50 = p(0.5);
   const p95 = p(0.95);
 
   // 慢的那幾幀 = 超過 p95 的。它們有沒有在載入？載入的那一段佔多少？
-  const spikes = out.filter((s) => s.frameMs >= p95);
+  const spikes = shifted.filter((s) => s.frameMs >= p95);
   const withLoad = spikes.filter((s) => s.cells > 0);
-  const quiet = out.filter((s) => s.cells === 0);
-  const loading = out.filter((s) => s.cells > 0);
+  const quiet = shifted.filter((s) => s.cells === 0);
+  const loading = shifted.filter((s) => s.cells > 0);
 
-  const avg = (xs, f) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + f(b), 0) / xs.length);
 
-  console.log(`  取樣 ${out.length} 幀，其中 ${loading.length} 幀有 cell 進來`);
+  console.log(`  取樣 ${shifted.length} 幀，其中 ${loading.length} 幀有 cell 進來`);
   console.log(`  幀 p50 ${p50.toFixed(2)} ms   p95 ${p95.toFixed(2)} ms   最慢 ${sorted[sorted.length - 1].toFixed(2)} ms\n`);
 
   console.log('  沒載入的幀 vs 有載入的幀');
-  console.log(`    沒載入  ${avg(quiet, (s) => s.frameMs).toFixed(2)} ms（${quiet.length} 幀）`);
-  console.log(`    有載入  ${avg(loading, (s) => s.frameMs).toFixed(2)} ms（${loading.length} 幀）`);
-  console.log(`    其中回呼自己 ${avg(loading, (s) => s.loadMs).toFixed(2)} ms，平均放 ${Math.round(avg(loading, (s) => s.placed)).toLocaleString()} 個\n`);
+  console.log(`    沒載入  ${mid(quiet, (s) => s.frameMs).toFixed(2)} ms（${quiet.length} 幀）`);
+  console.log(`    有載入  ${mid(loading, (s) => s.frameMs).toFixed(2)} ms（${loading.length} 幀）`);
+  console.log(`    其中回呼自己 ${mid(loading, (s) => s.loadMs).toFixed(2)} ms，平均放 ${Math.round(mid(loading, (s) => s.placed)).toLocaleString()} 個\n`);
 
   console.log(`  最慢的那 ${spikes.length} 幀（≥ p95）`);
   console.log(`    其中 ${withLoad.length} 幀正在載入（${((withLoad.length / Math.max(spikes.length, 1)) * 100).toFixed(0)}%）`);
-  console.log(`    平均整幀 ${avg(spikes, (s) => s.frameMs).toFixed(2)} ms，回呼自己 ${avg(spikes, (s) => s.loadMs).toFixed(2)} ms`);
+  console.log(`    平均整幀 ${mid(spikes, (s) => s.frameMs).toFixed(2)} ms，回呼自己 ${mid(spikes, (s) => s.loadMs).toFixed(2)} ms`);
 
-  const spikeFrame = avg(spikes, (s) => s.frameMs);
-  const spikeLoad = avg(spikes, (s) => s.loadMs);
+  const spikeFrame = mid(spikes, (s) => s.frameMs);
+  const spikeLoad = mid(spikes, (s) => s.loadMs);
   const share = (spikeLoad / Math.max(spikeFrame, 1e-6)) * 100;
   console.log(`    **回呼佔尖峰的 ${share.toFixed(1)}%，其餘 ${(100 - share).toFixed(1)}% 在下游**\n`);
 
@@ -158,14 +185,14 @@ try {
   console.log(`  尖峰幀 vs 安靜幀，各分項的平均`);
   let worst = null;
   for (const [name, f] of PARTS) {
-    const hot = avg(spikes, f);
-    const cold = avg(quiet, f);
+    const hot = mid(spikes, f);
+    const cold = mid(quiet, f);
     const delta = hot - cold;
     if (worst === null || delta > worst.delta) worst = { name, delta, hot, cold };
     console.log(`    ${name.padEnd(20)} 尖峰 ${hot.toFixed(2)} ms   安靜 ${cold.toFixed(2)} ms   差 ${delta >= 0 ? "+" : ""}${delta.toFixed(2)} ms`);
   }
   if (worst !== null) {
-    const explained = (worst.delta / Math.max(avg(spikes, (x) => x.frameMs) - avg(quiet, (x) => x.frameMs), 1e-6)) * 100;
+    const explained = (worst.delta / Math.max(mid(spikes, (x) => x.frameMs) - mid(quiet, (x) => x.frameMs), 1e-6)) * 100;
     console.log(`    **差最多的是「${worst.name}」，解釋了尖峰增量的 ${explained.toFixed(0)}%**`);
     if (explained < 40) {
       console.log('    → 沒有一個分項解釋得了：尖峰在引擎量不到的地方（Three 自己的上傳／繪製）。');
@@ -178,10 +205,10 @@ try {
   // 我們自己的回呼在尖峰幀反而更短，又沒有任何長任務 —— 那個組合指向
   // GPU：rAF 是被呈現節奏帶的，畫得久幀就長。要證實它，看尖峰幀是不是
   // 真的有比較多東西被畫出來。
-  const hotVis = avg(spikes, (x) => x.visible);
-  const coldVis = avg(quiet, (x) => x.visible);
-  const hotTri = avg(spikes, (x) => x.triangles);
-  const coldTri = avg(quiet, (x) => x.triangles);
+  const hotVis = mid(spikes, (x) => x.visible);
+  const coldVis = mid(quiet, (x) => x.visible);
+  const hotTri = mid(spikes, (x) => x.triangles);
+  const coldTri = mid(quiet, (x) => x.triangles);
   console.log(`  畫的東西：尖峰 ${Math.round(hotVis).toLocaleString()} 個可見 / ${Math.round(hotTri).toLocaleString()} 三角形`);
   console.log(`            安靜 ${Math.round(coldVis).toLocaleString()} 個可見 / ${Math.round(coldTri).toLocaleString()} 三角形`);
   const triRatio = hotTri / Math.max(coldTri, 1);
@@ -196,7 +223,7 @@ try {
   //
   // 這個差別決定解法：**穩定的**代表寫入本身就是那個價錢，要把一格拆小；
   // **偶爾很貴**代表有別的東西被觸發（緩衝區重配、批次重建），要去掉那件事。
-  const quietBase = avg(quiet, (s) => s.frameMs) || p50;
+  const quietBase = mid(quiet, (s) => s.frameMs) || p50;
   const perCell = loading
     .filter((s) => s.cells > 0)
     .map((s) => (s.frameMs - quietBase - s.loadMs) / s.cells)
@@ -210,7 +237,7 @@ try {
         ? '    → 偶爾很貴（p95 是 p50 的 ' + ratio.toFixed(1) + ' 倍）：有東西被觸發，不是寫入本身的價錢。'
         : '    → 穩定（p95 是 p50 的 ' + ratio.toFixed(1) + ' 倍）：就是寫入本身的價錢，要把一格拆小。',
     );
-    console.log(`    每格 ${Math.round(avg(loading, (s) => s.placed) / Math.max(avg(loading, (s) => s.cells), 1))} 個 instance
+    console.log(`    每格 ${Math.round(mid(loading, (s) => s.placed) / Math.max(mid(loading, (s) => s.cells), 1))} 個 instance
 `);
   }
 
@@ -260,15 +287,15 @@ try {
   });
   await page.close();
 
-  const avg = (xs, f) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + f(b), 0) / xs.length);
+  const mid = (xs, f) => { if (xs.length === 0) return 0; const v = xs.map(f).sort((a, b) => a - b); return v[v.length >> 1]; };
   const wrote = out.filter((x) => x.rewrote);
   const didnt = out.filter((x) => !x.rewrote);
   console.log(`  重寫的那幾幀 ${wrote.length}，沒重寫的 ${didnt.length}`);
-  console.log(`    重寫幀   幀 ${avg(wrote, (x) => x.frameMs).toFixed(2)} ms   其中寫矩陣本身 ${avg(wrote, (x) => x.rewriteMs).toFixed(2)} ms`);
-  console.log(`    沒重寫   幀 ${avg(didnt, (x) => x.frameMs).toFixed(2)} ms`);
-  console.log(`    三角形   重寫 ${Math.round(avg(wrote, (x) => x.triangles)).toLocaleString()}   沒重寫 ${Math.round(avg(didnt, (x) => x.triangles)).toLocaleString()}`);
-  const delta = avg(wrote, (x) => x.frameMs) - avg(didnt, (x) => x.frameMs);
-  const jsDelta = avg(wrote, (x) => x.rewriteMs);
+  console.log(`    重寫幀   幀 ${mid(wrote, (x) => x.frameMs).toFixed(2)} ms   其中寫矩陣本身 ${mid(wrote, (x) => x.rewriteMs).toFixed(2)} ms`);
+  console.log(`    沒重寫   幀 ${mid(didnt, (x) => x.frameMs).toFixed(2)} ms`);
+  console.log(`    三角形   重寫 ${Math.round(mid(wrote, (x) => x.triangles)).toLocaleString()}   沒重寫 ${Math.round(mid(didnt, (x) => x.triangles)).toLocaleString()}`);
+  const delta = mid(wrote, (x) => x.frameMs) - mid(didnt, (x) => x.frameMs);
+  const jsDelta = mid(wrote, (x) => x.rewriteMs);
   console.log(`    **多出來 ${delta.toFixed(2)} ms，其中 JS 只佔 ${jsDelta.toFixed(2)} ms**`);
   console.log(
     delta > jsDelta * 2 + 2
@@ -277,6 +304,53 @@ try {
   );
 } catch (e) {
   console.log("因果測試失敗：" + String(e).split(String.fromCharCode(10))[0].slice(0, 200));
+  process.exitCode = 1;
+}
+
+// ## 第二個因果測試：走真正的寫入路徑
+//
+// 上一個用 setMatrixAt，量不到成本 —— 但串流走的不是那條路。它走
+// writeMatrices，而那一支除了寫矩陣還會重算區塊表、推一個 HLOD append。
+// 也就是上一個實驗測錯了路徑：它證明的是「寫矩陣本身不貴」，而那本來就
+// 不是串流做的全部。
+try {
+  console.log("");
+  console.log('── 因果測試二：靜止的場景，交錯地走真正的寫入路徑（writeMatrices）');
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  page.setDefaultNavigationTimeout(240000);
+  await page.goto(`${base}/?count=200000&spread=8000&orbit=200&churn=50&churnCount=400`, { waitUntil: "load" });
+  await page.waitForFunction(() => window.__ww?.totalFrames > 120, undefined, { timeout: 240000 });
+
+  const out = await page.evaluate(async () => {
+    window.__ww.streamProbe.start();
+    await new Promise((resolve) => {
+      let n = 0;
+      const tick = () => (++n < 600 ? requestAnimationFrame(tick) : resolve());
+      requestAnimationFrame(tick);
+    });
+    return window.__ww.streamProbe.stop();
+  });
+  await page.close();
+
+  const mid = (xs, f) => { if (xs.length === 0) return 0; const v = xs.map(f).sort((a, b) => a - b); return v[v.length >> 1]; };
+  const did = out.filter((x) => x.churned);
+  const didnt = out.filter((x) => !x.churned);
+  console.log(`  走了寫入路徑的 ${did.length} 幀，沒走的 ${didnt.length} 幀`);
+  console.log(`    走了   幀 ${mid(did, (x) => x.frameMs).toFixed(2)} ms   其中 writeMatrices 本身 ${mid(did, (x) => x.churnMs).toFixed(2)} ms`);
+  console.log(`    沒走   幀 ${mid(didnt, (x) => x.frameMs).toFixed(2)} ms`);
+  console.log(`    三角形 走了 ${Math.round(mid(did, (x) => x.triangles)).toLocaleString()}   沒走 ${Math.round(mid(didnt, (x) => x.triangles)).toLocaleString()}`);
+  console.log(`    引擎 CPU 走了 ${mid(did, (x) => x.cpuMs).toFixed(2)} ms   沒走 ${mid(didnt, (x) => x.cpuMs).toFixed(2)} ms`);
+  console.log(`    HLOD 合併 走了 ${mid(did, (x) => x.hlodMerge).toFixed(2)} ms   沒走 ${mid(didnt, (x) => x.hlodMerge).toFixed(2)} ms`);
+  const delta = mid(did, (x) => x.frameMs) - mid(didnt, (x) => x.frameMs);
+  const jsDelta = mid(did, (x) => x.churnMs);
+  console.log(`    **多出來 ${delta.toFixed(2)} ms，其中 writeMatrices 的同步部分只佔 ${jsDelta.toFixed(2)} ms**`);
+  console.log(
+    delta > 2
+      ? '  → 因果成立：內容完全沒變，只是走一次真正的寫入路徑就變慢了。'
+      : '  → 這條路徑也不是原因。',
+  );
+} catch (e) {
+  console.log("因果測試二失敗：" + String(e).split(String.fromCharCode(10))[0].slice(0, 200));
   process.exitCode = 1;
 }
 

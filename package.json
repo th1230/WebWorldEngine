@@ -47,7 +47,8 @@
     "impostor-check": "node tools/gpu-check/impostor.mjs",
     "frame-bound": "node tools/gpu-check/frame-bound.mjs",
     "stream-hitch": "node tools/gpu-check/stream-hitch.mjs",
-    "vt-check": "node tools/gpu-check/virtual-texture.mjs"
+    "vt-check": "node tools/gpu-check/virtual-texture.mjs",
+    "stream-trace": "node tools/gpu-check/stream-trace.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
