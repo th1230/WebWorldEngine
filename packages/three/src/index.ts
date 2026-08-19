@@ -28,6 +28,13 @@ export {
 } from './vertex-animation.ts';
 export { worldFor, World, type WorldStats } from './world.ts';
 export { applyShadows, type CascadedShadows } from './shadows.ts';
+export { Water, DEFAULT_WAVES, type WaterWave, type WaterOptions } from './water.ts';
+export {
+  computeBuoyancy,
+  type BuoyancyBody,
+  type BuoyancyForce,
+  type BuoyancyOptions,
+} from './buoyancy.ts';
 export {
   PhysicsScheduler,
   type PhysicsSchedulerOptions,
