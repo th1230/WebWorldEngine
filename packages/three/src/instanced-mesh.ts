@@ -2283,6 +2283,10 @@ export class InstancedMesh extends BatchedMesh {
     const starts = this.internals._multiDrawStarts;
     const counts = this.internals._multiDrawCounts;
     const indirect = this.internals._indirectTexture.image.data as Uint32Array;
+    // 本地參照，與這個迴圈裡其他陣列同一個理由：每個 instance 少兩次
+    // `this.` 解參考。關掉遮蔽剔除時它是 null，那一行就是一個永遠不成立
+    // 的分支 —— 不用的人不該為它付錢。
+    const collectedSlots = this.occlusionBuffer !== null ? this.collectedSlots : null;
     const errors = this.lodErrors;
     const lodRanges = this.lodRanges;
     const levelCounts = this._levelCounts;
@@ -2441,7 +2445,7 @@ export class InstancedMesh extends BatchedMesh {
         starts[drawCount] = lodRanges[level * 2]! * bytesPerElement * multiplier;
         counts[drawCount] = lodRanges[level * 2 + 1]! * multiplier;
         indirect[drawCount] = id;
-        if (this.occlusionBuffer !== null) this.collectedSlots[drawCount] = slot;
+        if (collectedSlots !== null) collectedSlots[drawCount] = slot;
         drawCount++;
       }
     }
