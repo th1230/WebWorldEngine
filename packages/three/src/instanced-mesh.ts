@@ -1402,7 +1402,21 @@ export class InstancedMesh extends BatchedMesh {
     const tested = this._testedInstances;
     if (tested <= 0) return;
     this.gridCostMs += this.lastRebuildMs;
-    this.gridSavedMs += Math.max(this.lastCount - tested, 0) * (this._collectMs / tested);
+    // ## 每個被剔掉的 instance 值多少，要用**做過平面測試**的那些去估
+    //
+    // 直覺會寫 `collectMs / tested`（每個測過的平均）。但整段在視錐內側時
+    // 那六個平面會被跳過，於是「平均」被那些便宜的拉低 —— 而**格子剔掉的
+    // 那些不可能是便宜的**：它們在視錐外，一定得做完整的平面測試才知道。
+    //
+    // 用平均去估，格子省下的錢就被低估，於是帳算不過來 → 靜態內容的空間
+    // 分割被誤判成不划算而暫停。症狀是幀時間變差外加一則「這是動態內容嗎」
+    // 的警告，而內容根本沒動。
+    //
+    // 除以「做過平面測試的數量」就沒有這個問題，而且**跳過率是 0 的時候
+    // 它與原本的式子完全相同** —— 一個不改變格子行為的最佳化，不該改變
+    // 「格子值不值得」的判斷。
+    const priced = Math.max(tested - this._skippedPlanes, 1);
+    this.gridSavedMs += Math.max(this.lastCount - tested, 0) * (this._collectMs / priced);
     if (this.gridCostMs <= this.gridSavedMs) return;
 
     const cost = `重建花掉 ${this.gridCostMs.toFixed(2)} ms，而它省下的走訪只有 ${this.gridSavedMs.toFixed(2)} ms`;
