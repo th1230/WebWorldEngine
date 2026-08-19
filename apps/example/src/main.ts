@@ -11,6 +11,7 @@ import { makeContactScene, type ContactScene } from './contact-scene.ts';
 import { makeDfShadowScene, type DfShadowScene } from './df-shadow-scene.ts';
 import { makeReflectionScene, type ReflectionScene } from './reflection-scene.ts';
 import { makeSkyScene, type SkyScene } from './sky-scene.ts';
+import { makeFogScene, type FogScene } from './fog-scene.ts';
 import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
@@ -484,6 +485,9 @@ const reflectionScene: ReflectionScene | null = params.get('reflect') === '1' ? 
 /** `?sky=1` 大氣散射的天空，順便證明它會餵給探針。 */
 const skyScene: SkyScene | null = params.get('sky') === '1' ? makeSkyScene() : null;
 if (skyScene !== null) rocks.visible = false;
+/** `?fog=1` 一面有缺口的牆，太陽在後面 —— 光柱要被擋住。 */
+const fogScene: FogScene | null = params.get('fog') === '1' ? makeFogScene() : null;
+if (fogScene !== null) rocks.visible = false;
 if (reflectionScene !== null) rocks.visible = false;
 if (dfShadowScene !== null) rocks.visible = false;
 if (contactScene !== null) rocks.visible = false;
@@ -1782,6 +1786,17 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    fog:
+      fogScene === null
+        ? null
+        : {
+            settle: (): number => fogScene.settle(),
+            render: (useField: boolean): void => fogScene.render(renderer, useField),
+            variance: (which: "throughGap" | "behindWall" | "sky"): number =>
+              fogScene.localVariance(renderer, fogScene.spots[which][0], fogScene.spots[which][1]),
+            sample: (which: "throughGap" | "behindWall"): [number, number, number, number] =>
+              fogScene.sampleAt(renderer, fogScene.spots[which][0], fogScene.spots[which][1]),
+          },
     /**
      * 畫一幀，回報「有多少像素不是背景」與過渡中的數量。
      *
@@ -1889,6 +1904,9 @@ Object.assign(window, {
             sample: (which: "shadow" | "open" | "behind" | "outside" | "boxTop" | "terminator"): number =>
               dfShadowScene.sample(renderer, dfShadowScene.points[which]),
             coverage: (): number => dfShadowScene.coverage(renderer),
+            renderFog: (useField: boolean): void => dfShadowScene.renderFog(renderer, useField),
+            sampleFog: (which: "shadow" | "open" | "behind" | "outside" | "boxTop" | "terminator"): [number, number, number, number] =>
+              dfShadowScene.sampleFog(renderer, dfShadowScene.points[which]),
             setStrength: (v: number): void => dfShadowScene.setStrength(v),
             setCameraAngle: (w: 0 | 1): void => dfShadowScene.setCameraAngle(w),
           },

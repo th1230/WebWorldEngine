@@ -49,6 +49,15 @@ export interface DfShadowScene {
    * 轉 —— 而靜止的相機看不出來（錯的方向也是固定的錯）。
    */
   setCameraAngle: (which: 0 | 1) => void;
+  /**
+   * 畫一次體積霧。`useField` 決定光柱會不會被擋住 —— 那正是這件事的重點。
+   */
+  renderFog: (renderer: THREE.WebGLRenderer, useField: boolean) => void;
+  /** 讀霧貼圖上某個世界座標投影到的那一點：RGB 是散射光，A 是透光率。 */
+  sampleFog: (
+    renderer: THREE.WebGLRenderer,
+    point: THREE.Vector3,
+  ) => [number, number, number, number];
   setStrength: (value: number) => void;
   fieldPending: () => number;
 }
@@ -108,6 +117,13 @@ export function makeDfShadowScene(): DfShadowScene {
 
   const gbuffer = new WW.SceneDepthNormals({ scale: 1 });
   const shadows = new WW.DistanceFieldShadows({ steps: 64, softness: 6, strength: 1 });
+  const fog = new WW.VolumetricFog({
+    density: 0.06,
+    steps: 48,
+    range: 220,
+    anisotropy: 0.7,
+    shadowSteps: 24,
+  });
 
   const scene = new THREE.Scene();
   scene.add(root);
@@ -131,6 +147,34 @@ export function makeDfShadowScene(): DfShadowScene {
     render: (renderer) => {
       gbuffer.update(renderer, scene, camera);
       shadows.render(renderer, camera, gbuffer, field, lightDirection);
+    },
+    renderFog: (renderer, useField) => {
+      gbuffer.update(renderer, scene, camera);
+      fog.render(renderer, camera, gbuffer, lightDirection, new THREE.Color(0xffffff), useField ? field : null);
+    },
+    sampleFog: (renderer, point) => {
+      const target = (fog as unknown as { target: THREE.WebGLRenderTarget }).target;
+      projected.copy(point).project(camera);
+      if (projected.x < -1 || projected.x > 1 || projected.y < -1 || projected.y > 1 || projected.z > 1) {
+        return [Number.NaN, Number.NaN, Number.NaN, Number.NaN];
+      }
+      const x = Math.round(((projected.x + 1) / 2) * target.width);
+      const y = Math.round(((projected.y + 1) / 2) * target.height);
+      const half = new Uint16Array(4);
+      renderer.readRenderTargetPixels(
+        target,
+        Math.min(target.width - 1, Math.max(0, x)),
+        Math.min(target.height - 1, Math.max(0, y)),
+        1,
+        1,
+        half,
+      );
+      return [
+        THREE.DataUtils.fromHalfFloat(half[0] ?? 0),
+        THREE.DataUtils.fromHalfFloat(half[1] ?? 0),
+        THREE.DataUtils.fromHalfFloat(half[2] ?? 0),
+        THREE.DataUtils.fromHalfFloat(half[3] ?? 0),
+      ];
     },
     sample: (renderer, point) => {
       const target = targetOf(shadows);

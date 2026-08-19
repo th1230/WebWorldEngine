@@ -90,3 +90,4 @@ export { DistanceFieldShadows, type DistanceFieldShadowsOptions } from './distan
 export { TracedReflections, type TracedReflectionsOptions } from './traced-reflections.ts';
 export { SkyAtmosphere, type SkyAtmosphereOptions } from './sky.ts';
 export { LOD_FADE_CAPACITY } from './lod-fade.ts';
+export { VolumetricFog, type VolumetricFogOptions } from './volumetric-fog.ts';
