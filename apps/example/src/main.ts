@@ -5,6 +5,7 @@ import { makePhysicsScene, type PhysicsScene } from './physics-scene.ts';
 import { makeGiScene, type GiScene } from './gi-scene.ts';
 import { makeBigMesh, type BigMeshScene } from './big-mesh.ts';
 import { makeTextureHeavy, type TextureHeavyScene } from './texture-heavy.ts';
+import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
 import * as THREE from 'three';
@@ -109,6 +110,13 @@ const BIG_MESH = params.has('bigMesh') ? Number(params.get('bigMesh')) : 0;
  * 第一步，而不是虛擬貼圖本身。
  */
 const TEXTURES = params.has('textures') ? Number(params.get('textures')) : 0;
+/**
+ * `?trees=數量` 一片樹林。`?impostor=1` 換成看板。
+ *
+ * 兩邊同樣的數量、同樣的位置、同樣的相機 —— 只換表示法。
+ */
+const TREES = params.has('trees') ? Number(params.get('trees')) : 0;
+const USE_IMPOSTOR = params.get('impostor') === '1';
 const TEX_SIZE = Number(params.get('texSize') ?? 512);
 /** `?texStack=1` 疊成一疊，讓每一張都被高解析度取樣（工作集 = 總量）。 */
 const TEX_STACK = params.get('texStack') === '1';
@@ -441,6 +449,13 @@ if (physicsScene !== null) {
   rocks.visible = false;
 }
 
+const impostorScene: ImpostorScene | null =
+  TREES > 0 ? makeImpostorScene(renderer, TREES, SPREAD, USE_IMPOSTOR) : null;
+if (impostorScene !== null) {
+  scene.add(impostorScene.root);
+  rocks.visible = false;
+}
+
 const textureHeavy: TextureHeavyScene | null =
   TEXTURES > 0 ? makeTextureHeavy(TEXTURES, TEX_SIZE, TEX_STACK) : null;
 if (textureHeavy !== null) {
@@ -756,6 +771,14 @@ function step(t = 0): void {
     // 所以相機壓低、看向遠方 —— 腳下清清楚楚、地平線那端只有幾個像素。
     camera.position.set(Math.cos(t * 0.12) * 900, 40, Math.sin(t * 0.12) * 900);
     camera.lookAt(0, 10, 0);
+  } else if (impostorScene !== null) {
+    // 貼著地面繞一圈 —— impostor 的破綻（挑錯格、看板轉不過去）只有在
+    // 相機繞著看的時候才露出來。
+    // `?treeDist=` 決定相機站多遠 —— impostor 只在夠遠的地方才成立，
+    // 而「多遠才算夠」正是要量的東西。
+    const dist = Number(params.get('treeDist') ?? SPREAD * 0.5);
+    camera.position.set(Math.cos(t * 0.15) * dist, 12 + dist * 0.08, Math.sin(t * 0.15) * dist);
+    camera.lookAt(0, 6, 0);
   } else if (textureHeavy !== null) {
     // 從上方俯瞰整片 —— 要讓每一張貼圖都真的被取樣到，光是配置記憶體
     // 不會逼出換頁。
@@ -1479,6 +1502,20 @@ Object.assign(window, {
   __ww: {
     physics: (): unknown => physicsScene?.stats() ?? null,
     bigMesh: bigMesh === null ? null : { triangles: bigMesh.triangles, pieces: bigMesh.pieces },
+    impostor:
+      impostorScene === null
+        ? null
+        : {
+            count: impostorScene.count,
+            impostor: impostorScene.impostor,
+            triangles: impostorScene.triangles,
+            get calls() {
+              return renderer.info.render.calls;
+            },
+            get drawnTriangles() {
+              return renderer.info.render.triangles;
+            },
+          },
     textureHeavy:
       textureHeavy === null
         ? null
