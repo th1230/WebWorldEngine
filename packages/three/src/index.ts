@@ -16,6 +16,7 @@
  */
 export { InstancedMesh, type InstancedMeshOptions } from './instanced-mesh.ts';
 export { MultiMesh, type MultiMeshOptions } from './multi-mesh.ts';
+export { splitGeometry, splitWithLods, type SplitGeometryOptions } from './split.ts';
 export {
   buildTerrain,
   terrainHeightfield,

@@ -43,6 +43,23 @@ export interface LodGenerationOptions {
   ratios?: readonly number[];
   /** 相對誤差上限；超過就停止產生更粗的階。 */
   maxRelativeError?: number;
+  /**
+   * 鎖住開放邊界的頂點，不讓簡化器動它們。
+   *
+   * ## 什麼時候要開
+   *
+   * 這一份幾何是**從一份更大的幾何切出來的一塊**的時候。相鄰兩塊共用一條邊，
+   * 而兩邊各自簡化會把那條邊化成不同的樣子 —— 中間就裂開一條縫。
+   *
+   * 那個症狀特別討厭：只在某些角度、某些距離看得到（要兩塊剛好選到不同的
+   * 階才會露出來），所以它很容易在開發時完全沒出現，然後在別人的機器上出現。
+   *
+   * ## 為什麼不預設開
+   *
+   * 鎖住邊界會讓簡化器少掉很多可以塌陷的邊，粗階因此粗不下去。單獨一份的
+   * 幾何（一顆石頭、一棵樹）沒有鄰居，鎖它只是白白損失壓縮率。
+   */
+  lockBorder?: boolean;
 }
 
 /**
@@ -87,6 +104,7 @@ export async function generateLodLevels(
 ): Promise<GeneratedLevel[]> {
   const ratios = options.ratios ?? DEFAULT_RATIOS;
   const maxRelativeError = options.maxRelativeError ?? DEFAULT_MAX_RELATIVE_ERROR;
+  const flags: string[] = options.lockBorder === true ? ['LockBorder'] : [];
 
   const welded = source.indices === null ? weld(source) : source;
   const position = welded.attributes['position'];
@@ -131,6 +149,7 @@ export async function generateLodLevels(
       position.itemSize,
       target,
       maxRelativeError,
+      flags as never,
     );
 
     // simplifier 達不到目標時會原樣回傳。再往下產生只是白佔記憶體，

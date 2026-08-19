@@ -37,7 +37,8 @@
     "physics-check": "node tools/physics-check/verify.mjs",
     "gi-check": "node tools/gi-check/verify.mjs",
     "occlusion-probe": "node tools/gpu-check/occlusion-saving.mjs",
-    "occlusion-net": "node tools/gpu-check/occlusion-net.mjs"
+    "occlusion-net": "node tools/gpu-check/occlusion-net.mjs",
+    "split-value": "node tools/gpu-check/split-value.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

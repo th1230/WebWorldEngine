@@ -3,6 +3,7 @@ import { makeSkinnedField, makeSkinnedRig } from './skinned.ts';
 import { makeWaterScene } from './water-scene.ts';
 import { makePhysicsScene, type PhysicsScene } from './physics-scene.ts';
 import { makeGiScene, type GiScene } from './gi-scene.ts';
+import { makeBigMesh, type BigMeshScene } from './big-mesh.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
 import * as THREE from 'three';
@@ -95,6 +96,12 @@ const WATER = params.get('water') === '1';
 const PHYSICS = params.get('physics') === '1';
 /** `?gi=1` 紅房間 + 白箱子，用來證明間接光真的是反彈來的。 */
 const GI = params.get('gi') === '1';
+/**
+ * `?bigMesh=段數` 一份很大的單一幾何。配 `?split=塊數` 用切塊工具切開；
+ * `?split=0`（預設）是對照組：整片一份、一個物件。
+ */
+const BIG_MESH = params.has('bigMesh') ? Number(params.get('bigMesh')) : 0;
+const SPLIT = Number(params.get('split') ?? 0);
 /** `?scatter=1` 用規則式擺放代替亂數灑點。 */
 const SCATTER = params.get('scatter') === '1';
 /** `?vatLod=0` 關掉 VAT 那條路的 LOD —— 要與蒙皮基準比同樣的三角形數時用。 */
@@ -410,6 +417,13 @@ if (physicsScene !== null) {
   rocks.visible = false;
 }
 
+const bigMesh: BigMeshScene | null =
+  BIG_MESH > 0 ? await makeBigMesh(3000, BIG_MESH, SPLIT) : null;
+if (bigMesh !== null) {
+  scene.add(bigMesh.root);
+  rocks.visible = false;
+}
+
 const giScene: GiScene | null = GI ? makeGiScene() : null;
 if (giScene !== null) {
   scene.add(giScene.root);
@@ -709,6 +723,11 @@ function step(t = 0): void {
     // 所以相機壓低、看向遠方 —— 腳下清清楚楚、地平線那端只有幾個像素。
     camera.position.set(Math.cos(t * 0.12) * 900, 40, Math.sin(t * 0.12) * 900);
     camera.lookAt(0, 10, 0);
+  } else if (bigMesh !== null) {
+    // 貼著地面看向遠方 —— 那是「同一個東西橫跨很大的深度範圍」的形狀，
+    // 也是逐塊選階唯一有價值的機位。從高處俯瞰會把這條軸要問的東西消掉。
+    camera.position.set(Math.cos(t * 0.1) * 900, 90, Math.sin(t * 0.1) * 900);
+    camera.lookAt(0, 20, 0);
   } else if (giScene !== null) {
     // 固定機位，而且**看得到箱子的背光面**（朝 −x／−z 那兩面）—— 量的就是
     // 那裡有沒有沾到紅色。會動的相機會讓每次量到的像素都不一樣。
@@ -1414,6 +1433,7 @@ if (enhanced) void measureLodBlocking();
 Object.assign(window, {
   __ww: {
     physics: (): unknown => physicsScene?.stats() ?? null,
+    bigMesh: bigMesh === null ? null : { triangles: bigMesh.triangles, pieces: bigMesh.pieces },
     gi:
       giScene === null
         ? null
