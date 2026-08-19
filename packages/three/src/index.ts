@@ -89,3 +89,4 @@ export { ContactShadows, type ContactShadowsOptions } from './contact-shadows.ts
 export { DistanceFieldShadows, type DistanceFieldShadowsOptions } from './distance-field-shadows.ts';
 export { TracedReflections, type TracedReflectionsOptions } from './traced-reflections.ts';
 export { SkyAtmosphere, type SkyAtmosphereOptions } from './sky.ts';
+export { LOD_FADE_CAPACITY } from './lod-fade.ts';

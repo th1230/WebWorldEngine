@@ -495,6 +495,72 @@ describe('InstancedMesh — LOD 依螢幕誤差選階', () => {
     expect(half.stats.levels[2]).toBe(1);
   });
 
+  it('交叉淡入：剛過門檻的那一段兩個階同時送', () => {
+    // 抖動交叉淡入的做法是「同一個 instance 畫兩次，每個像素只留一次」。
+    // 所以繪製筆數會比 instance 數多，而 instance 數不變。
+    const build = (band: number): InstancedMesh => {
+      const mesh = new InstancedMesh(
+        { lods: [unitBox(), unitBox(), unitBox()], errors: [0, 0.05, 0.4] },
+        material(),
+        1,
+        { lodFadeBand: band },
+      );
+      // 最粗階的門檻是 0.4 × 935 / 2 = 187，所以 195 剛過去一點。
+      mesh.setMatrixAt(0, new Matrix4().makeTranslation(0, 0, -195));
+      return mesh;
+    };
+
+    const off = build(0);
+    draw(off, makeCamera());
+    expect(off.fadingInstances).toBe(0);
+
+    const on = build(0.3);
+    draw(on, makeCamera());
+    expect(on.fadingInstances).toBe(1);
+    // 一個 instance，兩筆繪製。
+    expect(on.stats.visible).toBe(1);
+  });
+
+  it('離門檻夠遠就不淡入 —— 過渡是有寬度的，不是永遠開著', () => {
+    const mesh = new InstancedMesh(
+      { lods: [unitBox(), unitBox(), unitBox()], errors: [0, 0.05, 0.4] },
+      material(),
+      1,
+      { lodFadeBand: 0.1 },
+    );
+    // 門檻 187，寬度 10% → 過了 205.7 就不再淡入。
+    mesh.setMatrixAt(0, new Matrix4().makeTranslation(0, 0, -400));
+    draw(mesh, makeCamera());
+    expect(mesh.fadingInstances).toBe(0);
+  });
+
+  it('過渡的進度從 0 走到 1', () => {
+    const at = (distance: number): number => {
+      const mesh = new InstancedMesh(
+        { lods: [unitBox(), unitBox(), unitBox()], errors: [0, 0.05, 0.4] },
+        material(),
+        1,
+        { lodFadeBand: 0.5 },
+      );
+      mesh.setMatrixAt(0, new Matrix4().makeTranslation(0, 0, -distance));
+      draw(mesh, makeCamera());
+      const uniforms = (mesh as unknown as { fadeUniforms: { wwFadeAmount: { value: Float32Array } } })
+        .fadeUniforms;
+      return mesh.fadingInstances > 0 ? uniforms.wwFadeAmount.value[0]! : -1;
+    };
+
+    // 門檻 187，寬度 50% → 187 到 280.5 之間是過渡。
+    const early = at(190);
+    const middle = at(233);
+    const late = at(275);
+    expect(early).toBeGreaterThanOrEqual(0);
+    expect(early).toBeLessThan(0.2);
+    expect(middle).toBeGreaterThan(0.3);
+    expect(middle).toBeLessThan(0.7);
+    expect(late).toBeGreaterThan(0.8);
+    expect(late).toBeLessThanOrEqual(1);
+  });
+
   it('關掉自動 LOD 時說出來，而不是靜默地不做', () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     new InstancedMesh(unitBox(), material(), 4, { autoLod: false });

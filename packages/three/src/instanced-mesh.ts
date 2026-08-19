@@ -19,6 +19,11 @@ import { createFrustum, frustumFromCamera, type Frustum } from './camera-frustum
 import { InstanceBlocks } from './instance-blocks.ts';
 import { InstanceGrid } from './instance-grid.ts';
 import { pixelsPerUnit, resolveLodChain, selectLevel, type GeometrySource } from './lod-chain.ts';
+import {
+  LOD_FADE_CAPACITY,
+  LOD_FADE_FRAGMENT_GLSL,
+  LOD_FADE_VERTEX_GLSL,
+} from './lod-fade.ts';
 import type {
   GeneratedLevel,
   GeometryData,
@@ -49,6 +54,21 @@ export interface InstancedMeshOptions {
    * 屬於開發者，所以它是一個旋鈕而不是引擎自己調的東西。
    */
   errorPixels?: number;
+  /**
+   * 換階時交叉淡入的寬度（比例）。預設 0 —— **關的**。
+   *
+   * 0.25 代表「過了門檻之後再走 25% 的距離，才完全換到粗階」，中間那一段
+   * 兩個階同時畫，用抖動決定每個像素用哪一個。整段的理由見 `lod-fade.ts`。
+   *
+   * ## 為什麼預設是關的
+   *
+   * 量過了：散開的兩萬顆石頭在推鏡頭時，**最忙的一幀只有 75 顆換階**
+   * （0.4%）—— 那看不見，而淡入要為它多畫一次。密集排列的內容才明顯
+   * （同樣兩萬顆量到 692 顆），那時候再開。
+   *
+   * 一個沒有量到好處的東西不該預設打開。
+   */
+  lodFadeBand?: number;
   /**
    * 遮蔽剔除：把**確定被別的東西擋住**的 instance 從這一幀拿掉。
    *
@@ -541,6 +561,18 @@ export class InstancedMesh extends BatchedMesh {
   /** 快取是照走訪順序排的嗎。格子停用時退回照編號排。 */
   private spheresByOrder = false;
   private readonly errorPixels: number;
+  private readonly lodFadeBand: number;
+  /** 這一幀在過渡的 instance：編號、粗階、進度。 */
+  private readonly fadeIds = new Int32Array(LOD_FADE_CAPACITY);
+  private readonly fadeLevels = new Int32Array(LOD_FADE_CAPACITY);
+  private readonly fadeAmounts = new Float32Array(LOD_FADE_CAPACITY);
+  /** 著色器的 uniform 物件。**建一次就不換** —— 換了之後改值不會生效。 */
+  private readonly fadeUniforms = {
+    wwFadeFineStart: { value: 0 },
+    wwFadeCoarseStart: { value: 0 },
+    wwFadeCount: { value: 0 },
+    wwFadeAmount: { value: new Float32Array(LOD_FADE_CAPACITY) },
+  };
   private readonly instancesPerCell: number;
   private readonly grid = new InstanceGrid();
   /**
@@ -692,8 +724,17 @@ export class InstancedMesh extends BatchedMesh {
     const extendVertices = buildWhole || !generateChain ? 0 : lastVertexCount;
     const extendIndices = buildWhole || !generateChain ? 0 : lastIndexCount;
 
+    // ## 開了淡入要多留繪製槽位
+    //
+    // Three 的 multiDraw 陣列是照 **instance 容量**配的，而一個過渡中的
+    // instance 要送兩筆繪製。不多留的話「全部都看得見」時就補不下 ——
+    // 而那個失效是**靜悄悄**的：畫面回到直接換階，沒有錯誤、沒有警告。
+    //
+    // 實測踩過：容量 1 的測試裡淡入永遠不生效，而每個中間值看起來都對。
+    const fadeSlots = (options.lodFadeBand ?? 0) > 0 ? LOD_FADE_CAPACITY : 0;
+
     super(
-      count,
+      count + fadeSlots,
       Math.ceil(vertexBudget * reserve) + extendVertices,
       Math.max(Math.ceil(indexBudget * reserve) + extendIndices, 1),
       material,
@@ -702,6 +743,8 @@ export class InstancedMesh extends BatchedMesh {
     this.sourceGeometry = geometries[0]!;
     this.lodErrors = errors;
     this.errorPixels = options.errorPixels ?? 2;
+    this.lodFadeBand = Math.max(0, options.lodFadeBand ?? 0);
+    if (this.lodFadeBand > 0) this.installLodFade(material);
     if (options.occlusion === true) this.occlusionBuffer = new OcclusionBuffer();
     this.instancesPerCell = options.instancesPerCell ?? 64;
     this.declaredDynamic = options.dynamic;
@@ -1008,6 +1051,83 @@ export class InstancedMesh extends BatchedMesh {
         uploadMs: this._uploadMs,
       },
     };
+  }
+
+  /**
+   * 把淡入的著色器接到材質上。
+   *
+   * 走 `onBeforeCompile`，與 CSM、間接光同一類 —— 不換渲染器，只加幾行。
+   */
+  private installLodFade(material: Material | Material[]): void {
+    const list = Array.isArray(material) ? material : [material];
+    for (const one of list) {
+      const previous = one.onBeforeCompile.bind(one);
+      one.onBeforeCompile = (parameters, renderer): void => {
+        previous(parameters, renderer);
+        Object.assign(parameters.uniforms, this.fadeUniforms);
+        parameters.vertexShader = parameters.vertexShader
+          .replace('#include <common>', `#include <common>\n${LOD_FADE_VERTEX_GLSL}`)
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\n  wwSetupLodFade();');
+        parameters.fragmentShader = parameters.fragmentShader
+          .replace('#include <common>', `#include <common>\n${LOD_FADE_FRAGMENT_GLSL}`)
+          .replace(
+            '#include <clipping_planes_fragment>',
+            '#include <clipping_planes_fragment>\n  wwApplyLodFade();',
+          );
+      };
+      one.needsUpdate = true;
+    }
+  }
+
+  /**
+   * 把過渡中的那幾個補在繪製清單**最後面**，分成細階與粗階兩塊。
+   *
+   * 排在最後面而且分成兩塊，是為了讓著色器只靠 `gl_DrawID` 就分得出自己是
+   * 哪一半 —— 不必把額外資料塞進 Three 的批次內部。
+   *
+   * 補不下就不補：畫面回到「直接換階」，也就是今天的樣子。安全的退化。
+   */
+  private appendLodFade(
+    drawCount: number,
+    count: number,
+    starts: Int32Array,
+    counts: Int32Array,
+    indirect: Uint32Array,
+    bytesPerElement: number,
+    multiplier: number,
+  ): number {
+    const uniforms = this.fadeUniforms;
+    if (count <= 0 || drawCount + count * 2 > starts.length) {
+      uniforms.wwFadeCount.value = 0;
+      return drawCount;
+    }
+    const ranges = this.lodRanges;
+    uniforms.wwFadeFineStart.value = drawCount;
+    // 細階那一半：粗階的前一階。
+    for (let i = 0; i < count; i++) {
+      const fine = this.fadeLevels[i]! - 1;
+      starts[drawCount] = ranges[fine * 2]! * bytesPerElement * multiplier;
+      counts[drawCount] = ranges[fine * 2 + 1]! * multiplier;
+      indirect[drawCount] = this.fadeIds[i]!;
+      drawCount++;
+    }
+    uniforms.wwFadeCoarseStart.value = drawCount;
+    for (let i = 0; i < count; i++) {
+      const coarse = this.fadeLevels[i]!;
+      starts[drawCount] = ranges[coarse * 2]! * bytesPerElement * multiplier;
+      counts[drawCount] = ranges[coarse * 2 + 1]! * multiplier;
+      indirect[drawCount] = this.fadeIds[i]!;
+      drawCount++;
+    }
+    const amounts = uniforms.wwFadeAmount.value;
+    for (let i = 0; i < count; i++) amounts[i] = this.fadeAmounts[i]!;
+    uniforms.wwFadeCount.value = count;
+    return drawCount;
+  }
+
+  /** 診斷：這一幀有幾個 instance 在換階的過渡中。 */
+  get fadingInstances(): number {
+    return this.fadeUniforms.wwFadeCount.value;
   }
 
   /** LOD 階數。1 代表沒有 LOD 鏈。 */
@@ -2302,6 +2422,12 @@ export class InstancedMesh extends BatchedMesh {
       this.levelDistanceSq = new Float64Array(errors.length);
     }
     const levelDistanceSq = this.levelDistanceSq;
+    const fadeBand = this.lodFadeBand;
+    const fadeUpper = (1 + fadeBand) * (1 + fadeBand);
+    const fadeIds = this.fadeIds;
+    const fadeLevels = this.fadeLevels;
+    const fadeAmounts = this.fadeAmounts;
+    let fadeCount = 0;
     {
       const scale = (invBaseRadius * ppu) / Math.max(errorPixels, 1e-6);
       for (let l = 0; l < errors.length; l++) {
@@ -2421,6 +2547,7 @@ export class InstancedMesh extends BatchedMesh {
         }
 
         let level = 0;
+        let distanceSqForFade = 0;
         if (hasLod) {
           // ## 同一個判斷，但沒有開根號也沒有除法
           //
@@ -2432,12 +2559,30 @@ export class InstancedMesh extends BatchedMesh {
           // 迴圈裡只剩一次乘法與一次比較。挑出來的階與原本**完全相同** ——
           // 兩邊都是單調的，平方不改變大小關係（距離非負）。
           const distanceSq = cx * cx + cy * cy + cz * cz;
+          distanceSqForFade = distanceSq;
           const radiusSq = radius * radius;
           for (let l = errors.length - 1; l > 0; l--) {
             if (levelDistanceSq[l]! * radiusSq <= distanceSq) {
               level = l;
               break;
             }
+          }
+        }
+        // ## 剛過門檻的那一段：兩個階同時畫
+        //
+        // 只有 `level >= 1` 而且距離剛過門檻不久的才算。多出來的成本是
+        // 一次乘法加一次比較 —— 而它只有在開了淡入時才會執行。
+        if (fadeBand > 0 && level >= 1 && fadeCount < LOD_FADE_CAPACITY) {
+          const threshold = levelDistanceSq[level]! * radius * radius;
+          if (distanceSqForFade < threshold * fadeUpper) {
+            // 開根號只發生在過渡中的那幾個身上。
+            const progress = (Math.sqrt(distanceSqForFade / threshold) - 1) / fadeBand;
+            fadeIds[fadeCount] = id;
+            fadeLevels[fadeCount] = level;
+            fadeAmounts[fadeCount] = progress;
+            fadeCount++;
+            levelCounts[level]!++;
+            continue;
           }
         }
         levelCounts[level]!++;
@@ -2456,7 +2601,18 @@ export class InstancedMesh extends BatchedMesh {
       this._occlusionMs = performance.now() - occlusionStarted;
     }
 
-    this._visibleInstances = drawCount;
+    // ## 一個過渡中的 instance 送兩次繪製，但它仍然只是**一個** instance
+    //
+    // `visible` 報的是「看得見幾個東西」，不是「送了幾次繪製」。把淡入那兩
+    // 塊算進去的話，開了淡入之後這個數字會平白膨脹 —— 而它是拿來判斷剔除
+    // 有沒有生效的，膨脹了就再也看不出剔除的效果。
+    this._visibleInstances = drawCount + fadeCount;
+
+    // 過渡中的那幾個補在最後 —— 排在遮蔽剔除之後，所以它們不參與剔除。
+    // 數量有上限而且很小，那個代價是刻意接受的。
+    if (fadeBand > 0) {
+      drawCount = this.appendLodFade(drawCount, fadeCount, starts, counts, indirect, bytesPerElement, multiplier);
+    }
     this._testedInstances = tested;
     this._skippedPlanes = skippedPlanes;
     this._mergedDraws = merged;

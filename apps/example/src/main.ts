@@ -104,6 +104,8 @@ const WATER = params.get('water') === '1';
 const PHYSICS = params.get('physics') === '1';
 /** `?gi=1` 紅房間 + 白箱子，用來證明間接光真的是反彈來的。 */
 const GI = params.get('gi') === '1';
+/** `?lodFade=` 換階交叉淡入的寬度。A/B 用。 */
+const LOD_FADE_BAND = params.has('lodFade') ? Number(params.get('lodFade')) : undefined;
 /**
  * `?bigMesh=段數` 一份很大的單一幾何。配 `?split=塊數` 用切塊工具切開；
  * `?split=0`（預設）是對照組：整片一份、一個物件。
@@ -367,6 +369,7 @@ const rocks = enhanced
       ...(NO_HLOD ? { hlod: false } : {}),
       ...(HLOD_BUDGET_MB === undefined ? {} : { hlodBudgetMB: HLOD_BUDGET_MB }),
       ...(ERROR_PIXELS === undefined ? {} : { errorPixels: ERROR_PIXELS }),
+      ...(LOD_FADE_BAND === undefined ? {} : { lodFadeBand: LOD_FADE_BAND }),
       occlusion: OCCLUSION,
       ...(EXTEND_LOD ? { extendLodChain: true } : {}),
     })
@@ -1779,6 +1782,80 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    /**
+     * 畫一幀，回報「有多少像素不是背景」與過渡中的數量。
+     *
+     * 抖動淡入最容易的失敗形態是**破洞**：兩半的條件不互補的話，中間那段
+     * 會有一半的像素兩邊都被丟掉，畫面上是紗窗。覆蓋率一量就看得出來。
+     */
+    /**
+     * 畫一幀，回報一張 32×18 的平均亮度縮圖。
+     *
+     * ## 為什麼不是「數蓋到幾個像素」
+     *
+     * 第一版數的是「不是背景的像素」，而這個場景的背景不是黑的 —— 量到的
+     * 永遠是 1280×720 全滿，開洞也一樣。**一個永遠滿的指標什麼都驗不到。**
+     *
+     * 改成比對兩張圖：抖動不互補的話中間那段會出現紗窗，而紗窗與正常畫面
+     * 的差別在縮圖上就看得出來。
+     */
+    fadeSignature: (distance: number): number[] => {
+      camera.position.set(0, 14 * SIZE, distance);
+      camera.lookAt(0, 0, 0);
+      camera.updateMatrixWorld(true);
+      renderFrame();
+      const width = renderer.domElement.width;
+      const height = renderer.domElement.height;
+      const gl = renderer.getContext();
+      const buffer = new Uint8Array(width * height * 4);
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, buffer);
+      const cols = 32;
+      const rows = 18;
+      const sums = new Float64Array(cols * rows);
+      const counts = new Float64Array(cols * rows);
+      for (let y = 0; y < height; y++) {
+        const row = Math.min(rows - 1, Math.floor((y / height) * rows));
+        for (let x = 0; x < width; x++) {
+          const col = Math.min(cols - 1, Math.floor((x / width) * cols));
+          const i = (y * width + x) * 4;
+          const cell = row * cols + col;
+          sums[cell] = (sums[cell] ?? 0) + (buffer[i] ?? 0) + (buffer[i + 1] ?? 0) + (buffer[i + 2] ?? 0);
+          counts[cell] = (counts[cell] ?? 0) + 1;
+        }
+      }
+      const out: number[] = [];
+      for (let i = 0; i < sums.length; i++) out.push(sums[i]! / Math.max(counts[i]!, 1));
+      return out;
+    },
+    fadeCoverage: (distance: number): { covered: number; fading: number } => {
+      camera.position.set(0, 14 * SIZE, distance);
+      camera.lookAt(0, 0, 0);
+      camera.updateMatrixWorld(true);
+      renderFrame();
+      const width = renderer.domElement.width;
+      const height = renderer.domElement.height;
+      const gl = renderer.getContext();
+      const buffer = new Uint8Array(width * height * 4);
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, buffer);
+      let covered = 0;
+      for (let i = 0; i < buffer.length; i += 4) {
+        if ((buffer[i] ?? 0) + (buffer[i + 1] ?? 0) + (buffer[i + 2] ?? 0) > 30) covered++;
+      }
+      return { covered, fading: (rocks as WW.InstancedMesh).fadingInstances };
+    },
+    /**
+     * 把相機沿著 z 推遠，每一步回報各階有幾個。
+     *
+     * 「跳階刺不刺眼」的直接成因就是**一幀之內有多少個 instance 換了階**。
+     * 錯開之後那個尖峰應該攤平。
+     */
+    lodProbe: (distance: number): number[] => {
+      camera.position.set(0, 14 * SIZE, distance);
+      camera.lookAt(0, 0, 0);
+      camera.updateMatrixWorld(true);
+      renderFrame();
+      return [...(rocks as WW.InstancedMesh).stats.levels];
+    },
     sky:
       skyScene === null
         ? null
