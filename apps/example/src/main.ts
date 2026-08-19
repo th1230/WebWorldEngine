@@ -18,6 +18,7 @@ import {
   makeReflectionProbeScene,
   type ReflectionProbeScene,
 } from './reflection-probe-scene.ts';
+import { makeWaterLookScene, type WaterLookScene } from './water-look-scene.ts';
 import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
@@ -503,6 +504,12 @@ if (skyScene !== null) rocks.visible = false;
 const fogScene: FogScene | null = params.get('fog') === '1' ? makeFogScene() : null;
 if (fogScene !== null) rocks.visible = false;
 /** `?vsm=N` 虛擬陰影圖，N 是最細階一邊幾頁（A/B 用）。 */
+/** `?waterlook=1` 水的外觀。 */
+const waterLookScene: WaterLookScene | null = params.has('waterlook')
+  ? makeWaterLookScene()
+  : null;
+if (waterLookScene !== null) rocks.visible = false;
+
 /** `?reflprobe=1` 反射探針。 */
 const reflectionProbeScene: ReflectionProbeScene | null = params.has('reflprobe')
   ? makeReflectionProbeScene()
@@ -1823,6 +1830,19 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    waterLook:
+      waterLookScene === null
+        ? null
+        : {
+            settle: (): Promise<number> => waterLookScene.settle(renderer),
+            render: (debug?: number, withWater?: boolean): void =>
+              waterLookScene.render(renderer, debug, withWater),
+            sample: (u: number, v: number): number[] => waterLookScene.sampleAt(renderer, u, v),
+            edges: (rows: number): number[] => waterLookScene.edgeColumns(renderer, rows),
+            heightAt: (x: number, z: number): number => waterLookScene.heightAt(x, z),
+            coverage: (): number => waterLookScene.coverage(renderer),
+            setRefraction: (value: number): void => waterLookScene.setRefraction(value),
+          },
     reflProbe:
       reflectionProbeScene === null
         ? null

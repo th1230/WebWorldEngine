@@ -398,6 +398,35 @@ WW.worldFor(scene).stream({
 收回呼而不是直接收一個探針體積：串流不該知道有探針這種東西，而「要失效什麼」
 那份清單只有呼叫端知道。
 
+### 水分成兩件事，而外觀那一半也在套件裡
+
+```js
+const water = new WW.Water({ level: 0 });          // 水面多高 —— 浮力要的
+const surface = new WW.WaterSurface({ water });    // 看起來像水 —— 同一個 water
+surface.setProbes(reflectionProbes);
+
+const mesh = new THREE.Mesh(new THREE.PlaneGeometry(400, 400, 256, 256), surface.material);
+mesh.rotation.x = -Math.PI / 2;
+scene.add(mesh);
+
+// 每幀，畫之前：
+surface.setTime(elapsed);
+surface.capture(renderer, scene, camera, mesh);    // 拍水**以外**的場景
+renderer.render(scene, camera);
+```
+
+這裡原本的界線是「外觀是開發者的材質，套件不碰」。那條界線畫錯了：外觀幾乎
+全部是從套件已經算出來的東西推出來的 —— 水深來自場景深度、反射來自反射探針、
+波峰的形狀來自 `Water` 自己。
+
+交給開發者寫的話他要**重新寫一份波形**，而那正是 `Water` 存在要防的事：兩份
+對不起來時船會浮在錯的高度，不會報錯。現在位移那段 GLSL 就是
+`water.displacementGLSL()` 的同一個字串，實測畫出來的水面與 `heightAt` 差
+0.024 公尺。
+
+`capture` 要排除水面本身。忘了排除的話折射會取樣到水自己，症狀是水面上出現
+一層越疊越糊的鏡像。
+
 ---
 
 ## 十一、還沒決定的事
