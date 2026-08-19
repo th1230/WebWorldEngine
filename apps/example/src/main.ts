@@ -4,6 +4,7 @@ import { makeWaterScene } from './water-scene.ts';
 import { makePhysicsScene, type PhysicsScene } from './physics-scene.ts';
 import { makeGiScene, type GiScene } from './gi-scene.ts';
 import { makeBigMesh, type BigMeshScene } from './big-mesh.ts';
+import { makeTextureHeavy, type TextureHeavyScene } from './texture-heavy.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
 import * as THREE from 'three';
@@ -101,6 +102,16 @@ const GI = params.get('gi') === '1';
  * `?split=0`（預設）是對照組：整片一份、一個物件。
  */
 const BIG_MESH = params.has('bigMesh') ? Number(params.get('bigMesh')) : 0;
+/**
+ * `?textures=張數&texSize=邊長` 一堆各自不同的貼圖。
+ *
+ * 用來問「貼圖資料超過 VRAM 的時候今天會怎樣」—— 那是虛擬貼圖那條軸的
+ * 第一步，而不是虛擬貼圖本身。
+ */
+const TEXTURES = params.has('textures') ? Number(params.get('textures')) : 0;
+const TEX_SIZE = Number(params.get('texSize') ?? 512);
+/** `?texStack=1` 疊成一疊，讓每一張都被高解析度取樣（工作集 = 總量）。 */
+const TEX_STACK = params.get('texStack') === '1';
 const SPLIT = Number(params.get('split') ?? 0);
 /** `?scatter=1` 用規則式擺放代替亂數灑點。 */
 const SCATTER = params.get('scatter') === '1';
@@ -430,6 +441,13 @@ if (physicsScene !== null) {
   rocks.visible = false;
 }
 
+const textureHeavy: TextureHeavyScene | null =
+  TEXTURES > 0 ? makeTextureHeavy(TEXTURES, TEX_SIZE, TEX_STACK) : null;
+if (textureHeavy !== null) {
+  scene.add(textureHeavy.root);
+  rocks.visible = false;
+}
+
 const bigMesh: BigMeshScene | null =
   BIG_MESH > 0 ? await makeBigMesh(3000, BIG_MESH, SPLIT) : null;
 if (bigMesh !== null) {
@@ -738,6 +756,18 @@ function step(t = 0): void {
     // 所以相機壓低、看向遠方 —— 腳下清清楚楚、地平線那端只有幾個像素。
     camera.position.set(Math.cos(t * 0.12) * 900, 40, Math.sin(t * 0.12) * 900);
     camera.lookAt(0, 10, 0);
+  } else if (textureHeavy !== null) {
+    // 從上方俯瞰整片 —— 要讓每一張貼圖都真的被取樣到，光是配置記憶體
+    // 不會逼出換頁。
+    if (TEX_STACK) {
+      // 正對那片磁磚，距離讓它剛好填滿畫面。
+      camera.position.set(0, 0, 104);
+      camera.lookAt(0, 0, 0);
+    } else {
+      const side = Math.ceil(Math.sqrt(textureHeavy.textures)) * 9;
+      camera.position.set(Math.cos(t * 0.15) * side * 0.6, side * 0.75, Math.sin(t * 0.15) * side * 0.6);
+      camera.lookAt(0, 0, 0);
+    }
   } else if (bigMesh !== null) {
     // 貼著地面看向遠方 —— 那是「同一個東西橫跨很大的深度範圍」的形狀，
     // 也是逐塊選階唯一有價值的機位。從高處俯瞰會把這條軸要問的東西消掉。
@@ -1449,6 +1479,29 @@ Object.assign(window, {
   __ww: {
     physics: (): unknown => physicsScene?.stats() ?? null,
     bigMesh: bigMesh === null ? null : { triangles: bigMesh.triangles, pieces: bigMesh.pieces },
+    textureHeavy:
+      textureHeavy === null
+        ? null
+        : {
+            textures: textureHeavy.textures,
+            megabytes: textureHeavy.megabytes,
+            /**
+             * renderer 自己數的，**每次問都重讀**。
+             *
+             * 第一版寫成一般屬性，於是它是在建這個物件的當下取值的 ——
+             * 那時候一幀都還沒畫，永遠是 0。而 0 看起來像「貼圖根本沒上傳」，
+             * 我差點照著那個假數字去查一個不存在的 bug。
+             */
+            get uploaded() {
+              return renderer.info.memory.textures;
+            },
+            get calls() {
+              return renderer.info.render.calls;
+            },
+            get triangles() {
+              return renderer.info.render.triangles;
+            },
+          },
     gi:
       giScene === null
         ? null

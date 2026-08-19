@@ -8,7 +8,7 @@ import {
   type CompressedTexture,
 } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadMaterial, loadTexture } from './load-material.ts';
+import { loadMaterial, loadTexture, releaseMaterial } from './load-material.ts';
 import { clearAssetCache } from './manifest.ts';
 
 /**
@@ -202,12 +202,12 @@ describe('WW.loadTexture / WW.loadMaterial', () => {
   });
 
   it('傳網格 id 就跟著它的材質連結走', async () => {
-    manifest.meshes['mesh:rock'] = {
+    manifest.meshes['material:rock'] = {
       material: 'material:rock',
     } as unknown as AssetManifest['meshes'][string];
 
     // cooker 的材質命名是內部的；使用者手上有的是網格 id。
-    expect(await loadMaterial(MANIFEST_URL, 'mesh:rock')).toBe(
+    expect(await loadMaterial(MANIFEST_URL, 'material:rock')).toBe(
       await loadMaterial(MANIFEST_URL, 'material:rock'),
     );
   });
@@ -230,5 +230,43 @@ describe('WW.loadTexture / WW.loadMaterial', () => {
   it('抓不到檔案時說出是哪一個', async () => {
     files.delete('texture_rock-albedo.ktx2');
     await expect(loadTexture(MANIFEST_URL, 'texture:rock-albedo')).rejects.toThrow(/HTTP 404/);
+  });
+
+  describe('放掉貼圖：GPU 那一份要真的還回去', () => {
+    it('clearAssetCache 會 dispose，不是只把 Map 清掉', async () => {
+      // Three 釋放 VRAM 靠 `dispose()`，不是靠垃圾回收。只清 Map 的話 JS 這側
+      // 乾淨了、GPU 那張貼圖永遠留著 —— 串流的世界裡那是無上限的洩漏，而且
+      // 畫面完全正常直到配置失敗為止。
+      const texture = await loadTexture(MANIFEST_URL, 'texture:rock-albedo');
+      const disposed = vi.fn();
+      texture.addEventListener('dispose', disposed);
+
+      clearAssetCache();
+      // dispose 是在 promise 裡做的，等幾輪微任務。
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(disposed).toHaveBeenCalled();
+    });
+
+    it('releaseMaterial 只放掉那一份，之後重新載入拿到新的', async () => {
+      const material = await loadMaterial(MANIFEST_URL, 'material:rock');
+      const map = material.map!;
+      const disposed = vi.fn();
+      map.addEventListener('dispose', disposed);
+
+      expect(releaseMaterial(MANIFEST_URL, 'material:rock')).toBe(true);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(disposed).toHaveBeenCalled();
+
+      // 放過之後再要一次要**重新載入**，不是拿到一個已經釋放的空殼 ——
+      // 拿到空殼的話畫面上是黑的，而且不會報錯。
+      const again = await loadMaterial(MANIFEST_URL, 'material:rock');
+      expect(again).not.toBe(material);
+    });
+
+    it('沒被快取過的回 false，不會炸', () => {
+      expect(releaseMaterial(MANIFEST_URL, 'material:rock')).toBe(false);
+    });
   });
 });

@@ -93,10 +93,67 @@ const THREE_FORMAT = {
 
 const textures = new Map<string, Promise<CompressedTexture>>();
 const materials = new Map<string, Promise<MeshStandardMaterial>>();
+
+/**
+ * 清快取的時候要**真的釋放 GPU 記憶體**，不是只把 Map 清掉。
+ *
+ * Three 釋放貼圖的 VRAM 是靠 `dispose()`，不是靠垃圾回收 —— 只把參照丟掉
+ * 的話 JS 這一側乾淨了，GPU 那一側那張貼圖還在，而且**永遠不會被收回**。
+ *
+ * 這在一次性的頁面看不出來，在串流的世界裡是無上限的洩漏：每載入一批新
+ * 資產就多佔一份，而畫面完全正常，直到配置失敗為止。
+ *
+ * 而配置失敗正是這條軸量到的那道牆 —— 貼圖資料到 5.5 GB 幀時間一點都沒動，
+ * 但再往上頁面就載不起來了（見 roadmap 的貼圖壓力那一節）。
+ */
 onClearAssetCache(() => {
+  // ## 失敗的那些要吞掉，不然變成沒人接的 rejection
+  //
+  // 快取裡放的是 promise，而載失敗的那一筆是個已經 reject 的 promise。
+  // 對它接 `.then` 會生出一個新的、同樣 reject 而且**沒人接**的 promise ——
+  // 測試跑起來會出現 unhandled rejection，而那會讓整個 run 失敗即使每一條
+  // 測試都過（實測 688 條全過但 exit code 非零）。
+  //
+  // 而且載失敗的東西本來就沒有 GPU 資源要放。
+  for (const pending of textures.values()) void pending.then((texture) => texture.dispose(), noop);
+  for (const pending of materials.values()) void pending.then((material) => material.dispose(), noop);
   textures.clear();
   materials.clear();
 });
+
+/** 失敗的載入沒有東西要放，接住就好。 */
+function noop(): void {}
+
+/**
+ * 放掉單一一份材質與它的貼圖。
+ *
+ * ## 為什麼需要「單一一份」
+ *
+ * `clearAssetCache()` 是全部一起清 —— 串流的世界裡那等於「走遠一格就把
+ * 整個世界的貼圖重新抓一次」。
+ *
+ * 串流的 `unload` 鉤子本來就讓呼叫端在格子卸載時釋放資源（那是刻意的
+ * 分界：格子裡有什麼是內容的事）。缺的是**釋放得了**的手段。
+ *
+ * @returns 有沒有真的放掉。沒被快取過就回 false。
+ */
+export function releaseMaterial(manifestUrl: string, id: string): boolean {
+  const key = `${manifestUrl}#${id}`;
+  const pending = materials.get(key);
+  if (pending === undefined) return false;
+  materials.delete(key);
+  void pending.then((material) => {
+    // 貼圖也要放 —— 只放材質的話那幾張貼圖還掛在 GPU 上，而它們才是大頭。
+    for (const slot of [material.map, material.normalMap, material.roughnessMap, material.metalnessMap]) {
+      if (slot === null) continue;
+      const url = (slot as { userData?: { wwUrl?: string } }).userData?.wwUrl;
+      if (url !== undefined) textures.delete(url);
+      slot.dispose();
+    }
+    material.dispose();
+  }, noop);
+  return true;
+}
 
 /**
  * 載入單張 cook 過的貼圖。
@@ -251,5 +308,12 @@ async function fetchTexture(
   texture.minFilter = LinearMipmapLinearFilter;
   texture.generateMipmaps = false;
   texture.needsUpdate = true;
+  // 貼上自己的 URL，這樣 `releaseMaterial` 才知道該從快取裡刪哪一筆。
+  // 不貼的話它只 dispose 得掉 GPU 那一份，Map 裡會留著一個指向已釋放貼圖的
+  // 空殼 —— 下次要用同一張時拿到它，畫面上是黑的，而且不報錯。
+  //
+  // 貼在**這裡**而不是快取那一行：在那邊要多接一層 `.then`，而多一層會讓
+  // 失敗路徑上的 rejection 多一個沒人接的分支（實測跑出 unhandled rejection）。
+  texture.userData.wwUrl = url;
   return texture;
 }

@@ -66,7 +66,7 @@ export {
 export { isLodChain, pixelsPerUnit, selectLevel, type GeometrySource, type LodChain } from './lod-chain.ts';
 export { sphericalLodErrors } from './spherical-error.ts';
 export { load } from './load.ts';
-export { loadMaterial, loadTexture } from './load-material.ts';
+export { loadMaterial, loadTexture, releaseMaterial } from './load-material.ts';
 export { clearAssetCache } from './manifest.ts';
 export { WorldStream, type StreamOptions, type PlaceFn } from './streaming.ts';
 export {
