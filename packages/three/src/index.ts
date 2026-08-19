@@ -47,6 +47,11 @@ export {
 } from './irradiance.ts';
 export { ScreenSpaceGI, type ScreenSpaceGiOptions } from './screen-space-gi.ts';
 export { DistanceFieldVolume, type DistanceFieldGiOptions } from './distance-field-gi.ts';
+export {
+  GlobalDistanceField,
+  type GlobalDistanceFieldOptions,
+  type FieldInstance,
+} from './global-distance-field.ts';
 export { bakeImpostor, ImpostorBatch, type ImpostorBakeOptions, type BakedImpostor } from './impostor.ts';
 export { Water, DEFAULT_WAVES, type WaterWave, type WaterOptions } from './water.ts';
 export {
