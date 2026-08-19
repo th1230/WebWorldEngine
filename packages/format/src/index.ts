@@ -12,3 +12,4 @@ export * from './manifest.ts';
 //
 // 型別與常數擋不住這一類：兩邊都符合型別，只是意思不一樣。
 export * from './geometric-error.ts';
+export { innerBox, type InnerBox, type InnerBoxOptions } from './inner-box.ts';

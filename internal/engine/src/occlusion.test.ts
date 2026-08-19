@@ -177,3 +177,119 @@ describe('保守性：亂數跑一萬組，絕不剔掉看得見的東西', () =
     expect(culled).toBeGreaterThan(1500);
   });
 });
+
+describe('球體測試（真的用一個透視矩陣）', () => {
+  const WIDTH = 128;
+  const HEIGHT = 128;
+  const FOV = Math.PI / 3;
+
+  /**
+   * 相機在原點看向 −z 的透視投影，column-major。
+   *
+   * 用真的矩陣而不是手算的裁剪座標 —— 球體那條路裡有一次矩陣乘法與一個
+   * 螢幕半徑的式子，那兩個只有在真的投影下才驗得到。
+   */
+  function perspective(): { matrix: Float64Array; radiusScale: number } {
+    const f = 1 / Math.tan(FOV / 2);
+    const near = 0.1;
+    const far = 1000;
+    const matrix = new Float64Array(16);
+    matrix[0] = f;
+    matrix[5] = f;
+    matrix[10] = (far + near) / (near - far);
+    matrix[11] = -1;
+    matrix[14] = (2 * far * near) / (near - far);
+    // w = −z，所以看向 −z 的東西 w 是正的。
+    return { matrix, radiusScale: f * 0.5 * HEIGHT };
+  }
+
+  /** 把一個世界空間的軸對齊盒子轉成裁剪空間的 8 個角。 */
+  function boxCorners(
+    matrix: Float64Array,
+    minX: number, maxX: number,
+    minY: number, maxY: number,
+    minZ: number, maxZ: number,
+  ): Float32Array {
+    const out = new Float32Array(32);
+    let i = 0;
+    for (const z of [minZ, maxZ]) {
+      for (const y of [minY, maxY]) {
+        for (const x of [minX, maxX]) {
+          out[i++] = matrix[0]! * x + matrix[4]! * y + matrix[8]! * z + matrix[12]!;
+          out[i++] = matrix[1]! * x + matrix[5]! * y + matrix[9]! * z + matrix[13]!;
+          out[i++] = matrix[2]! * x + matrix[6]! * y + matrix[10]! * z + matrix[14]!;
+          out[i++] = matrix[3]! * x + matrix[7]! * y + matrix[11]! * z + matrix[15]!;
+        }
+      }
+    }
+    return out;
+  }
+
+  it('大牆後面的球被剔掉，前面的不被剔', () => {
+    const { matrix, radiusScale } = perspective();
+    const buffer = new OcclusionBuffer(WIDTH, HEIGHT);
+    buffer.setViewProjection(matrix, radiusScale);
+    // 一面在 z = −20 的大牆。
+    buffer.addOccluder(boxCorners(matrix, -30, 30, -30, 30, -21, -20));
+    buffer.finish();
+
+    expect(buffer.isSphereOccluded(0, 0, -100, 2)).toBe(true);
+    expect(buffer.isSphereOccluded(0, 0, -10, 2)).toBe(false);
+  });
+
+  it('球心在牆後面但球體穿過牆的不剔', () => {
+    // 這是最容易寫錯的一個：只看球心的話會把它剔掉，而它其實有一半露在前面。
+    const { matrix, radiusScale } = perspective();
+    const buffer = new OcclusionBuffer(WIDTH, HEIGHT);
+    buffer.setViewProjection(matrix, radiusScale);
+    buffer.addOccluder(boxCorners(matrix, -30, 30, -30, 30, -21, -20));
+    buffer.finish();
+    // 球心在 z = −22（牆後），半徑 5 —— 最近點到 −17，在牆前面。
+    expect(buffer.isSphereOccluded(0, 0, -22, 5)).toBe(false);
+  });
+
+  it('牆旁邊沒被蓋到的球不剔', () => {
+    const { matrix, radiusScale } = perspective();
+    const buffer = new OcclusionBuffer(WIDTH, HEIGHT);
+    buffer.setViewProjection(matrix, radiusScale);
+    // 牆只蓋住左半邊。
+    buffer.addOccluder(boxCorners(matrix, -30, 0, -30, 30, -21, -20));
+    buffer.finish();
+    expect(buffer.isSphereOccluded(20, 0, -100, 2)).toBe(false);
+  });
+
+  it('亂數一萬組：在遮蔽物前面的球一次都沒被剔', () => {
+    const { matrix, radiusScale } = perspective();
+    let s = 4242;
+    const random = (): number => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+
+    let culledInFront = 0;
+    let culledBehind = 0;
+    for (let trial = 0; trial < 10000; trial++) {
+      const buffer = new OcclusionBuffer(WIDTH, HEIGHT);
+      buffer.setViewProjection(matrix, radiusScale);
+      const wallZ = -(10 + random() * 60);
+      const halfX = 2 + random() * 40;
+      const halfY = 2 + random() * 40;
+      buffer.addOccluder(boxCorners(matrix, -halfX, halfX, -halfY, halfY, wallZ - 1, wallZ));
+      buffer.finish();
+
+      const x = (random() - 0.5) * 40;
+      const y = (random() - 0.5) * 40;
+      const r = 0.2 + random() * 3;
+      // 整顆球都在牆前面：球心 z 比 wallZ 大（比較靠近相機），而且最遠點也是。
+      const frontZ = wallZ + 1 + r + random() * 5;
+      if (buffer.isSphereOccluded(x, y, frontZ, r)) culledInFront++;
+      // 整顆球都在牆後面。
+      const behindZ = wallZ - 1 - r - random() * 50;
+      if (buffer.isSphereOccluded(x, y, behindZ, r)) culledBehind++;
+    }
+
+    expect(culledInFront).toBe(0);
+    // 而且要真的有剔到東西 —— 否則上面那條只證明了它什麼都不做。
+    expect(culledBehind).toBeGreaterThan(2000);
+  });
+});

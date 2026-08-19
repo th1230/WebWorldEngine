@@ -208,6 +208,82 @@ export class OcclusionBuffer {
   }
 
   /**
+   * 設定這一幀的投影，給球體測試用。
+   *
+   * @param viewProjection 16 個元素、column-major，把**與球心同一個空間**
+   *   的座標變到裁剪空間。
+   * @param radiusScale 半徑 1 的東西在距離 1 處佔幾個緩衝像素。透視投影
+   *   下是 `m[5] * 0.5 * height`。
+   */
+  setViewProjection(viewProjection: ArrayLike<number>, radiusScale: number): void {
+    for (let i = 0; i < 16; i++) this.vp[i] = viewProjection[i]!;
+    this.radiusScale = radiusScale;
+  }
+
+  private readonly vp = new Float64Array(16);
+  private radiusScale = 1;
+
+  /**
+   * 用**外接球**測，不用外接盒。
+   *
+   * 球比物體大，要求整顆球的螢幕範圍都被擋住是更嚴格的條件 —— 方向安全。
+   * 而且它便宜得多：一次矩陣乘法加幾個比較，不是投影八個角。
+   *
+   * 便宜這件事在這裡不是細節，是**能不能做**的關鍵：這個測試要跑在每一個
+   * 通過視錐的 instance 上，而省下來的 GPU 時間要扣掉它自己的成本
+   * （doctrine 第 9 條）。八個角的版本光是投影就吃掉大半個預算。
+   */
+  isSphereOccluded(x: number, y: number, z: number, radius: number): boolean {
+    this.tested++;
+    if (this.occludersDrawn === 0) return false;
+
+    const m = this.vp;
+    const w = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
+    // 球的最近點在相機後面或太近，不剔。
+    const nearW = w - radius;
+    if (nearW <= 1e-4) return false;
+
+    const cx = m[0]! * x + m[4]! * y + m[8]! * z + m[12]!;
+    const cy = m[1]! * x + m[5]! * y + m[9]! * z + m[13]!;
+
+    // 螢幕半徑用**最近**的 w 算 —— 那是這顆球在螢幕上可能佔到的最大範圍。
+    const screenRadius = (radius * this.radiusScale) / nearW;
+    const sx = (cx / w) * 0.5 * this.width + this.width * 0.5;
+    const sy = (cy / w) * 0.5 * this.height + this.height * 0.5;
+
+    const x0 = Math.floor(sx - screenRadius) - 1;
+    const x1 = Math.ceil(sx + screenRadius) + 1;
+    const y0 = Math.floor(sy - screenRadius) - 1;
+    const y1 = Math.ceil(sy + screenRadius) + 1;
+    if (x0 < 0 || y0 < 0 || x1 >= this.width || y1 >= this.height) return false;
+
+    const tx0 = (x0 / TILE) | 0;
+    const tx1 = (x1 / TILE) | 0;
+    const ty0 = (y0 / TILE) | 0;
+    const ty1 = (y1 / TILE) | 0;
+    for (let ty = ty0; ty <= ty1; ty++) {
+      const tileRow = ty * this.tilesX;
+      for (let tx = tx0; tx <= tx1; tx++) {
+        if (this.tileMax[tileRow + tx]! >= nearW) {
+          // 粗層說不準，逐像素看這一塊。
+          const px0 = Math.max(x0, tx * TILE);
+          const px1 = Math.min(x1, tx * TILE + TILE - 1);
+          const py0 = Math.max(y0, ty * TILE);
+          const py1 = Math.min(y1, ty * TILE + TILE - 1);
+          for (let py = py0; py <= py1; py++) {
+            const row = py * this.width;
+            for (let px = px0; px <= px1; px++) {
+              if (this.depth[row + px]! >= nearW) return false;
+            }
+          }
+        }
+      }
+    }
+    this.culled++;
+    return true;
+  }
+
+  /**
    * 這個盒子是不是**確定**被擋住。
    *
    * @param corners 8 個角的裁剪空間座標（與 `addOccluder` 同一個格式）。
