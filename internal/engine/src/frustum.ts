@@ -96,3 +96,53 @@ export function aabbInFrustum(
   }
   return true;
 }
+
+/**
+ * AABB 與視錐的關係：`0` 完全在外、`1` 相交、`2` **完全在內**。
+ *
+ * ## 為什麼需要「完全在內」這個答案
+ *
+ * 一個 cell 整個落在視錐裡的話，裡面每一個物件都必然可見 —— 那時逐一去測
+ * 那六個平面（每個 instance 24 次乘加）是**純粹的白工**。
+ *
+ * 收集迴圈本來就有這條捷徑（`skipPlanes`），但只有串流的區塊表回報得出
+ * 「整段在內側」。格子這條路（也就是靜態內容，最常見的那種）從來沒回報過，
+ * 於是實測**跳過率是 0.0%** —— 那條捷徑寫在那裡，一次都沒生效過。
+ *
+ * ## 成本
+ *
+ * 與 `aabbInFrustum` 完全一樣的迴圈，只是多比一次 n-vertex。它是**逐 cell**
+ * 的，而省下來的是**逐 instance** 的 —— 一個 cell 裡有幾十到幾百個物件。
+ */
+export function aabbFrustumRelation(
+  frustum: Frustum,
+  minX: number,
+  minY: number,
+  minZ: number,
+  maxX: number,
+  maxY: number,
+  maxZ: number,
+): 0 | 1 | 2 {
+  const p = frustum.planes;
+  let fully = true;
+  for (let i = 0; i < 6; i++) {
+    const base = i * 4;
+    const nx = p[base]!;
+    const ny = p[base + 1]!;
+    const nz = p[base + 2]!;
+    const d = p[base + 3]!;
+    // p-vertex：法線方向上最遠的角。它在外面就代表整個盒子都在外面。
+    const px = nx >= 0 ? maxX : minX;
+    const py = ny >= 0 ? maxY : minY;
+    const pz = nz >= 0 ? maxZ : minZ;
+    if (nx * px + ny * py + nz * pz + d < 0) return 0;
+    // n-vertex：法線方向上最近的角。它還在裡面才叫「整個盒子都在裡面」。
+    if (fully) {
+      const qx = nx >= 0 ? minX : maxX;
+      const qy = ny >= 0 ? minY : maxY;
+      const qz = nz >= 0 ? minZ : maxZ;
+      if (nx * qx + ny * qy + nz * qz + d < 0) fully = false;
+    }
+  }
+  return fully ? 2 : 1;
+}

@@ -1,4 +1,4 @@
-import { aabbInFrustum, type Frustum } from './frustum.ts';
+import { aabbFrustumRelation, type Frustum } from './frustum.ts';
 import { cellKey } from './streaming.ts';
 
 /**
@@ -47,7 +47,7 @@ export class CellVisibility {
    * 系統手上的 count 會永遠停在取值當下的值（初始化時是 0），
    * 於是整個功能靜靜地不生效 —— 而且看起來只是「沒有變快」。
    */
-  private readonly _visibleRanges: { bounds: Int32Array; count: number };
+  private readonly _visibleRanges: { bounds: Int32Array; count: number; inside: Uint8Array };
   private hasRanges = false;
 
   private _visibleCells = 0;
@@ -77,7 +77,7 @@ export class CellVisibility {
     this._mask = new Uint8Array(n).fill(1);
     this.rowStart = new Int32Array(n).fill(-1);
     this.rowEnd = new Int32Array(n);
-    this._visibleRanges = { bounds: new Int32Array(n * 2), count: 0 };
+    this._visibleRanges = { bounds: new Int32Array(n * 2), count: 0, inside: new Uint8Array(n) };
   }
 
   /** 目前這一幀有幾個 cell 通過測試。 */
@@ -129,7 +129,7 @@ export class CellVisibility {
    *
    * 沒有登記過任何範圍時回傳 `count === 0`，呼叫端應退回完整走訪。
    */
-  get visibleRanges(): { bounds: Int32Array; count: number } {
+  get visibleRanges(): { bounds: Int32Array; count: number; inside: Uint8Array } {
     return this._visibleRanges;
   }
 
@@ -204,7 +204,7 @@ export class CellVisibility {
       const minX = this.cx[slot]! * size - this.margin - cameraX;
       const minZ = this.cz[slot]! * size - this.margin - cameraZ;
       const span = size + this.margin * 2;
-      const inside = aabbInFrustum(
+      const relation = aabbFrustumRelation(
         frustum,
         minX,
         -this.halfHeight - cameraY,
@@ -213,8 +213,10 @@ export class CellVisibility {
         this.halfHeight - cameraY,
         minZ + span,
       );
-      this._mask[slot] = inside ? 1 : 0;
-      if (inside) visible++;
+      // 0 外、1 相交、2 完全在內。**保留 2 是為了讓收集迴圈跳過那六個平面**
+      // ——一個 cell 整個在視錐裡的話，裡面每個物件都必然可見，逐一去測是白工。
+      this._mask[slot] = relation;
+      if (relation !== 0) visible++;
     }
 
     this._visibleCells = visible;
@@ -249,18 +251,26 @@ export class CellVisibility {
     visibleSlots.sort((a, b) => this.rowStart[a]! - this.rowStart[b]!);
 
     const bounds = this._visibleRanges.bounds;
+    const inside = this._visibleRanges.inside;
     let count = 0;
     for (const slot of visibleSlots) {
       const start = this.rowStart[slot]!;
       const end = this.rowEnd[slot]!;
+      const fully = this._mask[slot] === 2 ? 1 : 0;
       if (count > 0 && bounds[count * 2 - 1]! >= start) {
-        // 相鄰或重疊：延長上一段
+        // 相鄰或重疊：延長上一段。
+        //
+        // **合併之後的「完全在內」是每一格的 AND** —— 只要有一格只是相交，
+        // 整段就不能跳過平面測試。反過來設的話，那一格裡在視錐外的物件會
+        // 被當成可見送出去，而症狀是畫面邊緣多出東西、且完全不報錯。
         if (end > bounds[count * 2 - 1]!) bounds[count * 2 - 1] = end;
+        if (fully === 0) inside[count - 1] = 0;
         continue;
       }
       if ((count + 1) * 2 > bounds.length) break;
       bounds[count * 2] = start;
       bounds[count * 2 + 1] = end;
+      inside[count] = fully;
       count++;
     }
     this._visibleRanges.count = count;
@@ -283,6 +293,7 @@ export class CellVisibility {
     this.rowStart = rowStart;
     this.rowEnd = rowEnd;
     this._visibleRanges.bounds = new Int32Array(n * 2);
+    this._visibleRanges.inside = new Uint8Array(n);
     this.cx = cx;
     this.cz = cz;
     this.used = used;

@@ -536,6 +536,7 @@ export class InstancedMesh extends BatchedMesh {
 
   private _visibleInstances = 0;
   private _testedInstances = 0;
+  private _skippedPlanes = 0;
   private _cpuMs = 0;
   private _gridMs = 0;
   private _collectMs = 0;
@@ -839,7 +840,15 @@ export class InstancedMesh extends BatchedMesh {
    */
   get stats(): {
     visible: number;
+    /** 逐一測試過的 instance 數。 */
     tested: number;
+    /**
+     * 其中有幾個**跳過了視錐那六個平面**（整段都在內側）。
+     *
+     * 那六個平面是每個 instance 24 次乘加，也是收集迴圈離下界那 7–10 倍的
+     * 主要來源。這個數字說的是「空間分割還有多少沒榨出來」。
+     */
+    skippedPlanes: number;
     cells: number;
     visibleCells: number;
     levels: Int32Array;
@@ -874,6 +883,7 @@ export class InstancedMesh extends BatchedMesh {
     return {
       visible: this._visibleInstances,
       tested: this._testedInstances,
+      skippedPlanes: this._skippedPlanes,
       cells: this.grid.cellCount,
       visibleCells: this.grid.visibleCells,
       levels: this._levelCounts,
@@ -2164,6 +2174,7 @@ export class InstancedMesh extends BatchedMesh {
     levelCounts.fill(0);
     let drawCount = 0;
     let tested = 0;
+    let skippedPlanes = 0;
     let merged = 0;
     let mergedInstances = 0;
 
@@ -2186,6 +2197,10 @@ export class InstancedMesh extends BatchedMesh {
       const from = bounds === undefined ? 0 : bounds[span * 2]!;
       const to = bounds === undefined ? this.count : bounds[span * 2 + 1]!;
       const skipPlanes = spanInside !== undefined && spanInside[span] === 1;
+      // 那六個平面是每個 instance 24 次乘加，也是收集迴圈離下界那 7–10 倍的
+      // 主要來源。跳掉多少直接決定「更好的空間分割還有沒有東西可拿」——
+      // 沒有這個數字就只能猜。
+      if (skipPlanes) skippedPlanes += to - from;
 
       for (let slot = from; slot < to; slot++) {
         // ── 遠景合併 ──
@@ -2293,6 +2308,7 @@ export class InstancedMesh extends BatchedMesh {
 
     this._visibleInstances = drawCount;
     this._testedInstances = tested;
+    this._skippedPlanes = skippedPlanes;
     this._mergedDraws = merged;
     this._mergedInstances = mergedInstances;
     // 格子真的在用的那幾幀才量得到「它剔掉了多少」。暫停之後要靠這個數字

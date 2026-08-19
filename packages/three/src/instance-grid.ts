@@ -248,7 +248,7 @@ export class InstanceGrid {
     cameraX: number,
     cameraY: number,
     cameraZ: number,
-  ): { bounds: Int32Array; count: number } | null {
+  ): { bounds: Int32Array; count: number; inside: Uint8Array } | null {
     const visibility = this.visibility;
     if (visibility === null) return null;
     visibility.update(frustum, cameraX, cameraY, cameraZ);
