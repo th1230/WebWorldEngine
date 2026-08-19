@@ -8,6 +8,7 @@ import { makeBigMesh, type BigMeshScene } from './big-mesh.ts';
 import { makeTextureHeavy, type TextureHeavyScene } from './texture-heavy.ts';
 import { makeVirtualTextureScene, type VirtualTextureScene } from './virtual-texture-scene.ts';
 import { makeContactScene, type ContactScene } from './contact-scene.ts';
+import { makeDfShadowScene, type DfShadowScene } from './df-shadow-scene.ts';
 import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
@@ -471,6 +472,9 @@ const textureHeavy: TextureHeavyScene | null =
  */
 /** `?contact=1` 一個箱子貼在地上，證明接觸陰影出現在接縫而不是整片。 */
 const contactScene: ContactScene | null = params.get('contact') === '1' ? makeContactScene() : null;
+/** `?dfshadow=1` 大箱子在空地上，證明遠處的陰影是距離場追出來的。 */
+const dfShadowScene: DfShadowScene | null = params.get('dfshadow') === '1' ? makeDfShadowScene() : null;
+if (dfShadowScene !== null) rocks.visible = false;
 if (contactScene !== null) rocks.visible = false;
 
 const vtScene: VirtualTextureScene | null = params.get('vt') === '1' ? makeVirtualTextureScene() : null;
@@ -1767,6 +1771,19 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    dfShadow:
+      dfShadowScene === null
+        ? null
+        : {
+            settle: (): number => dfShadowScene.settle(),
+            pending: (): number => dfShadowScene.fieldPending(),
+            render: (): void => dfShadowScene.render(renderer),
+            sample: (which: "shadow" | "open" | "behind" | "outside" | "boxTop" | "terminator"): number =>
+              dfShadowScene.sample(renderer, dfShadowScene.points[which]),
+            coverage: (): number => dfShadowScene.coverage(renderer),
+            setStrength: (v: number): void => dfShadowScene.setStrength(v),
+            setCameraAngle: (w: 0 | 1): void => dfShadowScene.setCameraAngle(w),
+          },
     contact:
       contactScene === null
         ? null
