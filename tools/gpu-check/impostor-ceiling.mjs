@@ -59,9 +59,9 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, r));
 
 const SCENES = [
-  ['遠景・兩萬個・合併關掉', 'count=20000&spread=900&orbit=520&hlod=0'],
-  ['遠景・六萬個・合併關掉', 'count=60000&spread=900&orbit=520&hlod=0'],
-  ['貼地・六萬個・合併關掉', 'count=60000&spread=700&orbit=90&hlod=0'],
+  ['遠景・兩萬個・接長鏈', 'count=20000&spread=900&orbit=520&hlod=0&extendLod=1'],
+  ['遠景・六萬個・接長鏈', 'count=60000&spread=900&orbit=520&hlod=0&extendLod=1'],
+  ['貼地・六萬個・接長鏈', 'count=60000&spread=700&orbit=90&hlod=0&extendLod=1'],
 ];
 
 console.log('Impostor 的上限：把幾何壓到最粗之後還能省多少\n');
