@@ -3,6 +3,7 @@ import { makeSkinnedField, makeSkinnedRig } from './skinned.ts';
 import { makeWaterScene } from './water-scene.ts';
 import { makePhysicsScene, type PhysicsScene } from './physics-scene.ts';
 import { makeGiScene, type GiScene } from './gi-scene.ts';
+import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -958,6 +959,84 @@ function measureCollectFloor(instances = 214_000, rounds = 20): unknown {
   };
 }
 
+/**
+ * 把沒出現在畫面上的 instance 分成「太小」與「被擋住」。
+ *
+ * 投影半徑用的是與選階同一個式子：`radius / distance * (height/2) / tan(fov/2)`。
+ * 不到 0.5 像素的話它連一個像素中心都蓋不到 —— 那是選階的責任範圍，
+ * 遮蔽剔除再厲害也拿不走它。
+ */
+function hiddenBreakdown(seen: Set<number>): {
+  submitted: number;
+  visible: number;
+  subPixel: number;
+  occluded: number;
+  outside: number;
+  occludedIds: Set<number>;
+} {
+  const mesh = rocks as unknown as {
+    count: number;
+    getMatrixAt: (i: number, m: THREE.Matrix4) => void;
+    sourceGeometry?: THREE.BufferGeometry;
+    geometry: THREE.BufferGeometry;
+  };
+  const source = mesh.sourceGeometry ?? mesh.geometry;
+  if (source.boundingSphere === null) source.computeBoundingSphere();
+  const baseRadius = source.boundingSphere?.radius ?? 1;
+
+  camera.updateMatrixWorld(true);
+  const viewProjection = new THREE.Matrix4().multiplyMatrices(
+    camera.projectionMatrix,
+    camera.matrixWorldInverse,
+  );
+  const frustum = new THREE.Frustum().setFromProjectionMatrix(viewProjection);
+  const size = new THREE.Vector2();
+  renderer.getDrawingBufferSize(size);
+  const halfHeight = size.y / 2;
+  const tanHalfFov = Math.tan((camera.fov * Math.PI) / 360);
+
+  const m = new THREE.Matrix4();
+  const center = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+  const sphere = new THREE.Sphere();
+  let visible = 0;
+  let subPixel = 0;
+  let outside = 0;
+  const occludedIdSet = new Set<number>();
+
+  for (let i = 0; i < mesh.count; i++) {
+    if (seen.has(i + 1)) {
+      visible++;
+      continue;
+    }
+    mesh.getMatrixAt(i, m);
+    center.setFromMatrixPosition(m);
+    scale.setFromMatrixScale(m);
+    const radius = baseRadius * Math.max(scale.x, scale.y, scale.z);
+
+    // 視錐外的根本沒送出去畫，不算在任何一邊。
+    sphere.set(center, radius);
+    if (!frustum.intersectsSphere(sphere)) {
+      outside++;
+      continue;
+    }
+
+    const distance = Math.max(camera.position.distanceTo(center), 1e-6);
+    const projectedPx = (radius / distance) * (halfHeight / tanHalfFov);
+    if (projectedPx < 0.5) subPixel++;
+    else occludedIdSet.add(i);
+  }
+
+  return {
+    submitted: visible + subPixel + occludedIdSet.size,
+    visible,
+    subPixel,
+    occluded: occludedIdSet.size,
+    outside,
+    occludedIds: occludedIdSet,
+  };
+}
+
 async function measureGpuMs(t = 0, budgetMs = 2000, minSamples = 20): Promise<unknown> {
   const gl = renderer.getContext() as WebGL2RenderingContext;
   const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as {
@@ -1380,6 +1459,207 @@ Object.assign(window, {
       return totalFrames;
     },
     measureGpuMs,
+    /**
+     * 遮蔽剔除的上限：送出去畫的東西裡，有多少一個像素都沒留下。
+     *
+     * 先量再決定要不要做整條軸 —— doctrine 第 5 條。
+     */
+    /**
+     * 完美遮蔽剔除**最多**能省多少 GPU 時間。
+     *
+     * ## 為什麼光看「幾個看不見」不夠
+     *
+     * 那個比例把「被擋住」與「小到沒蓋到像素中心」算在一起，而後者的
+     * GPU 成本本來就接近零 —— 選階已經把它變成幾個三角形，遠景合併
+     * 已經把它併進別人的繪製裡。
+     *
+     * 所以 80% 的物件看不見，不代表有 80% 的時間可以省。要問的是**時間**。
+     *
+     * ## 做法：裝一個作弊的完美剔除器
+     *
+     * 先畫一張 ID 圖知道誰真的看得見，然後把看不見的那些**搬到視錐外面**
+     * ——於是引擎自己的剔除會把它們拿掉，送出去的剛好就是「一個完美的
+     * 遮蔽剔除器會送的東西」。兩邊的 GPU 時間相減就是上限。
+     *
+     * 它作弊在：那張 ID 圖是**畫完才知道**的。真正的遮蔽剔除要在畫之前
+     * 就猜出來，而且猜的成本要從省下來的裡面扣掉。所以這是上限，不是預期值。
+     */
+    /**
+     * 把「看不見的」分成兩類，因為只有一類是遮蔽剔除能拿走的。
+     *
+     * | 類別 | 誰的事 |
+     * | --- | --- |
+     * | 投影到螢幕上不到一個像素 | **選階**的事。遮蔽剔除拿不走它 |
+     * | 夠大、但被別的東西擋住 | 遮蔽剔除的事 |
+     *
+     * 不分開的話，「完美可見性預言機」省下來的時間會被整碗算到遮蔽剔除
+     * 頭上 —— 而那正是多層 HLOD 當初差點犯的錯：**它要省的東西，別的
+     * 機制可能已經拿走了**。
+     */
+    /**
+     * 把「被擋住」的那些藏起來之後，**畫面應該一模一樣**。
+     *
+     * 這一條驗的是前面那整個量測本身。如果藏掉之後畫面變了，那些東西就
+     * 不是被擋住的 —— 於是「省了 60%」省掉的是**看得見的內容**，那不是
+     * 優化，是把東西弄不見。
+     *
+     * 完美剔除器省下來的時間只有在畫面不變的前提下才有意義，而那個前提
+     * 到目前為止只是假設。
+     */
+    verifyOcclusionOracle(): unknown {
+      const mesh = rocks as unknown as {
+        count: number;
+        getMatrixAt: (i: number, m: THREE.Matrix4) => void;
+        setMatrixAt: (i: number, m: THREE.Matrix4) => void;
+      };
+      const total = mesh.count;
+      const m = new THREE.Matrix4();
+      const original = new Float32Array(total * 16);
+      for (let i = 0; i < total; i++) {
+        mesh.getMatrixAt(i, m);
+        original.set(m.elements, i * 16);
+      }
+
+      const size = new THREE.Vector2();
+      renderer.getDrawingBufferSize(size);
+      const shot = (): Uint8Array => {
+        step(0);
+        settleHlod(0);
+        step(0);
+        const buffer = new Uint8Array(size.x * size.y * 4);
+        const gl = renderer.getContext();
+        gl.readPixels(0, 0, size.x, size.y, gl.RGBA, gl.UNSIGNED_BYTE, buffer);
+        return buffer;
+      };
+
+      const before = shot();
+      const seen = occludedIds(renderer, scene, camera);
+      const targets = hiddenBreakdown(seen).occludedIds;
+      for (const i of targets) {
+        m.fromArray(original, i * 16);
+        m.elements[13] = 1e6;
+        mesh.setMatrixAt(i, m);
+      }
+      const after = shot();
+
+      for (let i = 0; i < total; i++) {
+        m.fromArray(original, i * 16);
+        mesh.setMatrixAt(i, m);
+      }
+      settleHlod(0);
+
+      // 逐像素比。容忍 2/255 的差 —— 合併幾何重烘之後浮點會有極小的擾動。
+      let changed = 0;
+      let worst = 0;
+      for (let i = 0; i < before.length; i += 4) {
+        const d = Math.max(
+          Math.abs(before[i]! - after[i]!),
+          Math.abs(before[i + 1]! - after[i + 1]!),
+          Math.abs(before[i + 2]! - after[i + 2]!),
+        );
+        if (d > worst) worst = d;
+        if (d > 2) changed++;
+      }
+      const pixels = before.length / 4;
+      return {
+        hidden: targets.size,
+        pixels,
+        changed,
+        changedPct: +((changed / pixels) * 100).toFixed(3),
+        worstChannelDelta: worst,
+      };
+    },
+    classifyHidden(): unknown {
+      step(0);
+      const seen = occludedIds(renderer, scene, camera);
+      const info = hiddenBreakdown(seen);
+      return info;
+    },
+    async measureOcclusionSaving(rounds = 3, onlyOccluded = false): Promise<unknown> {
+      const mesh = rocks as unknown as {
+        count: number;
+        getMatrixAt: (i: number, m: THREE.Matrix4) => void;
+        setMatrixAt: (i: number, m: THREE.Matrix4) => void;
+        stats?: { visible: number };
+      };
+      const total = mesh.count;
+
+      // 原始矩陣留一份 —— 量完要還原，不然後面的量測全是壞的。
+      const original = new Float32Array(total * 16);
+      const m = new THREE.Matrix4();
+      for (let i = 0; i < total; i++) {
+        mesh.getMatrixAt(i, m);
+        original.set(m.elements, i * 16);
+      }
+
+      const restore = (): void => {
+        for (let i = 0; i < total; i++) {
+          m.fromArray(original, i * 16);
+          mesh.setMatrixAt(i, m);
+        }
+      };
+
+      const hideInvisible = (seen: Set<number>): number => {
+        // `onlyOccluded` 時只藏「夠大但被擋住」的那些 —— 小到不足一個像素
+        // 的留著，因為遮蔽剔除本來就拿不走它們。
+        const targets = onlyOccluded ? hiddenBreakdown(seen).occludedIds : null;
+        let hidden = 0;
+        for (let i = 0; i < total; i++) {
+          if (seen.has(i + 1)) continue;
+          if (targets !== null && !targets.has(i)) continue;
+          m.fromArray(original, i * 16);
+          // 搬到很遠的地方，讓引擎自己的視錐剔除把它拿掉。
+          m.elements[13] = 1e6;
+          mesh.setMatrixAt(i, m);
+          hidden++;
+        }
+        return hidden;
+      };
+
+      const gpu = async (): Promise<number> => {
+        const out = (await measureGpuMs(0, 900, 12)) as { p50?: number };
+        return out.p50 ?? NaN;
+      };
+
+      const base: number[] = [];
+      const oracle: number[] = [];
+      let hidden = 0;
+      let seenCount = 0;
+      // **交錯**跑，不是跑完一組再跑另一組 —— 這台機器的量測是雙峰的。
+      for (let r = 0; r < rounds; r++) {
+        restore();
+        settleHlod(0);
+        base.push(await gpu());
+
+        step(0);
+        const seen = occludedIds(renderer, scene, camera);
+        seenCount = seen.size;
+        hidden = hideInvisible(seen);
+        settleHlod(0);
+        oracle.push(await gpu());
+      }
+      restore();
+      settleHlod(0);
+
+      const mid = (a: number[]): number => a.slice().sort((x, y) => x - y)[a.length >> 1]!;
+      const b = mid(base);
+      const o = mid(oracle);
+      return {
+        total,
+        visible: seenCount,
+        hidden,
+        baseMs: +b.toFixed(3),
+        oracleMs: +o.toFixed(3),
+        savedPct: +(((b - o) / b) * 100).toFixed(1),
+        rounds: base.map((v, i) => [+v.toFixed(2), +oracle[i]!.toFixed(2)]),
+      };
+    },
+    measureOccluded(): unknown {
+      step(0);
+      // 原生那條路（?ww=0）沒有 stats，就退回 count —— 那時候送出去的就是全部。
+      const submitted = (rocks as { stats?: { visible: number } }).stats?.visible ?? rocks.count;
+      return measureOccluded(renderer, scene, camera, submitted);
+    },
     measureFillBound,
     measureCollectFloor,
     terrain: terrain === null ? null : { tiles: terrain.tiles, triangles: terrain.triangles },
