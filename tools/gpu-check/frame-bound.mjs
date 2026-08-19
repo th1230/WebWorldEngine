@@ -29,15 +29,27 @@ const server = createServer((req, res) => {
 });
 await listenSafe(server);
 
+// ## 常態場景，加上**刻意要把 CPU 逼成瓶頸**的那幾個
+//
+// 前三個是一般內容。後三個是在追那句「哪天幀時間開始等於 CPU 時間」——
+// 那是先前不做 GPU 驅動繪製的翻盤條件，而一個**沒被跑過的翻盤條件**等於
+// 沒有證據說它不會發生。所以這裡直接往那個方向推：物件數拉到二十萬、
+// 攤得很開、相機只看得到一小塊 —— GPU 因為多數被剔掉而變輕，CPU 卻還是
+// 要一個一個問過。那正是 GPU 驅動繪製最有話講的形狀。
 const SCENES = [
   ['遠景・兩萬個', 'count=20000&spread=900&orbit=520'],
   ['遠景・六萬個', 'count=60000&spread=900&orbit=520'],
   ['貼地・六萬個', 'count=60000&spread=700&orbit=90'],
+  ['廣・二十萬個（多數在視錐外）', 'count=200000&spread=4000&orbit=200'],
+  ['廣・二十萬個（貼地近看）', 'count=200000&spread=2000&orbit=90'],
+  ['密・二十萬個', 'count=200000&spread=900&orbit=520'],
 ];
 
 console.log('幀被誰綁住：CPU 那一段搬得走的話，最多省多少\n');
 const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
 const base = `http://localhost:${server.address().port}`;
+
+const results = [];
 
 try {
   for (const [label, query] of SCENES) {
@@ -88,14 +100,21 @@ try {
         gpu: gpu.p50,
         frame: +frames[frames.length >> 1].toFixed(3),
         cpu: +cpu[cpu.length >> 1].toFixed(3),
+        instances: window.__ww.rocks.count,
       };
     });
     await page.close();
 
     const ceiling = (out.cpu / out.frame) * 100;
+    // 每個 instance 花多少 CPU —— 有了這個才能算「要幾個才翻得過來」。
+    const perInstance = (out.cpu * 1e6) / Math.max(out.instances, 1);
+    // 翻盤要 CPU 追上幀時間。照現在的每個成本，那要幾個 instance？
+    const needed = Math.round(out.frame / (perInstance / 1e6));
     console.log(`  ${label}`);
     console.log(`    幀 ${out.frame} ms  GPU ${out.gpu} ms  剔除的 CPU ${out.cpu} ms`);
+    console.log(`    ${out.instances.toLocaleString()} 個活著，每個 ${perInstance.toFixed(1)} ns —— CPU 要追上幀時間得有 ${needed.toLocaleString()} 個`);
     console.log(`    **GPU 驅動繪製的上限：${ceiling.toFixed(1)}% 的幀時間**\n`);
+    results.push({ label, ...out, ceiling, perInstance, needed });
   }
 } catch (e) {
   console.log('失敗：' + String(e).split('\n')[0].slice(0, 160));
@@ -103,3 +122,17 @@ try {
 }
 await browser.close();
 server.close();
+
+// ## 翻盤條件跑過了沒有
+//
+// 先前寫的是「哪天幀時間開始等於 CPU 時間，這條界就會抬起來」。上面後三個
+// 場景就是往那個方向推的結果 —— 印出來的是**推到底之後最高的那個上限**。
+const best = results.reduce((a, b) => (b.ceiling > a.ceiling ? b : a), results[0] ?? { ceiling: 0, label: '（沒跑到）' });
+if (results.length > 0) {
+  console.log(`推到底：最高的上限是 ${best.ceiling.toFixed(1)}%（${best.label}）`);
+  console.log(
+    best.ceiling > 25
+      ? '  → 翻盤條件成立了：CPU 開始構得到幀時間，GPU 驅動繪製要重新考慮。'
+      : '  → 翻盤條件仍然不成立：CPU 還是藏在 GPU 後面。',
+  );
+}
