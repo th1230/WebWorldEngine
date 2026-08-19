@@ -44,7 +44,8 @@
     "texture-pressure": "node tools/gpu-check/texture-pressure.mjs",
     "contact-scale": "node tools/gpu-check/contact-scale.mjs",
     "ssgi-check": "node tools/gpu-check/ssgi.mjs 40",
-    "impostor-check": "node tools/gpu-check/impostor.mjs"
+    "impostor-check": "node tools/gpu-check/impostor.mjs",
+    "frame-bound": "node tools/gpu-check/frame-bound.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
