@@ -83,3 +83,4 @@ export {
   type ScatterContext,
   type ScatterPlacement,
 } from './scatter.ts';
+export { VirtualTexture, type VirtualTextureOptions } from './virtual-texture.ts';

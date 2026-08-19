@@ -1,10 +1,12 @@
 import * as WW from '@webworld/three';
+import { OrthographicCamera, WebGLRenderTarget } from 'three';
 import { makeSkinnedField, makeSkinnedRig } from './skinned.ts';
 import { makeWaterScene } from './water-scene.ts';
 import { makePhysicsScene, type PhysicsScene } from './physics-scene.ts';
 import { makeGiScene, type GiScene } from './gi-scene.ts';
 import { makeBigMesh, type BigMeshScene } from './big-mesh.ts';
 import { makeTextureHeavy, type TextureHeavyScene } from './texture-heavy.ts';
+import { makeVirtualTextureScene, type VirtualTextureScene } from './virtual-texture-scene.ts';
 import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
@@ -458,6 +460,24 @@ if (impostorScene !== null) {
 
 const textureHeavy: TextureHeavyScene | null =
   TEXTURES > 0 ? makeTextureHeavy(TEXTURES, TEX_SIZE, TEX_STACK) : null;
+
+/**
+ * `?vt=1`：虛擬貼圖的證明場景。
+ *
+ * 一張假裝出來的 16,384×16,384（pageSize 64 × 256 頁）鋪滿畫面，而真正
+ * 配置的圖集只有 512×512。每一頁是純色，顏色由階數與座標算出來 —— 所以
+ * 從畫面上讀一個像素就能反推取樣到的是誰。
+ */
+const vtScene: VirtualTextureScene | null = params.get('vt') === '1' ? makeVirtualTextureScene() : null;
+/** 正交相機，讓那張平面剛好鋪滿畫布：UV (0,0) 在左下、(1,1) 在右上。 */
+const vtCamera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+/** 驗證用的離屏目標。用到才建。 */
+let vtProbeTarget: WebGLRenderTarget | null = null;
+vtCamera.position.z = 2;
+if (vtScene !== null) {
+  scene.add(vtScene.root);
+  rocks.visible = false;
+}
 if (textureHeavy !== null) {
   scene.add(textureHeavy.root);
   rocks.visible = false;
@@ -935,7 +955,10 @@ function renderFrame(): void {
   physicsScene?.update(lastT);
   // 相機走遠了就把世界搬回它腳下。平常這裡只是一次長度比較。
   if (rebase !== null) WW.worldFor(scene).updateOrigin(camera);
-  if (composer !== null) composer.render();
+  if (vtScene !== null) {
+    // 這個場景要的是「UV 與畫布一一對應」，透視相機做不到。
+    renderer.render(vtScene.root, vtCamera);
+  } else if (composer !== null) composer.render();
   else renderer.render(scene, camera);
 
   // 第一幀送出去的時刻。網站在意的是「多久之後看得到東西」，而那是從
@@ -1591,6 +1614,53 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    vt:
+      vtScene === null
+        ? null
+        : {
+            virtualSize: vtScene.virtualSize,
+            atlasSize: vtScene.vt.atlas.image.width,
+            levels: vtScene.vt.table.levels,
+            sideAt: (level: number): number => vtScene.sideAt(level),
+            maxTextureSize: renderer.capabilities.maxTextureSize,
+            request: (level: number, px: number, py: number): void => {
+              vtScene.vt.request(level, px, py);
+            },
+            update: (budget?: number): number => vtScene.vt.update(budget),
+            /**
+             * 讀畫面上某個比例位置的顏色。
+             *
+             * **在頁面裡讀，不是從外面截圖。** 預設 framebuffer 在合成之後
+             * 就被清掉了，從外面 readPixels 讀到的是全黑 —— 而全黑看起來
+             * 就像「shader 沒編譯成功」，兩種完全不同的問題長得一樣。
+             *
+             * 畫進一張 render target 再讀，時機與內容都是確定的。
+             */
+            sampleAt: (u: number, v: number): [number, number, number] => {
+              const size = 512;
+              vtProbeTarget ??= new WebGLRenderTarget(size, size);
+              const previous = renderer.getRenderTarget();
+              renderer.setRenderTarget(vtProbeTarget);
+              renderer.render(vtScene.root, vtCamera);
+              renderer.setRenderTarget(previous);
+              const px = new Uint8Array(4);
+              renderer.readRenderTargetPixels(
+                vtProbeTarget,
+                Math.min(size - 1, Math.max(0, Math.floor(u * size))),
+                Math.min(size - 1, Math.max(0, Math.floor(v * size))),
+                1,
+                1,
+                px,
+              );
+              return [px[0] ?? 0, px[1] ?? 0, px[2] ?? 0];
+            },
+            get pagesLoaded(): number {
+              return vtScene.vt.pagesLoaded;
+            },
+            get residentCount(): number {
+              return vtScene.vt.table.residentCount;
+            },
+          },
     streamProbe: {
       start(): void {
         streamProbe.samples.length = 0;
