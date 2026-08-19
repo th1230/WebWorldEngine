@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { listenSafe } from '../lib/listen-safe.mjs';
+import { assertDistFresh } from '../lib/dist-fresh.mjs';
 
 /**
  * 「會動的東西」那條軸的第一步：**成本怎麼隨數量成長**。
@@ -33,6 +34,8 @@ import { listenSafe } from '../lib/listen-safe.mjs';
  */
 
 const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+// 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
+assertDistFresh(root);
 const DIST = join(root, 'apps/example/dist');
 const COUNTS = [50, 100, 200, 400, 800];
 

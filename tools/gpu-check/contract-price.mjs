@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { listenSafe } from '../lib/listen-safe.mjs';
+import { assertDistFresh } from '../lib/dist-fresh.mjs';
 
 /**
  * 品質契約每嚴一格，要付多少 GPU 時間。
@@ -38,6 +39,8 @@ import { listenSafe } from '../lib/listen-safe.mjs';
  * 是開發者的**，引擎負責把價錢算出來交出去。
  */
 const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+// 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
+assertDistFresh(root);
 const COOKED = join(root, 'apps/benchmark/public');
 const DIST = join(root, 'apps/example/dist');
 const server = createServer((req, res) => {

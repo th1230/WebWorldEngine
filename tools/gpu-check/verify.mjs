@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { listenSafe } from '../lib/listen-safe.mjs';
+import { assertDistFresh } from '../lib/dist-fresh.mjs';
 
 /**
  * 旋鈕到底有沒有省到 GPU —— **量它，而且擋它**。
@@ -54,6 +55,8 @@ import { listenSafe } from '../lib/listen-safe.mjs';
  */
 
 const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+// 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
+assertDistFresh(root);
 const DIST = join(root, 'apps/example/dist');
 
 /**
