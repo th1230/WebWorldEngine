@@ -499,5 +499,63 @@ try {
   process.exitCode = 1;
 }
 
+// ## 第五個：把「串流」這個前提本身拿掉
+//
+// 前四個測試全部用 orbit=200（每秒 24 單位）的靜止場景，而串流那一組是
+// orbit=5000（每秒 600 單位）。**相機速度差了 25 倍**，而我一直把差異歸給
+// 串流。
+//
+// 那是一個沒被控制的變因。所以這一組：同樣的相機速度、同樣的物件數，
+// **完全不串流**（內容一次擺完）。尖峰照樣出現的話，它跟串流無關 ——
+// 而前面每一個「串流尖峰」的結論都問錯了對象。
+try {
+  console.log("");
+  console.log('── 因果測試五：同樣的相機速度，串流 vs 不串流');
+  const run = async (query, label) => {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    page.setDefaultNavigationTimeout(240000);
+    await page.goto(`${base}/${query}`, { waitUntil: "load" });
+    await page.waitForFunction(() => window.__ww?.totalFrames > 120, undefined, { timeout: 240000 });
+    const raw = await page.evaluate(async () => {
+      window.__ww.streamProbe.start();
+      await new Promise((resolve) => {
+        let n = 0;
+        const tick = () => (++n < 500 ? requestAnimationFrame(tick) : resolve());
+        requestAnimationFrame(tick);
+      });
+      return window.__ww.streamProbe.stop();
+    });
+    await page.close();
+    const rows = raw.slice(1).map((sample, i) => ({ ...raw[i], frameMs: sample.frameMs })).slice(60);
+    const f = rows.map((r) => r.frameMs).sort((a, b) => a - b);
+    const q = (x) => f[Math.min(f.length - 1, Math.floor(f.length * x))];
+    const loads = rows.filter((r) => r.cells > 0).length;
+    console.log(`  ${label}`);
+    console.log(`    幀 p50 ${q(0.5).toFixed(2)} ms   p95 ${q(0.95).toFixed(2)} ms   **尖峰倍率 ${(q(0.95) / q(0.5)).toFixed(2)}×**   有 cell 進來 ${loads} 幀`);
+    return { p50: q(0.5), p95: q(0.95) };
+  };
+
+  const streaming = await run("?stream=1&count=200000&orbit=5000", "串流（相機每秒 600 單位）");
+  const still = await run("?count=200000&spread=8000&orbit=5000", "不串流，相機一樣快");
+  // ## 比的是絕對值，不是倍率
+  //
+  // 倍率是 p95 ÷ p50，而兩組的 p50 本來就不同（串流時常駐的內容比較少，
+  // 典型的那一幀因此比較輕）。拿倍率比等於**拿兩個分母不同的比值比大小**
+  // ——那正是 doctrine 19 說的「兩個數字要描述同一件事才配得在一起」。
+  //
+  // 該問的是：**最壞的那幾幀有沒有比較壞。**
+  console.log(`    p95：串流 ${streaming.p95.toFixed(2)} ms vs 不串流 ${still.p95.toFixed(2)} ms`);
+  console.log(`    p50：串流 ${streaming.p50.toFixed(2)} ms vs 不串流 ${still.p50.toFixed(2)} ms`);
+  const tailRatio = streaming.p95 / still.p95;
+  console.log(
+    tailRatio < 1.2
+      ? `  → **尾巴一樣高（${tailRatio.toFixed(2)}×）：串流沒有讓最壞的那幾幀更壞。** 倍率看起來差很多，是因為串流的 p50 比較低（常駐的內容少），不是尾巴比較高。`
+      : `  → 串流確實把尾巴拉高了（${tailRatio.toFixed(2)}×）。`,
+  );
+} catch (e) {
+  console.log("因果測試五失敗：" + String(e).split(String.fromCharCode(10))[0].slice(0, 200));
+  process.exitCode = 1;
+}
+
 await browser.close();
 server.close();
