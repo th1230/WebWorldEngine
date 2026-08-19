@@ -138,12 +138,18 @@ export function bakeSurfaceCache(
     data[i * 3 + 2] = data[i * 3 + 2]! / count;
   }
 
-  // ## 往外擴散一格
+  // ## 擴散到填滿，不是只擴一格
   //
-  // 追蹤停在**表面附近**，不會剛好停在有三角形的那一格 —— 差一格就查到
-  // 空的，而空的是黑色。症狀是反彈光比實際暗一大截，而且會隨追蹤的步長
-  // 忽明忽暗。
-  dilate(data, counts, n);
+  // 第一版只擴一格，理由寫的是「塗滿的話任何方向都拿得到顏色，等於把幾何
+  // 資訊丟掉了」。**那個理由是錯的** —— 這份快取從來不負責回答「那裡有沒有
+  // 東西」，那是距離場的事。它只回答「那是什麼顏色」，而且只在追蹤已經
+  // 判定打到之後才被查。
+  //
+  // 錯的代價是實測出來的：全域距離場是照格心取樣的，而格心多半**不在**
+  // 那一格厚的殼上，於是整份全域反照率幾乎都是 0 —— 反射到紅箱子拿到全黑。
+  //
+  // 填滿之後它是一份「最近的表面是什麼顏色」的場，那正是要的東西。
+  floodFill(data, counts, n);
 
   return {
     data,
@@ -157,41 +163,55 @@ function clamp(v: number, n: number): number {
   return v < 0 ? 0 : v >= n ? n - 1 : v;
 }
 
-/** 把有顏色的格子往鄰居擴散一層。 */
-function dilate(data: Float32Array, counts: Float32Array, n: number): void {
+/**
+ * 把顏色擴散到整份場：每一格填「最近的那個表面的顏色」。
+ *
+ * 一輪只擴一層，重複到沒有空格為止。上限是邊長 —— 再多就代表整份都是空的
+ * （沒有任何三角形），那時候留著 0 是對的。
+ */
+function floodFill(data: Float32Array, counts: Float32Array, n: number): void {
   const filled = counts.slice();
   const at = (x: number, y: number, z: number): number => (z * n + y) * n + x;
 
-  for (let z = 0; z < n; z++) {
-    for (let y = 0; y < n; y++) {
-      for (let x = 0; x < n; x++) {
-        const index = at(x, y, z);
-        if (filled[index]! > 0) continue;
-        let r = 0;
-        let g = 0;
-        let b = 0;
-        let found = 0;
-        for (let dz = -1; dz <= 1; dz++) {
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              const nx = x + dx;
-              const ny = y + dy;
-              const nz = z + dz;
-              if (nx < 0 || ny < 0 || nz < 0 || nx >= n || ny >= n || nz >= n) continue;
-              const ni = at(nx, ny, nz);
-              if (filled[ni]! === 0) continue;
-              r += data[ni * 3]!;
-              g += data[ni * 3 + 1]!;
-              b += data[ni * 3 + 2]!;
-              found++;
+  for (let pass = 0; pass < n; pass++) {
+    let empty = 0;
+    const before = filled.slice();
+    for (let z = 0; z < n; z++) {
+      for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) {
+          const index = at(x, y, z);
+          if (before[index]! > 0) continue;
+          let r = 0;
+          let g = 0;
+          let b = 0;
+          let found = 0;
+          for (let dz = -1; dz <= 1; dz++) {
+            for (let dy = -1; dy <= 1; dy++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx;
+                const ny = y + dy;
+                const nz = z + dz;
+                if (nx < 0 || ny < 0 || nz < 0 || nx >= n || ny >= n || nz >= n) continue;
+                const ni = at(nx, ny, nz);
+                if (before[ni]! === 0) continue;
+                r += data[ni * 3]!;
+                g += data[ni * 3 + 1]!;
+                b += data[ni * 3 + 2]!;
+                found++;
+              }
             }
           }
+          if (found === 0) {
+            empty++;
+            continue;
+          }
+          data[index * 3] = r / found;
+          data[index * 3 + 1] = g / found;
+          data[index * 3 + 2] = b / found;
+          filled[index] = 1;
         }
-        if (found === 0) continue;
-        data[index * 3] = r / found;
-        data[index * 3 + 1] = g / found;
-        data[index * 3 + 2] = b / found;
       }
     }
+    if (empty === 0) break;
   }
 }

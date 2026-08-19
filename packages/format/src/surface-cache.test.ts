@@ -78,14 +78,29 @@ describe('表面快取：追蹤打到的時候那是什麼顏色', () => {
     expect(r).toBeGreaterThan(0.5);
   });
 
-  it('離得夠遠的地方還是黑的 —— 擴散只有一層，不是把整份塗滿', () => {
-    // 塗滿的話任何方向的追蹤都會拿到顏色，等於沒有幾何資訊了。
+  it('整份都填滿 —— 每一格都是「最近的表面是什麼顏色」', () => {
+    // ## 這條原本是反過來寫的
+    //
+    // 第一版斷言「離得夠遠的地方還是黑的」，理由是「塗滿的話任何方向都拿
+    // 得到顏色，等於把幾何資訊丟掉了」。**那個理由是錯的**：這份快取從來
+    // 不負責回答「那裡有沒有東西」，那是距離場的事。它只回答「那是什麼
+    // 顏色」，而且只在追蹤已經判定打到之後才被查。
+    //
+    // 錯的代價是實測出來的：全域距離場照格心取樣，而格心多半不在那一格厚
+    // 的殼上 —— 整份全域反照率幾乎都是 0，反射到紅箱子拿到全黑。
     const { positions, indices, colors } = quad(0, [1, 0, 0]);
     const cache = bakeSurfaceCache(positions, indices, colors, { resolution: 16, padding: 1 });
+    let empty = 0;
+    for (let i = 0; i < cache.data.length; i += 3) {
+      if (cache.data[i] === 0 && cache.data[i + 1] === 0 && cache.data[i + 2] === 0) empty++;
+    }
+    expect(empty).toBe(0);
+    // 而且遠處拿到的還是紅的（最近的表面就是那面紅的）。
     const [r, g, b] = cellAt(cache, 0, 0, cache.size[2] * 0.45);
-    expect(r + g + b).toBeCloseTo(0, 5);
+    expect(r).toBeGreaterThan(0.5);
+    expect(g).toBeLessThan(0.2);
+    expect(b).toBeLessThan(0.2);
   });
-
   it('外框與距離場同一個算法 —— 兩份場對不上的話追蹤會查到隔壁', () => {
     const { positions, indices, colors } = quad(0, [1, 1, 1]);
     const cache = bakeSurfaceCache(positions, indices, colors, { resolution: 8, padding: 0.25 });

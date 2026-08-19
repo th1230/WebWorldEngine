@@ -9,6 +9,7 @@ import { makeTextureHeavy, type TextureHeavyScene } from './texture-heavy.ts';
 import { makeVirtualTextureScene, type VirtualTextureScene } from './virtual-texture-scene.ts';
 import { makeContactScene, type ContactScene } from './contact-scene.ts';
 import { makeDfShadowScene, type DfShadowScene } from './df-shadow-scene.ts';
+import { makeReflectionScene, type ReflectionScene } from './reflection-scene.ts';
 import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
@@ -474,6 +475,9 @@ const textureHeavy: TextureHeavyScene | null =
 const contactScene: ContactScene | null = params.get('contact') === '1' ? makeContactScene() : null;
 /** `?dfshadow=1` 大箱子在空地上，證明遠處的陰影是距離場追出來的。 */
 const dfShadowScene: DfShadowScene | null = params.get('dfshadow') === '1' ? makeDfShadowScene() : null;
+/** `?reflect=1` 一面鏡子照到畫面外的紅箱子 —— 螢幕空間做不到的那一段。 */
+const reflectionScene: ReflectionScene | null = params.get('reflect') === '1' ? makeReflectionScene() : null;
+if (reflectionScene !== null) rocks.visible = false;
 if (dfShadowScene !== null) rocks.visible = false;
 if (contactScene !== null) rocks.visible = false;
 
@@ -1771,6 +1775,19 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    reflect:
+      reflectionScene === null
+        ? null
+        : {
+            settle: (): Promise<number> => reflectionScene.settle(renderer),
+            render: (useField: boolean): void => reflectionScene.render(renderer, useField),
+            sample: (which: "mirror" | "mirrorLow" | "mirrorGreen"): [number, number, number, number] =>
+              reflectionScene.sample(renderer, reflectionScene.points[which]),
+            boxOnScreen: (): boolean => reflectionScene.boxOnScreen(),
+            greenOnScreen: (): boolean => reflectionScene.greenOnScreen(),
+            stats: (): unknown => reflectionScene.stats(renderer),
+            setRoughness: (v: number): void => reflectionScene.setRoughness(v),
+          },
     dfShadow:
       dfShadowScene === null
         ? null

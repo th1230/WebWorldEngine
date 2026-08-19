@@ -87,3 +87,4 @@ export { VirtualTexture, type VirtualTextureOptions } from './virtual-texture.ts
 export { SceneDepthNormals, type SceneDepthNormalsOptions } from './depth-normals.ts';
 export { ContactShadows, type ContactShadowsOptions } from './contact-shadows.ts';
 export { DistanceFieldShadows, type DistanceFieldShadowsOptions } from './distance-field-shadows.ts';
+export { TracedReflections, type TracedReflectionsOptions } from './traced-reflections.ts';

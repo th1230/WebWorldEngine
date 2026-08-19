@@ -1,4 +1,14 @@
-import { ClampToEdgeWrapping, Data3DTexture, FloatType, LinearFilter, Matrix4, RedFormat, Vector3 } from 'three';
+import {
+  ClampToEdgeWrapping,
+  Data3DTexture,
+  FloatType,
+  LinearFilter,
+  Matrix4,
+  RedFormat,
+  RGBAFormat,
+  UnsignedByteType,
+  Vector3,
+} from 'three';
 import type { DistanceFieldVolume } from './distance-field-gi.ts';
 
 /**
@@ -51,10 +61,18 @@ export class GlobalDistanceField {
   readonly resolution: number;
   readonly extent: number;
   readonly texture: Data3DTexture;
+  /** 與 `texture` 同一格網格，存的是最近那個表面的反照率。 */
+  readonly albedoTexture: Data3DTexture;
   /** 這一份場目前的最小角，世界座標（對齊整數格）。 */
   readonly min = new Vector3();
 
   private readonly data: Float32Array;
+  /**
+   * 每一格「最近那個表面是什麼顏色」。
+   *
+   * 八位元夠：反照率的值域就是 0–1，而反彈與反射本來就是低頻的。
+   */
+  private readonly albedoData: Uint8Array;
   private readonly budget: number;
   private readonly cell: number;
   private readonly instances: FieldInstance[] = [];
@@ -83,6 +101,18 @@ export class GlobalDistanceField {
     texture.wrapR = ClampToEdgeWrapping;
     texture.needsUpdate = true;
     this.texture = texture;
+
+    this.albedoData = new Uint8Array(n * n * n * 4);
+    const albedo = new Data3DTexture(this.albedoData, n, n, n);
+    albedo.format = RGBAFormat;
+    albedo.type = UnsignedByteType;
+    albedo.minFilter = LinearFilter;
+    albedo.magFilter = LinearFilter;
+    albedo.wrapS = ClampToEdgeWrapping;
+    albedo.wrapT = ClampToEdgeWrapping;
+    albedo.wrapR = ClampToEdgeWrapping;
+    albedo.needsUpdate = true;
+    this.albedoTexture = albedo;
   }
 
   /** 把一個物件放進場裡。 */
@@ -175,11 +205,18 @@ export class GlobalDistanceField {
         this.min.y + (y + 0.5) * this.cell,
         this.min.z + (z + 0.5) * this.cell,
       );
-      this.data[index] = this.composeAt(at);
+      this.data[index] = this.composeAt(at, _composeAlbedo);
+      this.albedoData[index * 4] = Math.round(Math.min(1, Math.max(0, _composeAlbedo.x)) * 255);
+      this.albedoData[index * 4 + 1] = Math.round(Math.min(1, Math.max(0, _composeAlbedo.y)) * 255);
+      this.albedoData[index * 4 + 2] = Math.round(Math.min(1, Math.max(0, _composeAlbedo.z)) * 255);
+      this.albedoData[index * 4 + 3] = 255;
       this.cellsBuilt++;
     }
 
-    if (this.cellsBuilt > 0) this.texture.needsUpdate = true;
+    if (this.cellsBuilt > 0) {
+      this.texture.needsUpdate = true;
+      this.albedoTexture.needsUpdate = true;
+    }
     return this.cellsBuilt;
   }
 
@@ -189,8 +226,9 @@ export class GlobalDistanceField {
    * 取 min 是距離場合成的定義 —— 一個點到「這堆東西」的距離，就是它到最近
    * 那一個的距離。
    */
-  private composeAt(worldPoint: Vector3): number {
+  private composeAt(worldPoint: Vector3, albedo: Vector3): number {
     let closest = this.extent;
+    let nearest: FieldInstance | null = null;
     for (const instance of this.instances) {
       // 換到那個物件的區域空間再查。
       const local = _composeLocal.copy(worldPoint).applyMatrix4(_composeInverse.copy(instance.matrixWorld).invert());
@@ -198,7 +236,28 @@ export class GlobalDistanceField {
       // 被夾到邊緣值，而邊緣值對遠處的點是嚴重低估（看起來像那裡有東西）。
       const outside = distanceToBox(local, instance.volume.min, instance.volume.size);
       const distance = outside > 0 ? outside : instance.volume.distanceAt(local);
-      if (distance < closest) closest = distance;
+      if (distance < closest) {
+        closest = distance;
+        nearest = instance;
+      }
+    }
+    // ## 順手把最近那個表面的顏色也記下來
+    //
+    // 距離場只答得出「那裡有東西」。追蹤打到之後**那是什麼顏色**要另外
+    // 一份資料 —— 而在 CPU 上那份已經有了（每個 `DistanceFieldVolume`
+    // 自己的表面快取）。這裡把它合成到同一格世界網格上，著色器才查得到。
+    //
+    // 這正是 Lumen 的 surface cache 升到全域的那一步：反射打到一面紅牆
+    // 要回傳紅色，而不是「那裡有東西」加上「那裡有多亮」。少了它，反射
+    // 到的顏色會是**打到的地方收到的光**，而不是那個表面射出來的光 ——
+    // 紅牆會反射成白的。
+    if (nearest === null) {
+      albedo.set(0, 0, 0);
+    } else {
+      const local = _composeLocal
+        .copy(worldPoint)
+        .applyMatrix4(_composeInverse.copy(nearest.matrixWorld).invert());
+      nearest.volume.albedoAt(local, albedo);
     }
     return closest;
   }
@@ -326,11 +385,13 @@ export class GlobalDistanceField {
 
   dispose(): void {
     this.texture.dispose();
+    this.albedoTexture.dispose();
   }
 }
 
 const _updateAt = new Vector3();
 const _composeLocal = new Vector3();
+const _composeAlbedo = new Vector3();
 const _composeInverse = new Matrix4();
 const _traceAt = new Vector3();
 const _radianceAt = new Vector3();
