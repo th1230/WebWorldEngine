@@ -7,6 +7,7 @@ import { makeGiScene, type GiScene } from './gi-scene.ts';
 import { makeBigMesh, type BigMeshScene } from './big-mesh.ts';
 import { makeTextureHeavy, type TextureHeavyScene } from './texture-heavy.ts';
 import { makeVirtualTextureScene, type VirtualTextureScene } from './virtual-texture-scene.ts';
+import { makeContactScene, type ContactScene } from './contact-scene.ts';
 import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
@@ -468,6 +469,10 @@ const textureHeavy: TextureHeavyScene | null =
  * 配置的圖集只有 512×512。每一頁是純色，顏色由階數與座標算出來 —— 所以
  * 從畫面上讀一個像素就能反推取樣到的是誰。
  */
+/** `?contact=1` 一個箱子貼在地上，證明接觸陰影出現在接縫而不是整片。 */
+const contactScene: ContactScene | null = params.get('contact') === '1' ? makeContactScene() : null;
+if (contactScene !== null) rocks.visible = false;
+
 const vtScene: VirtualTextureScene | null = params.get('vt') === '1' ? makeVirtualTextureScene() : null;
 /** 正交相機，讓那張平面剛好鋪滿畫布：UV (0,0) 在左下、(1,1) 在右上。 */
 /** `?rewrite=P&rewriteCount=M`：**大約 P% 的幀**（交錯，不是定期）重寫 M 個矩陣。 */
@@ -1762,6 +1767,17 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    contact:
+      contactScene === null
+        ? null
+        : {
+            render: (): void => contactScene.render(renderer),
+            sample: (which: "contact" | "open" | "lit" | "terminator" | "under"): number =>
+              contactScene.sample(renderer, contactScene.points[which]),
+            coverage: (): number => contactScene.coverage(renderer),
+            setStrength: (v: number): void => contactScene.setStrength(v),
+            setCameraAngle: (which: 0 | 1): void => contactScene.setCameraAngle(which),
+          },
     vt:
       vtScene === null
         ? null

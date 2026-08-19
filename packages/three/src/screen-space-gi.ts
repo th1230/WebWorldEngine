@@ -1,22 +1,18 @@
 import {
-  BufferAttribute,
-  BufferGeometry,
   DepthTexture,
   HalfFloatType,
   Matrix4,
-  Mesh,
   MeshNormalMaterial,
   NearestFilter,
   NoColorSpace,
-  OrthographicCamera,
   RGBAFormat,
-  Scene as Scene3D,
   ShaderMaterial,
   UnsignedShortType,
   Vector2,
   WebGLRenderTarget,
 } from 'three';
 import type { Camera, PerspectiveCamera, Scene, Texture, WebGLRenderer } from 'three';
+import { drawFullscreen, FULLSCREEN_VERTEX } from './fullscreen.ts';
 
 /**
  * 螢幕空間的一次反彈間接光。
@@ -113,7 +109,7 @@ export class ScreenSpaceGI {
         uNear: { value: 0.1 },
         uFar: { value: 1000 },
       },
-      vertexShader: VERTEX,
+      vertexShader: FULLSCREEN_VERTEX,
       fragmentShader: FRAGMENT,
       depthTest: false,
       depthWrite: false,
@@ -211,38 +207,7 @@ export class ScreenSpaceGI {
   }
 }
 
-/**
- * 畫一個蓋滿畫面的三角形。
- *
- * 用一個三角形而不是兩個（矩形）：矩形的對角線讓 GPU 在那條邊上跑兩次
- * quad，而全螢幕的 pass 每一格像素都算數。
- *
- * 幾何與相機是共用的 —— 每個 pass 各配一份是白花記憶體，而它們沒有狀態。
- */
-const _fullscreenGeometry = new BufferGeometry();
-_fullscreenGeometry.setAttribute(
-  'position',
-  new BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3),
-);
-_fullscreenGeometry.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 2, 0, 0, 2]), 2));
-const _fullscreenCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
-const _fullscreenScene = new Scene3D();
-const _fullscreenMesh = new Mesh(_fullscreenGeometry, new ShaderMaterial());
-_fullscreenMesh.frustumCulled = false;
-_fullscreenScene.add(_fullscreenMesh);
 
-function drawFullscreen(renderer: WebGLRenderer, material: ShaderMaterial): void {
-  _fullscreenMesh.material = material;
-  renderer.render(_fullscreenScene, _fullscreenCamera);
-}
-
-const VERTEX = /* glsl */ `
-varying vec2 vUv;
-void main() {
-  vUv = uv;
-  gl_Position = vec4( position.xy, 0.0, 1.0 );
-}
-`;
 
 const FRAGMENT = /* glsl */ `
 uniform sampler2D tColor;
