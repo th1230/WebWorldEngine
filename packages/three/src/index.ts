@@ -88,3 +88,4 @@ export { SceneDepthNormals, type SceneDepthNormalsOptions } from './depth-normal
 export { ContactShadows, type ContactShadowsOptions } from './contact-shadows.ts';
 export { DistanceFieldShadows, type DistanceFieldShadowsOptions } from './distance-field-shadows.ts';
 export { TracedReflections, type TracedReflectionsOptions } from './traced-reflections.ts';
+export { SkyAtmosphere, type SkyAtmosphereOptions } from './sky.ts';

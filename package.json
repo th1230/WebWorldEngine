@@ -22,7 +22,7 @@
     "package-check": "node tools/package-check/verify.mjs",
     "site-check": "node tools/site-check/verify.mjs",
     "visual-check": "node tools/visual-check/verify.mjs",
-    "verify:all": "pnpm verify && pnpm package-check && pnpm site-check && pnpm visual-check && pnpm physics-check && pnpm gi-check && pnpm ssgi-check && pnpm impostor-check && pnpm gpu-check && pnpm webgpu-check && pnpm vt-check && pnpm daynight-check && pnpm contact-check && pnpm df-shadow-check && pnpm reflect-check",
+    "verify:all": "pnpm verify && pnpm package-check && pnpm site-check && pnpm visual-check && pnpm physics-check && pnpm gi-check && pnpm ssgi-check && pnpm impostor-check && pnpm gpu-check && pnpm webgpu-check && pnpm vt-check && pnpm daynight-check && pnpm contact-check && pnpm df-shadow-check && pnpm reflect-check && pnpm sky-check",
     "bench": "tsx tools/benchmark-runner/src/cli.ts run --profile hardware",
     "bench:smoke": "tsx tools/benchmark-runner/src/cli.ts run --profile smoke",
     "bench:baseline": "tsx tools/benchmark-runner/src/cli.ts baseline",
@@ -52,7 +52,8 @@
     "daynight-check": "node tools/gpu-check/daynight.mjs",
     "contact-check": "node tools/gpu-check/contact-shadows.mjs",
     "df-shadow-check": "node tools/gpu-check/df-shadows.mjs",
-    "reflect-check": "node tools/gpu-check/reflections.mjs"
+    "reflect-check": "node tools/gpu-check/reflections.mjs",
+    "sky-check": "node tools/gpu-check/sky.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

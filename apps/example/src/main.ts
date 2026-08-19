@@ -10,6 +10,7 @@ import { makeVirtualTextureScene, type VirtualTextureScene } from './virtual-tex
 import { makeContactScene, type ContactScene } from './contact-scene.ts';
 import { makeDfShadowScene, type DfShadowScene } from './df-shadow-scene.ts';
 import { makeReflectionScene, type ReflectionScene } from './reflection-scene.ts';
+import { makeSkyScene, type SkyScene } from './sky-scene.ts';
 import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
@@ -477,6 +478,9 @@ const contactScene: ContactScene | null = params.get('contact') === '1' ? makeCo
 const dfShadowScene: DfShadowScene | null = params.get('dfshadow') === '1' ? makeDfShadowScene() : null;
 /** `?reflect=1` 一面鏡子照到畫面外的紅箱子 —— 螢幕空間做不到的那一段。 */
 const reflectionScene: ReflectionScene | null = params.get('reflect') === '1' ? makeReflectionScene() : null;
+/** `?sky=1` 大氣散射的天空，順便證明它會餵給探針。 */
+const skyScene: SkyScene | null = params.get('sky') === '1' ? makeSkyScene() : null;
+if (skyScene !== null) rocks.visible = false;
 if (reflectionScene !== null) rocks.visible = false;
 if (dfShadowScene !== null) rocks.visible = false;
 if (contactScene !== null) rocks.visible = false;
@@ -1775,6 +1779,16 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    sky:
+      skyScene === null
+        ? null
+        : {
+            setSun: (elevation: number): boolean => skyScene.setSun(elevation, renderer),
+            sampleFace: (face: number): [number, number, number] => skyScene.sampleFace(renderer, face),
+            bakes: (): number => skyScene.bakes(),
+            bakeProbes: (): Promise<number> => skyScene.bakeProbes(renderer),
+            probeAt: (p: [number, number, number]): [number, number, number] => skyScene.probeAt(p),
+          },
     reflect:
       reflectionScene === null
         ? null
