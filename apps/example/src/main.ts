@@ -410,11 +410,8 @@ const giScene: GiScene | null = GI ? makeGiScene() : null;
 if (giScene !== null) {
   scene.add(giScene.root);
   rocks.visible = false;
-  // 間接光的證明要求場景裡**沒有其他環境光源** —— 有的話箱子的背面本來
-  // 就是亮的，那就證明不了光是從紅牆反彈過來的。
-  for (const child of [...scene.children]) {
-    if (child !== giScene.root && (child as THREE.Light).isLight === true) scene.remove(child);
-  }
+  // 其餘內容在這支檔案後面才會加進場景，所以真正的清場放在最後（往下找
+  // 「只留這一組東西」）。這裡先擋掉背景與環境貼圖。
   scene.background = new THREE.Color(0x000000);
   scene.environment = null;
 }
@@ -1316,6 +1313,20 @@ async function measureLodBlocking(): Promise<LodBlockingReport | { skipped: stri
 
 // 從一開始就量，不然等到有人呼叫時 LOD 早就產生完了 —— 那會量到 0，
 // 而 0 看起來像是「完全沒有卡頓」的好消息。
+// ## GI 模式：場景裡只留那一組東西
+//
+// 判準是「白箱子的背光面沾到多少紅」，而**任何其他東西都會污染它**：別的
+// 光源會直接照亮那一面，別的幾何會把自己的顏色反彈進探針裡。
+//
+// 清場一定要放在**所有內容都加完之後**。第一版寫在建立場景的地方，那時
+// 地面、地形、參考物都還沒加進來 —— 於是那段程式碼看起來清了場，實際上
+// 一個都沒清到，而量到的數字一位小數都沒變。
+if (giScene !== null) {
+  for (const child of [...scene.children]) {
+    if (child !== giScene.root) scene.remove(child);
+  }
+}
+
 if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
@@ -1328,6 +1339,7 @@ Object.assign(window, {
             stats: () => giScene.stats(),
             bake: () => giScene.bake(renderer, scene),
             setEnabled: (on: boolean) => giScene.setEnabled(on),
+            sampleCpu: (p: [number, number, number], n: [number, number, number]) => giScene.sampleCpu(p, n),
             /**
              * 量畫面上一塊區域的平均顏色。
              *

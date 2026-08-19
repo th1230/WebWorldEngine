@@ -223,6 +223,42 @@ describe('接到材質上', () => {
     warn.mockRestore();
   });
 
+  it('node 材質走另一條路，不碰 onBeforeCompile', () => {
+    // `onBeforeCompile` 是 WebGL 的鉤子，`WebGPURenderer` 完全不經過它。
+    // 在這裡不分流的話，WebGPU 上是靜靜地完全沒有間接光。
+    const volume = unit();
+    const material = new MeshStandardMaterial();
+    (material as unknown as { isNodeMaterial: boolean }).isNodeMaterial = true;
+    const before = material.onBeforeCompile;
+
+    applyIrradiance(volume, new Mesh(new BoxGeometry(), material));
+
+    // 走了 node 那條路，所以 WebGL 的鉤子原封不動。
+    expect(material.onBeforeCompile).toBe(before);
+  });
+
+  it('接了 node 材質之後改 intensity 會警告 —— 那條路改不動', () => {
+    // node 那條路的強度是編譯期常數。實測過三種讓它變成可改的做法都沒用：
+    // TSL 的 uniform（值傳到了但不上傳）、重接一份新的節點圖、
+    // needsUpdate 強制重編。所以這裡的選擇是**講清楚**，不是假裝有效。
+    const volume = unit();
+    volume.markNodeMaterial();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    volume.intensity = 0.5;
+    expect(warn).toHaveBeenCalled();
+    expect(String(warn.mock.calls[0]?.[0])).toContain('編譯期常數');
+    warn.mockRestore();
+  });
+
+  it('沒有 node 材質的時候改 intensity 不會亂吼', () => {
+    const volume = unit();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    volume.intensity = 0.5;
+    expect(volume.intensity).toBe(0.5);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it('root 底下沒有材質會警告 —— 症狀是整個場景沒有間接光', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(applyIrradiance(unit(), new Group())).toBe(0);

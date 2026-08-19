@@ -1,5 +1,5 @@
 /**
- * 間接光的關卡：證明背光面的光**是從紅牆反彈過來的**。
+ * 間接光的關卡：證明背光面的光**是從紅牆反彈過來的**，兩個後端都要。
  *
  * ## 為什麼判準是顏色而不是亮度
  *
@@ -7,7 +7,7 @@
  * 換一個，畫面都會變亮，而變亮很容易被讀成「間接光生效了」。
  *
  * 所以場景是刻意設計的：紅牆紅地板、**白**箱子、一盞方向光、沒有環境光、
- * 沒有 env map。箱子的背光面拿不到任何直接光。
+ * 沒有 env map，而且場景裡**只有這一組東西**。箱子的背光面拿不到任何直接光。
  *
  * 於是那一面上出現的紅色只有一個來源：從紅牆反彈上來的光。判準是
  * **紅比藍高多少**，而那個訊號：
@@ -15,13 +15,23 @@
  * | 造假的方式 | 會發生什麼 |
  * | --- | --- |
  * | 偷偷加一盞白色環境光 | 紅藍一起上去，比值不動 |
- * | SH 係數算錯 | 整面不亮，比值不動 |
- * | 把 intensity 調大 | 關掉那一輪也會跟著亮，A/B 沒有差 |
+ * | SH 係數算錯 | 整面不亮 |
+ * | 把強度調大 | 關掉那一輪也會跟著亮，A/B 沒有差 |
  *
- * ## A/B 走同一條著色器路徑
+ * ## 兩個後端關掉的方式不同，而那是量出來的不是選的
  *
- * 開關是把 `intensity` 設成 0／1，不是換材質。換材質的話比的是兩個不同的
- * 著色器，那個比較說明不了間接光。
+ * | | 怎麼關 | 為什麼 |
+ * | --- | --- | --- |
+ * | WebGL | 執行期改 uniform | uniform 每幀都會上傳，改了立刻生效 |
+ * | WebGPU | **開兩次頁面** | 那條路的強度是編譯期常數，改不動 |
+ *
+ * 第二列是實測的：把它做成 TSL 的 `uniform()` 之後，JS 這一側讀回來都對
+ * （0 / 1 / 50），但畫面**一個位元都沒動** —— 連把體積原點搬到 9999 都沒有
+ * 反應，而同一輪裡改 `scene.background` 是立刻生效的。所以畫面是新的，是
+ * 那一段的 uniform 沒有被重新上傳（它掛在 lighting context 底下）。
+ *
+ * 兩種做法都是「同一個場景、同一組相機、同一份著色器，只有強度不同」，所以
+ * 問到的是同一件事。
  */
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -68,78 +78,119 @@ const check = (ok, label, detail) => {
   console.log(`  ${ok ? '✓' : '✗'} ${label}${detail ? ` —— ${detail}` : ''}`);
   if (!ok) failed++;
 };
+const f = (v) => v.toFixed(1);
 
-try {
-  await page.goto(`http://localhost:${server.address().port}/?gi=1`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__ww?.gi !== null && window.__ww?.totalFrames > 5, undefined, {
-    timeout: 120000,
-  });
+/**
+ * 載入一頁、烘完探針、量背光面。
+ *
+ * @param toggle 這條路能不能在執行期開關（WebGL 能，WebGPU 不能）。
+ */
+async function run(url, handle, toggle) {
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForFunction(
+    (h) => window[h] !== undefined && window[h].gi !== null && window[h].gi !== undefined,
+    handle,
+    { timeout: 120000 },
+  );
 
-  const out = await page.evaluate(async () => {
-    const gi = window.__ww.gi;
+  return page.evaluate(
+    async ([h, canToggle]) => {
+      const api = window[h];
+      const gi = api.gi;
 
-    // 烘完為止。分幀烘，所以要一直呼叫。
-    let rounds = 0;
-    while (gi.stats().baked < gi.stats().probes && rounds < 2000) {
-      await gi.bake();
-      rounds++;
-    }
+      // 烘完為止。分幀烘，所以要一直呼叫。
+      let rounds = 0;
+      while (gi.stats().baked < gi.stats().probes && rounds < 2000) {
+        await gi.bake();
+        rounds++;
+      }
 
-    // 量箱子背光面那一塊。相機是固定的，所以這個矩形是穩定的。
-    //
-    // 畫面 800×480，devicePixelRatio 可能不是 1，所以用 canvas 的實際尺寸算。
-    const canvas = window.__ww.renderer.domElement;
-    // 這個框要**完全落在白箱子的背光面上**。第一版往下多了幾十個像素，
-    // 掃到了紅地板 —— 於是「關掉」那一輪就已經有 R−B = 25.3，而那個紅是
-    // 地板的，不是反彈到箱子上的。整個判準就被那幾行像素稀釋掉了。
-    const rect = [
-      Math.round(canvas.width * 0.46),
-      Math.round(canvas.height * 0.47),
-      Math.round(canvas.width * 0.08),
-      Math.round(canvas.height * 0.08),
-    ];
+      // 這個框要**完全落在白箱子的背光面上**。第一版往下多掃到幾十行紅
+      // 地板，於是「關掉」那一輪就已經有 R−B = 25.3，判準被稀釋掉了。
+      const canvas = api.renderer.domElement;
+      const rect = [
+        Math.round(canvas.width * 0.46),
+        Math.round(canvas.height * 0.47),
+        Math.round(canvas.width * 0.08),
+        Math.round(canvas.height * 0.08),
+      ];
 
-    const read = (on) => {
-      gi.setEnabled(on);
-      window.__ww.step(0);
-      return gi.sample(rect[0], rect[1], rect[2], rect[3]);
-    };
+      const draw = async () => {
+        await api.step(0);
+        return gi.sample(rect[0], rect[1], rect[2], rect[3]);
+      };
 
-    return { off: read(false), on: read(true), stats: gi.stats(), rounds, rect };
-  });
+      // CPU 那份公式在同一點求值 —— 分得出「烘的不一樣」還是「著色的不一樣」。
+      const cpu = gi.sampleCpu([-5, 14, -5], [-0.707, 0, -0.707]);
 
-  const { off, on, stats } = out;
-  const f = (v) => v.toFixed(1);
+      let off = null;
+      if (canToggle) {
+        await gi.setEnabled(false);
+        off = await draw();
+        await gi.setEnabled(true);
+      }
+      const on = await draw();
+      return { off, on, stats: gi.stats(), rounds, rect, cpu };
+    },
+    [handle, toggle],
+  );
+}
+
+/** 對一組量測結果跑判準。`off` 來自同一頁（WebGL）或另一頁（WebGPU）。 */
+function judge(label, out, off) {
+  const on = out.on;
+  const { stats } = out;
+  console.log(`\n── ${label}`);
   console.log(`  探針 ${stats.baked}/${stats.probes}，接了 ${stats.materials} 個材質，烘了 ${out.rounds} 輪`);
-  console.log(`  量的區域 [${out.rect.join(', ')}]`);
+  console.log(`  CPU 求值（同一點同一法線）：${out.cpu.map((v) => v.toFixed(3)).join(', ')}`);
   console.log(`  關：R ${f(off.r)}  G ${f(off.g)}  B ${f(off.b)}`);
   console.log(`  開：R ${f(on.r)}  G ${f(on.g)}  B ${f(on.b)}`);
 
   // ## 先證明「量的地方是對的」
   //
-  // 白箱子在白光下的背光面，關掉間接光時應該是**接近中性的深色** ——
-  // 紅綠藍差不多。差很多就代表這個框掃到紅地板或紅牆了，而那會把後面
-  // 每一條判準都稀釋掉。
-  //
-  // 這一條是量尺自己的檢查（doctrine 第 11 條）：先確定尺量的是那個東西。
-  check(Math.abs(off.r - off.b) < 6, '量的地方是白箱子，不是紅牆', `關掉時 R−B = ${f(off.r - off.b)}`);
+  // 白箱子的背光面在關掉間接光時應該是**純黑**：那一面拿不到任何直接光。
+  // 不是黑的就代表這個框掃到紅地板或紅牆了，而那會把後面每一條都稀釋掉。
+  check(
+    off.r < 3 && off.g < 3 && off.b < 3,
+    '量的地方是白箱子的背光面（關掉時是黑的）',
+    `關掉時 R ${f(off.r)}`,
+  );
 
   check(stats.baked === stats.probes, '探針全部烘完', `${stats.baked}/${stats.probes}`);
   check(stats.materials > 0, '有材質接上間接光', `${stats.materials} 個`);
-
-  // 開了之後那一面要變亮。這是必要條件，不是充分條件。
-  check(on.r > off.r + 2, '背光面變亮了', `R ${f(off.r)} → ${f(on.r)}`);
+  check(on.r > off.r + 10, '背光面亮起來了', `R ${f(off.r)} → ${f(on.r)}`);
 
   // ## 真正的判準：紅比藍高
   //
   // 白箱子 + 白光的話 R 與 B 應該一樣。紅色只能來自紅牆的反彈。
-  const gapOn = on.r - on.b;
-  const gapOff = off.r - off.b;
-  check(gapOn > 6, '背光面偏紅 —— 那個紅只可能是牆反彈來的', `R−B = ${f(gapOn)}`);
-  check(gapOn > gapOff + 5, '偏紅是間接光帶來的，不是本來就有', `R−B：${f(gapOff)} → ${f(gapOn)}`);
+  const gap = on.r - on.b;
+  check(gap > 20, '背光面偏紅 —— 那個紅只可能是牆反彈來的', `R−B = ${f(gap)}`);
 
-  // 沒有蓋掉直接光 —— 間接光是**加上去**的，不是取代。
-  check(on.g >= off.g - 1, '沒有把原本的光蓋掉', `G ${f(off.g)} → ${f(on.g)}`);
+  // 烘出來的係數本身也要是紅的。這一條分得出「烘對了但著色錯」與「烘就錯了」。
+  const [cr, cg] = out.cpu;
+  check(cr > cg * 5, '烘出來的係數本身就是紅的', `CPU R/G = ${(cr / Math.max(cg, 1e-9)).toFixed(1)}`);
+  return gap;
+}
+
+const base = `http://localhost:${server.address().port}`;
+try {
+  // WebGL：同一頁裡改 uniform 就能關。
+  const webgl = await run(`${base}/?gi=1`, '__ww', true);
+  const glGap = judge('WebGL（onBeforeCompile 注入 GLSL）', webgl, webgl.off);
+
+  // ## WebGPU 那條路一定要一起驗
+  //
+  // `onBeforeCompile` 是 WebGL 的鉤子，`WebGPURenderer` 完全不經過它。只驗
+  // 一邊的症狀是另一邊靜靜地沒有間接光 —— 這個專案在 VAT 上踩過一樣的坑。
+  const gpuOff = await run(`${base}/webgpu.html?gi=1&giOff=1`, '__wwgpu', false);
+  const gpuOn = await run(`${base}/webgpu.html?gi=1`, '__wwgpu', false);
+  const gpuGap = judge('WebGPU（IrradianceNode + TSL）', gpuOn, gpuOff.on);
+
+  console.log('');
+  // 兩條路都要得到「明顯偏紅」。**不比絕對值**：兩個後端連烘出來的係數量級
+  // 都差了兩倍多（實測 1.033 對 0.444），那是這個模組管不到的渲染器差異，
+  // 而紅綠比兩邊是一致的（24.6 對 22.2）—— 那才是這裡要問的。
+  check(glGap > 20 && gpuGap > 20, '兩個後端都有間接光', `WebGL R−B ${f(glGap)}，WebGPU R−B ${f(gpuGap)}`);
 
   check(errors.length === 0, '沒有主控台錯誤', errors.slice(0, 2).join(' | ') || undefined);
 } catch (e) {

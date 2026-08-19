@@ -28,9 +28,11 @@ export interface GiScene {
   volume: WW.IrradianceVolume;
   /** 烘一點點。回傳這一次烘了幾顆。 */
   bake(renderer: THREE.WebGLRenderer, scene: THREE.Scene): Promise<number>;
-  /** 把間接光整個關掉 —— A/B 用。 */
-  setEnabled(on: boolean): void;
+  /** 把間接光整個關掉 —— A/B 用。node 材質那條路要重編，所以是非同步的。 */
+  setEnabled(on: boolean): Promise<void>;
   stats: () => { probes: number; baked: number; materials: number };
+  /** 用 CPU 那份公式在同一個位置求值 —— 拿來分辨「烘的不一樣」還是「著色的不一樣」。 */
+  sampleCpu: (p: [number, number, number], n: [number, number, number]) => [number, number, number];
 }
 
 const ROOM = 40;
@@ -47,7 +49,14 @@ export type MaterialFactory = (color: number, roughness: number) => THREE.Materi
 const defaultMaterial: MaterialFactory = (color, roughness) =>
   new THREE.MeshStandardMaterial({ color, roughness });
 
-export function makeGiScene(makeMaterial: MaterialFactory = defaultMaterial): GiScene {
+export function makeGiScene(
+  makeMaterial: MaterialFactory = defaultMaterial,
+  /**
+   * 起始強度。**node 材質那條路只認這個值**（它是編譯期常數，見
+   * `irradiance-node.ts`），所以 WebGPU 上的 A/B 是靠開兩次頁面做的。
+   */
+  intensity = 1,
+): GiScene {
   const root = new THREE.Group();
 
   // ## 紅地板：反彈光的來源
@@ -98,6 +107,7 @@ export function makeGiScene(makeMaterial: MaterialFactory = defaultMaterial): Gi
     min: new THREE.Vector3(-ROOM, 0, -ROOM),
     size: new THREE.Vector3(ROOM * 2, ROOM, ROOM * 2),
     resolution: [8, 4, 8],
+    intensity,
   });
 
   const materials = WW.applyIrradiance(volume, root);
@@ -106,11 +116,17 @@ export function makeGiScene(makeMaterial: MaterialFactory = defaultMaterial): Gi
     root,
     volume,
     bake: (renderer, scene) => WW.bakeIrradiance(renderer, scene, volume, { budgetMs: 12 }),
-    setEnabled: (on) => {
+    setEnabled: async (on) => {
       // 強度歸零就等於沒有間接光，而且**走的是同一條 shader 路徑** ——
       // 換材質做 A/B 的話比的是兩個不同的著色器，那個比較沒有意義。
       volume.intensity = on ? 1 : 0;
+      // WebGL 上這一行就夠了。node 材質（WebGPU）那條路改不動強度，所以
+      // 那邊的 A/B 是開兩次頁面（見 tools/gi-check）。
     },
     stats: () => ({ probes: volume.probeCount, baked: volume.baked, materials }),
+    sampleCpu: (p, n) => {
+      const v = volume.sampleAt(new THREE.Vector3(...p), new THREE.Vector3(...n));
+      return [v.x, v.y, v.z];
+    },
   };
 }

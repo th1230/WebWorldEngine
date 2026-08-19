@@ -100,8 +100,9 @@ export class IrradianceVolume {
   /** 每顆探針 4 個係數 × RGB，攤平。 */
   private readonly sh: Float32Array;
   private readonly _textures: Data3DTexture[] = [];
-  /** node 材質那條路的 intensity uniform，跟著一起改。 */
-  private readonly _nodeIntensity = new Set<{ value: number }>();
+  /** 有沒有接過 node 材質。有的話 intensity 就改不動了 —— 見 setter。 */
+  private _hasNodeMaterial = false;
+  private _warnedIntensity = false;
   private readonly data: Uint16Array[] = [];
   private _baked = 0;
   private dirty = true;
@@ -168,10 +169,33 @@ export class IrradianceVolume {
   }
 
   set intensity(value: number) {
+    if (this._uniforms.wwIrrIntensity!.value === value) return;
     this._uniforms.wwIrrIntensity!.value = value;
-    // node 材質那條路有自己的 uniform 節點，不共用這個物件。兩邊一起改，
-    // 否則在 WebGPU 上調 intensity 完全沒反應 —— 而那不會報錯。
-    for (const node of this._nodeIntensity) node.value = value;
+
+    // ## node 材質那條路改不動，所以要吼出來
+    //
+    // WebGL 那邊 intensity 是 uniform，每幀上傳，改了立刻生效。node 那邊
+    // 它是**編譯期常數**（原因見 irradiance-node.ts），改了之後畫面一個
+    // 位元都不會動。
+    //
+    // 靜靜地沒反應是這個專案最怕的形狀，所以這裡明講。試過的替代方案：
+    // 做成 TSL 的 uniform（值傳到了但不上傳）、重接一份新的節點圖、
+    // `needsUpdate = true` 強制重編 —— 三個都沒有讓畫面改變。
+    if (this._hasNodeMaterial && !this._warnedIntensity) {
+      this._warnedIntensity = true;
+      console.warn(
+        [
+          'WW.IrradianceVolume: 接上 node 材質（WebGPU）之後改 intensity 不會有效果。',
+          '那條路的強度是編譯期常數 —— WebGL 上會變，WebGPU 上不會，而且兩邊都不報錯。',
+          '要改的話在 new IrradianceVolume({ intensity }) 的時候就給定。',
+        ].join('\n'),
+      );
+    }
+  }
+
+  /** `applyIrradianceNode` 接上之後回報一聲，讓 intensity 的 setter 知道要吼。 */
+  markNodeMaterial(): void {
+    this._hasNodeMaterial = true;
   }
 
   /**
@@ -182,16 +206,6 @@ export class IrradianceVolume {
    */
   get textures(): readonly Data3DTexture[] {
     return this._textures;
-  }
-
-  /**
-   * 讓 node 那條路的 intensity uniform 跟著 `volume.intensity` 走。
-   *
-   * 由 `applyIrradianceNode` 呼叫，一般不必自己碰。
-   */
-  attachNodeIntensity(node: { value: number }): void {
-    this._nodeIntensity.add(node);
-    node.value = this.intensity;
   }
 
   /** 已經烘好幾顆。等於 `probeCount` 就是烘完了。 */
@@ -397,7 +411,21 @@ export async function bakeIrradiance(
 
   const { LightProbeGenerator } = await import('three/addons/lights/LightProbeGenerator.js');
 
-  const target = new WebGLCubeRenderTarget(faceSize);
+  // ## cube render target 要跟著 renderer 走
+  //
+  // `WebGLCubeRenderTarget` 是 WebGL 那條路的型別；`WebGPURenderer` 要的是
+  // `three/webgpu` 的 `CubeRenderTarget`（它繼承的是 `RenderTarget`，不是
+  // 前者）。拿錯的話 `readRenderTargetPixelsAsync` 讀不出東西。
+  //
+  // `LightProbeGenerator.fromCubeRenderTarget` 自己就分了這兩條路（它看
+  // `renderer.isWebGLRenderer`，也處理座標系的翻轉），所以這裡只要把對的
+  // 容器給它。
+  const isWebGL = (renderer as { isWebGLRenderer?: boolean }).isWebGLRenderer === true;
+  const target = isWebGL
+    ? new WebGLCubeRenderTarget(faceSize)
+    : new ((await import('three/webgpu')) as unknown as {
+        CubeRenderTarget: new (size: number) => WebGLCubeRenderTarget;
+      }).CubeRenderTarget(faceSize);
   target.texture.type = HalfFloatType;
   const camera = new CubeCamera(options.near ?? 0.1, options.far ?? 1000, target);
   const at = new Vector3();
@@ -466,6 +494,27 @@ export function applyIrradiance(volume: IrradianceVolume, root: Object3D): numbe
 
 /** 已經接過的材質不再接第二次 —— 同一份材質被很多物件共用是常態。 */
 const injected = new WeakSet<Material>();
+/** node 材質那條路是非同步接上的，這裡記著還沒好的。 */
+const pendingNodes = new Set<Promise<unknown>>();
+
+/**
+ * 等 node 材質那條路接完。
+ *
+ * WebGL 那條路是同步的（`onBeforeCompile` 只是設一個函式），但 node 那條
+ * 要動態 import `three/tsl`，所以它是非同步的。
+ *
+ * **不等的話前幾幀是沒有間接光的**，而量測如果剛好落在那幾幀裡，會量到
+ * 「沒有效果」然後把它讀成實作沒接上 —— 這個專案在 VAT 上就是因為量錯
+ * 時機而得出過三倍的假結論。
+ *
+ * ```js
+ * WW.applyIrradiance(volume, scene);
+ * await WW.irradianceNodeReady();   // WebGPU 上要等；WebGL 上立刻返回
+ * ```
+ */
+export async function irradianceNodeReady(): Promise<void> {
+  await Promise.all([...pendingNodes]);
+}
 /** 只吼一次。整個場景都是 basic 材質的話會有幾百個。 */
 let warnedUnlit = false;
 
@@ -488,12 +537,13 @@ function inject(
   if ((material as { isNodeMaterial?: boolean }).isNodeMaterial === true) {
     // 動態 import，所以是非同步的。失敗要吼出來 —— 靜靜跳過就回到上面那個
     // 「看起來像烘壞了」的狀態。
-    void import('./irradiance-node.ts').then(
-      (m) => m.applyIrradianceNode(material as never, volume),
-      (error: unknown) => {
+    const pending = import('./irradiance-node.ts')
+      .then((m) => m.applyIrradianceNode(material as never, volume))
+      .catch((error: unknown) => {
         console.error('WW.applyIrradiance: node 材質那條路接失敗，WebGPU 上不會有間接光。', error);
-      },
-    );
+      })
+      .finally(() => pendingNodes.delete(pending));
+    pendingNodes.add(pending);
     return;
   }
 

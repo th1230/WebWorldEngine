@@ -57,17 +57,26 @@ export async function applyIrradianceNode(
     IrradianceNode: new (node: unknown) => unknown;
   };
 
-  const { texture3D, positionWorld, normalWorld, uniform, vec3, step } = tsl;
+  const { texture3D, positionWorld, normalWorld, uniform, vec3, step, float } = tsl;
   const textures = volume.textures;
   const u = volume.uniforms();
 
   // uniform 節點包住的是**同一個 Vector3 物件**，所以體積搬家時不必重接。
   const min = uniform(u.wwIrrMin!.value);
   const invSize = uniform(u.wwIrrInvSize!.value);
-  const intensity = uniform(u.wwIrrIntensity!.value as number);
-  // WebGL 那邊 intensity 是靠共用 uniform 物件同步的；node 這邊是自己的
-  // uniform，所以把它掛回體積上，`volume.intensity = x` 兩邊都會動。
-  volume.attachNodeIntensity(intensity as { value: number });
+  // ## intensity 在 node 這條路是**編譯期常數**，不是 uniform
+  //
+  // 這不是偷懶，是量出來的：把它做成 `uniform()` 之後，改 `.value` 在
+  // JS 這一側確實變了（實測讀回 0 / 1 / 50 都對），但畫面**一個位元都沒動**。
+  // 連把體積的原點搬到 9999 都沒有反應，而同一輪裡改 `scene.background`
+  // 是立刻生效的 —— 所以畫面是新的，是這一段的 uniform 沒有被重新上傳。
+  //
+  // 原因是它掛在 lighting context 底下（`IrradianceNode`），那一組的
+  // uniform 不跟著每幀更新。
+  //
+  // 所以改用「換一份圖再重編」：`volume.intensity` 變動時重接一次。曝光
+  // 這種旋鈕本來就不是每幀在動的東西，而重編一次是確定會生效的路徑。
+  const intensity = float(u.wwIrrIntensity!.value as number);
 
   const uvw = positionWorld.sub(min).mul(invSize);
 
@@ -100,11 +109,13 @@ export async function applyIrradianceNode(
   material.setupMaterialLightings = (builder: unknown): unknown[] => {
     // **先接住原本那個。** 搶掉的話材質的環境光、light map、AO 全會消失，
     // 而那看起來像「間接光把別的光蓋掉了」。
+    console.log('WWDEBUG setupMaterialLightings called');
     const nodes = previous ? previous(builder) : [];
     nodes.push(new webgpu.IrradianceNode(result));
     return nodes;
   };
   material.needsUpdate = true;
+  volume.markNodeMaterial();
 }
 
 /** 只列出這裡真的會用到的節點，其餘交給 Three 自己的型別。 */
@@ -120,6 +131,7 @@ interface TslNode {
 }
 
 interface TslModule {
+  float: (v: number) => TslNode;
   texture3D: (texture: unknown, uvw: unknown) => TslNode;
   positionWorld: TslNode;
   normalWorld: TslNode;

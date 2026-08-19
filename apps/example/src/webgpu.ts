@@ -2,6 +2,7 @@ import * as WW from '@webworld/three';
 import { MeshStandardNodeMaterial, PerspectiveCamera, Scene, WebGPURenderer } from 'three/webgpu';
 import { HemisphereLight, DirectionalLight, Color, Matrix4, Vector3 } from 'three/webgpu';
 import { makeSkinnedRig } from './skinned.ts';
+import { makeGiScene, type GiScene } from './gi-scene.ts';
 
 /**
  * `WW.AnimatedInstancedMesh` 在 **WebGPU** 上的驗證頁。
@@ -25,6 +26,21 @@ const canvas = document.querySelector<HTMLCanvasElement>('#viewport')!;
 const hud = document.querySelector<HTMLDivElement>('#hud')!;
 const params = new URLSearchParams(location.search);
 const COUNT = Number(params.get('count') ?? 200);
+/**
+ * `?gi=1` 換成間接光的驗證場景。
+ *
+ * 與 WebGL 那頁**共用同一個 `makeGiScene`** —— 只有材質工廠不同。各自寫
+ * 一份「差不多的場景」的話，量到的差異可能來自佈置不同而不是實作不同。
+ */
+const GI = params.get('gi') === '1';
+/**
+ * `?giOff=1` 把間接光的強度設成 0。
+ *
+ * node 材質那條路的強度是**編譯期常數**，改不動（實測：JS 這一側改了、
+ * 畫面一個位元都沒動）。所以這條路的 A/B 是**開兩次頁面**：同一個場景、
+ * 同一組相機、同一份著色器，只有那個常數不同。
+ */
+const GI_OFF = params.get('giOff') === '1';
 
 const renderer = new WebGPURenderer({ canvas, antialias: true });
 renderer.setSize(innerWidth, innerHeight, false);
@@ -38,6 +54,23 @@ sun.position.set(120, 200, 80);
 scene.add(sun);
 
 const camera = new PerspectiveCamera(60, innerWidth / innerHeight, 0.5, 2000);
+
+let giScene: GiScene | null = null;
+if (GI) {
+  // 間接光的判準要求場景裡**沒有其他環境光源** —— 半球光會讓箱子的背面
+  // 本來就是亮的，那就證明不了光是從紅牆反彈過來的。
+  scene.remove(...scene.children.filter((o) => (o as { isLight?: boolean }).isLight === true));
+  scene.background = new Color(0x000000);
+  giScene = makeGiScene(
+    (color, roughness) => new MeshStandardNodeMaterial({ color, roughness }),
+    GI_OFF ? 0 : 1,
+  );
+  scene.add(giScene.root);
+  // node 材質那條路是**非同步**接上的（動態 import three/tsl）。不等的話
+  // 前幾幀還沒有間接光，而量測會剛好落在那幾幀裡。
+  await WW.irradianceNodeReady();
+
+}
 
 const rig = makeSkinnedRig(8);
 const baked = WW.bakeVertexAnimation(rig.mesh, rig.clip, { frames: 32 });
@@ -56,13 +89,19 @@ for (let i = 0; i < COUNT; i++) {
   m.makeTranslation((rand() - 0.5) * 120, 0, (rand() - 0.5) * 120);
   mesh.setMatrixAt(i, m);
 }
-scene.add(mesh);
+if (giScene === null) scene.add(mesh);
 
 let frames = 0;
 function step(t: number): void {
   mesh.time = t;
-  camera.position.set(Math.cos(t * 0.12) * 90, 20, Math.sin(t * 0.12) * 90);
-  camera.lookAt(new Vector3(0, 2, 0));
+  if (giScene !== null) {
+    // 固定機位，與 WebGL 那頁**同一組數字** —— 兩邊量的必須是同一塊畫面。
+    camera.position.set(-34, 16, -34);
+    camera.lookAt(new Vector3(0, 12, 0));
+  } else {
+    camera.position.set(Math.cos(t * 0.12) * 90, 20, Math.sin(t * 0.12) * 90);
+    camera.lookAt(new Vector3(0, 2, 0));
+  }
   camera.updateMatrixWorld(true);
   renderer.render(scene, camera);
   frames++;
@@ -83,6 +122,33 @@ Object.assign(window, {
      *
      * 動畫有沒有在動要另外看 —— 見 `sampleAt`。
      */
+    gi:
+      giScene === null
+        ? null
+        : {
+            stats: () => giScene.stats(),
+            bake: () => giScene.bake(renderer as never, scene as never),
+            setEnabled: (on: boolean) => giScene.setEnabled(on),
+            sampleCpu: (p: [number, number, number], n: [number, number, number]) => giScene.sampleCpu(p, n),
+            sample: (x: number, y: number, w: number, h: number) => {
+              const flat = document.createElement('canvas');
+              flat.width = canvas.width;
+              flat.height = canvas.height;
+              const ctx = flat.getContext('2d')!;
+              ctx.drawImage(canvas, 0, 0);
+              const data = ctx.getImageData(x, y, w, h).data;
+              let r = 0;
+              let g = 0;
+              let b = 0;
+              for (let i = 0; i < data.length; i += 4) {
+                r += data[i]!;
+                g += data[i + 1]!;
+                b += data[i + 2]!;
+              }
+              const n = data.length / 4;
+              return { r: r / n, g: g / n, b: b / n, pixels: n };
+            },
+          },
     async step(t: number): Promise<number> {
       renderer.setAnimationLoop(null);
       step(t);

@@ -39,6 +39,7 @@ export {
   IrradianceVolume,
   bakeIrradiance,
   applyIrradiance,
+  irradianceNodeReady,
   type IrradianceVolumeOptions,
   type IrradianceBakeOptions,
 } from './irradiance.ts';

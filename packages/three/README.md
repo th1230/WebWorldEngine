@@ -87,6 +87,105 @@ WW.worldFor(scene).stream({
 
 不呼叫 `stream()` 的話一切照常，只是內容全部常駐。
 
+## 構建世界要的其他東西
+
+這些都是「不做就得自己重寫一次，而且第一次一定會漏掉」的那一類。每一項
+都是獨立的，用不到就不會進你的 bundle。
+
+### 座標精度：走遠了畫面不抖
+
+```js
+const rebase = new WW.OriginRebase({ onRebase: (offset) => sun.position.add(offset) });
+rebase.add(rocks);
+rebase.update(camera);   // 每幀，通常什麼都不做
+```
+
+`Float32Array` 在離原點十萬單位處的間距是 0.008 —— 公分級的細節開始塌陷，
+症狀是**畫面在抖**，而且不會報錯、不會出現在任何幀時間上。做法是把世界
+平移回相機腳下。`rebase.origin` 記著真正的世界座標，所以存檔與連線還問得出
+「這個東西在世界的哪裡」。
+
+### 世界尺度的陰影
+
+```js
+const csm = new CSM({ camera, parent: scene, cascades: 4 });
+WW.applyShadows(csm, scene);   // 順序不重要
+```
+
+CSM 本身用 Three 自己的 addon。這裡補的是它的兩個坑，而兩個都**不報錯**：
+`setupMaterial` 要逐材質呼叫（漏掉那份材質就完全沒有陰影），而且它是
+**直接指派** `onBeforeCompile`（會蓋掉頂點動畫）。
+
+### 地形
+
+```js
+const terrain = WW.buildTerrain({ size: 4000, tiles: 8, segments: 64, height });
+const field = WW.terrainHeightfield({ size: 4000, samples: 129, height });
+```
+
+畫的那份與碰撞那份**取自同一個高度函式**。各寫一份的症狀是角色踩在看不見
+的地面上 —— 而那看起來像物理引擎壞了。
+
+### 水，以及浮在水上
+
+```js
+const water = new WW.Water({ level: 0 });
+water.displacementGLSL();                    // 頂點著色器用的位移
+water.heightAt(x, z, t);                     // CPU 這一側的同一個水面
+const forces = WW.computeBuoyancy(water, bodies, t);
+```
+
+**一份波形，兩邊共用。** 各算各的話東西會陷進浪裡或飄在半空。
+
+浮力回傳的是力，施加是你的事 —— 但記得 Rapier 的 `addForce` 是**持續**的，
+每幀要先 `resetForces`。不清的話第 N 幀的力是 N 倍，箱子會加速射向天空
+（實測 20 秒飛到 y = 183,996，而每一幀回報的力都是對的）。
+
+### 物理調度
+
+```js
+const scheduler = new WW.PhysicsScheduler({
+  activeRadius: 200, maxActive: 120, onActivate, onDeactivate,
+});
+```
+
+求解交給 Rapier（或任何你選的求解器 —— 這裡只認 id，不認型別）。這一層
+決定**誰要進求解器**：沒有上限的話走進密集區就有幾千個剛體同時在算。
+
+### 間接光
+
+```js
+const volume = new WW.IrradianceVolume({ min, size, resolution: [16, 4, 16] });
+await WW.bakeIrradiance(renderer, scene, volume);   // 每幀一點，直到烘完
+WW.applyIrradiance(volume, scene);
+```
+
+只有直接光的話陰影裡是**全黑**的，而現實中沒有全黑的陰影。這裡烘的是一格
+探針，每顆存 SH L1，著色時是一次三維查表。
+
+WebGL 與 WebGPU 兩條路都有，加的是同一個量到同一個地方。**即時動態 GI 不做**
+—— 那要擁有整條管線。會動的東西不反彈光。
+
+### 散佈
+
+```js
+WW.scatter({ count: 20000, area, align: 'terrain', height });
+```
+
+「這片區域放兩萬棵樹」是宣告式的，而不是你自己寫一個亂數迴圈然後每次專案
+重寫一遍。
+
+### 頂點動畫
+
+```js
+const baked = WW.bakeVertexAnimation(mesh, clip, { frames: 32 });
+const crowd = new WW.AnimatedInstancedMesh(baked, material, 2000);
+```
+
+骨骼動畫一個物件一次繪製；烘成貼圖之後整群人共用一次。WebGL 與 WebGPU
+兩條路都有 —— 只做一邊的症狀是**一群停在綁定姿勢的模型，不報錯，幀時間
+還特別好看**。
+
 ## 資訊出口
 
 ```js
