@@ -196,6 +196,30 @@ const indirect = ssgi.render(renderer, scene, camera, sceneColorTexture);
 限制是這個做法的本質，不是還沒做完：只收集得到**畫面上有的**、只有一次反彈、
 有雜訊、被遮住的收不到。前三項正好是探針沒有的問題。
 
+### 鏡頭外也擋得住的遮蔽（距離場）
+
+```js
+const field = new WW.DistanceFieldVolume(geometry, { resolution: 32 });
+field.occlusionAlong(point, direction);   // 0–1，1 = 完全被擋住
+```
+
+三種間接光各補一段，缺一段就會露出來：
+
+| | 看得到鏡頭外 | 角落問得出來 |
+| --- | --- | --- |
+| `ScreenSpaceGI` | ❌ | ✅ |
+| `IrradianceVolume` | ✅ | ❌ |
+| `DistanceFieldVolume` | ✅ | ✅ |
+
+一面在鏡頭外的牆，螢幕空間那條路不知道它存在;探針知道那裡暗,但不知道
+**貼著牆的角**有多暗。距離場兩個都答得出來。
+
+它是 Lumen 那一類做法的骨幹裡**搬得過來的那一半** —— 距離場是資料（怎麼烘、
+怎麼存、怎麼串流），追蹤是一個後製 pass。沒有一格需要擁有渲染管線。
+
+還沒做的是**多物件合成的全域場**（現在是單一物件）。那是串流問題,不是
+渲染問題。
+
 ### 一份很大的幾何
 
 ```js
