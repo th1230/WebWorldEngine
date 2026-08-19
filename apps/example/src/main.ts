@@ -13,6 +13,7 @@ import { makeReflectionScene, type ReflectionScene } from './reflection-scene.ts
 import { makeSkyScene, type SkyScene } from './sky-scene.ts';
 import { makeFogScene, type FogScene } from './fog-scene.ts';
 import { makeVsmScene, type VsmScene } from './vsm-scene.ts';
+import { makeShadowLodScene, type ShadowLodScene } from './shadow-lod-scene.ts';
 import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
@@ -229,8 +230,16 @@ sun.position.set(120, 200, 80);
 scene.add(sun);
 
 // 陰影是**另一條 render 路徑**：Three.js 會用光源的相機再走訪一次場景，
-// 畫進 shadow map。套件不必為它做任何特別處理 —— `onBeforeShadow` 會轉呼叫
-// `onBeforeRender`，剔除與選階自然用 shadow 相機與 shadow map 的尺寸重算。
+// 畫進 shadow map。
+//
+// 這裡原本寫著「套件不必為它做任何特別處理 —— `onBeforeShadow` 會轉呼叫
+// `onBeforeRender`」。那是**錯的**，而且沒有量過：`WebGLShadowMap` 直接
+// 呼叫 `renderBufferDirect`，`onBeforeRender` 一次都不會被呼叫，而 Three
+// 的 `onBeforeShadow` 預設是空的。
+//
+// 後果是陰影圖畫的是**上一次主相機**留下來的繪製清單 —— 相機看不到的
+// 投影者，影子就消失了。`WW.InstancedMesh` 現在自己覆寫 `onBeforeShadow`，
+// 用光源的視錐重新剔除、用光源的投影重新選階（見 `shadowCulling`）。
 if (useShadows || useCsm) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -490,6 +499,18 @@ if (skyScene !== null) rocks.visible = false;
 const fogScene: FogScene | null = params.get('fog') === '1' ? makeFogScene() : null;
 if (fogScene !== null) rocks.visible = false;
 /** `?vsm=N` 虛擬陰影圖，N 是最細階一邊幾頁（A/B 用）。 */
+/** `?shadowlod=offscreen|field` 陰影 pass 自己的剔除與選階。 */
+const shadowLodScene: ShadowLodScene | null = params.has('shadowlod')
+  ? makeShadowLodScene({
+      mode: (params.get('shadowlod') ?? 'offscreen') as 'offscreen' | 'field' | 'occluded',
+      shadowCulling: params.get('shadowcull') !== '0',
+      ...(params.has('shadowerr')
+        ? { shadowErrorPixels: Number(params.get('shadowerr')) }
+        : {}),
+    })
+  : null;
+if (shadowLodScene !== null) rocks.visible = false;
+
 const vsmScene: VsmScene | null = params.has('vsm')
   ? makeVsmScene(Math.max(1, Number(params.get('vsm'))))
   : null;
@@ -1792,6 +1813,16 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    shadowLod:
+      shadowLodScene === null
+        ? null
+        : {
+            spot: (): unknown => shadowLodScene.shadowSpot(renderer),
+            triangles: (): number => shadowLodScene.shadowTriangles(renderer),
+            counts: (): unknown => shadowLodScene.counts(),
+            contract: (): unknown => shadowLodScene.contract(),
+            stability: (times: number): number[] => shadowLodScene.stability(renderer, times),
+          },
     vsm:
       vsmScene === null
         ? null

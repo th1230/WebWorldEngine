@@ -330,8 +330,35 @@ if (world.capabilities.tier < 2) world.stream({ ...options, radius: 400 });
 用錯的症狀是**選到太細或太粗的階，而畫面看起來完全正確** —— 半解析度的
 composer 會讓每個物件都白付三角形，2048² 的 shadow map 對 1080p 畫布差快兩倍。
 
-因此 `onBeforeShadow` 不必特別處理：`BatchedMesh` 會轉呼叫 `onBeforeRender`，
-相機與尺寸自然都是對的。
+### 陰影 pass 是**另一條路徑**，套件必須自己接
+
+這裡原本寫著「`onBeforeShadow` 不必特別處理：`BatchedMesh` 會轉呼叫
+`onBeforeRender`，相機與尺寸自然都是對的」。**那是錯的，而且從來沒有量過。**
+
+`WebGLShadowMap` 直接呼叫 `renderBufferDirect`，`onBeforeRender` 一次都不會被
+呼叫；Three 的 `onBeforeShadow` 預設是空的。所以陰影圖畫的是**上一次主相機**
+留下來的繪製清單 —— 相機看不到的投影者，影子就消失了。
+
+`WW.InstancedMesh` 因此自己覆寫 `onBeforeShadow`，用光源的視錐與投影重新
+收集一次。三件事與主畫面不同：
+
+| | 主畫面 | 陰影 pass |
+| --- | --- | --- |
+| 視錐 | 相機的 | **光源的** |
+| 誤差上限 | `errorPixels`（預設 2） | **`shadowErrorPixels`（預設三倍）** |
+| 遮蔽剔除 | 套用 | **不套用** |
+
+遮蔽剔除不套用的理由與視錐同一個：遮蔽緩衝是從主相機畫出來的，它說的是
+「相機看不到」。看不到不等於不投影。
+
+誤差上限放寬的理由是陰影被投影、被過濾、被半影糊過一次 —— 投影者的輪廓
+差幾個像素，在陰影上看不出來。實測 3,000 個 instance 放寬三倍：陰影 pass
+的三角形 1,500,000 → 540,000。要關掉整套行為用 `shadowCulling: false`，
+那就退回 Three 原本的樣子（留這個開關是為了 A/B，不是因為關掉有好處）。
+
+順帶：陰影相機是**正交**的，而正交投影下選階不能除以距離（同一個東西不管
+多遠都佔一樣多的像素）。這條式子在逐一選階與遠景合併兩個地方都要一致 ——
+只改一個的症狀是「每個 instance 算出來要用第 3 階，整格卻被合併成最粗階」。
 
 ---
 

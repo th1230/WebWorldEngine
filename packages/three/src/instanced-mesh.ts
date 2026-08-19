@@ -9,6 +9,7 @@ import {
   Vector3,
   type BufferGeometry,
   type Camera,
+  type Object3D,
   type Material,
   type Scene,
   type WebGLRenderer,
@@ -69,6 +70,33 @@ export interface InstancedMeshOptions {
    * 一個沒有量到好處的東西不該預設打開。
    */
   lodFadeBand?: number;
+  /**
+   * 畫陰影時用的螢幕誤差上限。預設是 `errorPixels` 的三倍。
+   *
+   * ## 陰影不需要與畫面一樣細
+   *
+   * 陰影是被投影、被過濾、被半影糊過一次的東西 —— 投影者的輪廓差幾個像素，
+   * 在陰影上幾乎看不出來。而陰影 pass 要畫的三角形數量與主畫面一樣多，
+   * 常常還要畫好幾次（級聯、虛擬陰影圖的每一頁）。
+   *
+   * 用同一個 `errorPixels` 等於為看不見的細節付好幾次錢。UE 的陰影也有
+   * 自己的 LOD 偏置，同一個理由。
+   *
+   * ## 它怎麼知道自己在畫陰影
+   *
+   * 靠**材質的型別**：畫陰影時 Three（以及這個套件的虛擬陰影圖）用的是
+   * 深度材質。那是一個可靠的訊號，而且不必呼叫端記得傳什麼旗標 ——
+   * 忘了傳的東西遲早會忘。
+   */
+  shadowErrorPixels?: number;
+  /**
+   * 陰影 pass 要不要自己剔除與選階。預設開。
+   *
+   * 關掉的話陰影圖畫的是主相機那一次留下來的清單 —— 也就是 Three 原本的
+   * 行為。留這個開關是為了 A/B（關卡要看得到「沒有它會怎樣」），不是
+   * 因為關掉有什麼好處。
+   */
+  shadowCulling?: boolean;
   /**
    * 遮蔽剔除：把**確定被別的東西擋住**的 instance 從這一幀拿掉。
    *
@@ -561,6 +589,13 @@ export class InstancedMesh extends BatchedMesh {
   /** 快取是照走訪順序排的嗎。格子停用時退回照編號排。 */
   private spheresByOrder = false;
   private readonly errorPixels: number;
+  private readonly shadowErrorPixels: number;
+  private readonly shadowCulling: boolean;
+  /** 這一次繪製是不是陰影 pass。每幀由材質的型別決定。 */
+  private drawingShadow = false;
+  private _shadowMs = 0;
+  private _shadowInstances = 0;
+  private _shadowLevels: Int32Array = new Int32Array(0);
   private readonly lodFadeBand: number;
   /** 這一幀在過渡的 instance：編號、粗階、進度。 */
   private readonly fadeIds = new Int32Array(LOD_FADE_CAPACITY);
@@ -743,6 +778,8 @@ export class InstancedMesh extends BatchedMesh {
     this.sourceGeometry = geometries[0]!;
     this.lodErrors = errors;
     this.errorPixels = options.errorPixels ?? 2;
+    this.shadowErrorPixels = Math.max(this.errorPixels, options.shadowErrorPixels ?? this.errorPixels * 3);
+    this.shadowCulling = options.shadowCulling ?? true;
     this.lodFadeBand = Math.max(0, options.lodFadeBand ?? 0);
     if (this.lodFadeBand > 0) this.installLodFade(material);
     if (options.occlusion === true) this.occlusionBuffer = new OcclusionBuffer();
@@ -996,6 +1033,8 @@ export class InstancedMesh extends BatchedMesh {
     levels: Int32Array;
     spatial: boolean;
     cpuMs: number;
+    /** 這一次是不是陰影 pass。陰影用比較粗的階，見 `shadowErrorPixels`。 */
+    shadowPass: boolean;
     /** 這一幀有幾次繪製是整格合併的遠景。0 代表沒有生效。 */
     merged: number;
     /** 被那些合併涵蓋的 instance 數。`levels` 不含它們。 */
@@ -1033,6 +1072,7 @@ export class InstancedMesh extends BatchedMesh {
       levels: this._levelCounts,
       spatial: this.spatialActive,
       cpuMs: this._cpuMs,
+      shadowPass: this.drawingShadow,
       merged: this._mergedDraws,
       mergedInstances: this._mergedInstances,
       cpuParts: {
@@ -1152,6 +1192,25 @@ export class InstancedMesh extends BatchedMesh {
    * `generationMs` 與 `mainThreadMs` 一定要分開看：「在 worker 裡跑」這句話
    * 若沒有主執行緒那一項撐著，就只是一個宣稱。
    */
+  /**
+   * 上一次陰影 pass 收集了什麼。與 `stats` 分開 —— 兩者描述的是**不同的**
+   * 相機看到的不同東西，加在一起看會以為畫了兩倍。
+   */
+  get shadowStats(): {
+    instances: number;
+    cpuMs: number;
+    enabled: boolean;
+    /** 陰影 pass 各階各用了幾個。與 `stats.levels` 不同 —— 那是主畫面的。 */
+    levels: Int32Array;
+  } {
+    return {
+      instances: this._shadowInstances,
+      cpuMs: this._shadowMs,
+      enabled: this.shadowCulling,
+      levels: this._shadowLevels,
+    };
+  }
+
   get lodStats(): LodStats | null {
     return this._lodStats;
   }
@@ -1456,6 +1515,10 @@ export class InstancedMesh extends BatchedMesh {
     const index = geometry.getIndex();
     const bytesPerElement = index === null ? 1 : index.array.BYTES_PER_ELEMENT;
     // wireframe 會讓 renderer 隱式建立線段索引，數量是三角形索引的兩倍。
+    // 深度材質 = 正在畫陰影。Three 的 shadow map 與這個套件的虛擬陰影圖
+    // 都是這樣畫的，所以一個判斷涵蓋兩條路。
+    const asDepth = material as { isMeshDepthMaterial?: boolean; isMeshDistanceMaterial?: boolean };
+    this.drawingShadow = asDepth.isMeshDepthMaterial === true || asDepth.isMeshDistanceMaterial === true;
     const multiplier = (material as { wireframe?: boolean }).wireframe === true ? 2 : 1;
 
     const collectStarted = performance.now();
@@ -1466,6 +1529,72 @@ export class InstancedMesh extends BatchedMesh {
     this.serviceHlod();
     this._bakeMs = performance.now() - bakeStarted;
     this._cpuMs = performance.now() - started;
+  }
+
+  /**
+   * 陰影 pass 自己的剔除與選階。
+   *
+   * ## 為什麼一定要有這個
+   *
+   * Three 畫陰影時**不會**呼叫 `onBeforeRender` —— `WebGLShadowMap` 直接
+   * 呼叫 `renderBufferDirect`。所以沒有這個覆寫的話，陰影圖畫的是
+   * `_multiDrawStarts` 裡**上一次主相機**留下來的那份清單。
+   *
+   * 後果不是慢，是**錯**：相機看不到的東西照樣會把影子投進畫面裡，而那些
+   * 東西早就被相機的視錐剔掉了。走到牆邊、把投影者轉出視野，牆上的影子
+   * 就會憑空消失。
+   *
+   * 所以這裡重做一次收集，換成光源的視錐、光源的投影、比較鬆的誤差上限，
+   * 而且**不套用遮蔽剔除**（那份結果是從主相機畫出來的）。
+   *
+   * ## 不必還原
+   *
+   * 一幀的順序是「先所有陰影，再主畫面」，而主畫面那一次 `onBeforeRender`
+   * 會整份重算。留著上一次的清單沒有人讀得到 —— 除非這個 mesh 這一幀
+   * 根本沒被畫，而那時它畫什麼也無所謂。
+   *
+   * 把陣列存一份再拷回來要每幀複製兩次數萬筆，換一個沒有人看得到的差別。
+   */
+  override onBeforeShadow(
+    renderer: WebGLRenderer,
+    _object: Object3D,
+    _camera: Camera,
+    shadowCamera: Camera,
+    geometry: BufferGeometry,
+    _depthMaterial: Material,
+  ): void {
+    if (!this.shadowCulling) return;
+    const started = performance.now();
+    this.drawingShadow = true;
+
+    // 視錐、視點、投影全部換成光源那一套。`prepareGrid` 不看相機（它是
+    // 空間分割），所以這裡拿到的是同一份格子。
+    _inverse.copy(this.matrixWorld).invert();
+    _cameraLocal.setFromMatrixPosition(shadowCamera.matrixWorld).applyMatrix4(_inverse);
+    frustumFromCamera(this.frustum, shadowCamera, this.matrixWorld, _cameraLocal);
+
+    const ranges = this.prepareGrid();
+    const ppu = this.projectionScale(renderer, shadowCamera);
+    const index = geometry.getIndex();
+    const bytesPerElement = index === null ? 1 : index.array.BYTES_PER_ELEMENT;
+    this.collect(ranges, ppu, bytesPerElement, 1);
+
+    // 遠景合併的**烘焙**不在這裡做。已經烘好的照用，但預算是每幀一份 ——
+    // 陰影再花一次的話，同樣的預算會被拆成兩半，兩邊都變慢。
+    this._shadowMs = performance.now() - started;
+    this._shadowInstances = this._visibleInstances;
+    // 複製一份 —— `_levelCounts` 等一下就被主畫面那一次蓋掉了。
+    if (this._shadowLevels.length !== this._levelCounts.length) {
+      this._shadowLevels = new Int32Array(this._levelCounts.length);
+    }
+    this._shadowLevels.set(this._levelCounts);
+  }
+
+  /**
+   * 陰影畫完了。只還原旗標 —— 繪製清單交給主畫面那一次重算（見上面）。
+   */
+  override onAfterShadow(): void {
+    this.drawingShadow = false;
   }
 
   /**
@@ -2406,12 +2535,18 @@ export class InstancedMesh extends BatchedMesh {
     // 本地參照，與這個迴圈裡其他陣列同一個理由：每個 instance 少兩次
     // `this.` 解參考。關掉遮蔽剔除時它是 null，那一行就是一個永遠不成立
     // 的分支 —— 不用的人不該為它付錢。
-    const collectedSlots = this.occlusionBuffer !== null ? this.collectedSlots : null;
+    // ## 陰影 pass 不能用遮蔽剔除的結果
+    //
+    // 遮蔽緩衝是從**主相機**畫出來的：它說的是「這個東西被別的東西擋住，
+    // 相機看不到」。而看不到的東西照樣會投影 —— 拿它剔除陰影，影子就會
+    // 憑空少一塊。這與下面「用光源的視錐而不是相機的」是同一個道理。
+    const collectedSlots =
+      this.occlusionBuffer !== null && !this.drawingShadow ? this.collectedSlots : null;
     const errors = this.lodErrors;
     const lodRanges = this.lodRanges;
     const levelCounts = this._levelCounts;
     const hasLod = errors.length > 1;
-    const errorPixels = this.errorPixels;
+    const errorPixels = this.drawingShadow ? this.shadowErrorPixels : this.errorPixels;
     // 每階的「要多遠才用得上」係數，與 instance 無關 —— 每幀算一次。
     // 判斷式是 `errors[l] * (radius * invBaseRadius / distance) * ppu <= errorPixels`，
     // 移項成 `(errors[l] * invBaseRadius * ppu / errorPixels)² * radius² <= distance²`。
@@ -2488,7 +2623,19 @@ export class InstancedMesh extends BatchedMesh {
             const gz = group.centerZ - camZ;
             // **用最近的那一點判斷，不是中心。** 用中心的話近側的 instance
             // 會被降階，而那是靜靜違反品質契約 —— 畫面只是「近處有點粗」。
-            const nearest = Math.max(Math.sqrt(gx * gx + gy * gy + gz * gz) - group.radius, 1e-6);
+            // **正交也要換成同一條式子。** 逐一判斷那邊（`distanceSq`）已經
+            // 把距離換成 1 了，這裡漏掉的話兩個判準會分岔 —— 而分岔的症狀
+            // 是「每個 instance 各自算出來要用第 3 階，整格卻被合併成最粗
+            // 階」，畫面只是遠處變粗，看起來完全正常。
+            //
+            // 實測過的樣子：陰影相機（正交）下距離約 100，於是合併判準把
+            // 每一格都看小了 100 倍，整片場地全部合併。而合併是逐格烘出來
+            // 的，烘到哪裡就合併到哪裡 —— 陰影 pass 的 instance 數量因此
+            // 每一幀都在掉（2976 → 2665 → 2297 → 1833 → 1299），兩次跑
+            // 出來還不一樣。
+            const nearest = this.orthographic
+              ? 1
+              : Math.max(Math.sqrt(gx * gx + gy * gy + gz * gz) - group.radius, 1e-6);
             // **要帶上縮放。** 逐一判斷用的是 scale/distance，合併若只用
             // 1/distance 就等於把物件當成小了 scale 倍 —— 太早合併，而症狀
             // 是遠處提早變粗，畫面完全正常。
@@ -2558,7 +2705,10 @@ export class InstancedMesh extends BatchedMesh {
           // 每階的係數與 instance 無關，所以每幀算一次（`levelDistanceSq`），
           // 迴圈裡只剩一次乘法與一次比較。挑出來的階與原本**完全相同** ——
           // 兩邊都是單調的，平方不改變大小關係（距離非負）。
-          const distanceSq = cx * cx + cy * cy + cz * cz;
+          // 正交投影下，同一個東西不管多遠都佔一樣多的像素 —— 判準因此是
+          // 「誤差 × 半徑 × ppu ≤ errorPixels」，距離那一項是 1。同一張
+          // `levelDistanceSq` 表兩條路共用，差別只有拿什麼去比。
+          const distanceSq = this.orthographic ? 1 : cx * cx + cy * cy + cz * cz;
           distanceSqForFade = distanceSq;
           const radiusSq = radius * radius;
           for (let l = errors.length - 1; l > 0; l--) {
@@ -2595,7 +2745,7 @@ export class InstancedMesh extends BatchedMesh {
       }
     }
 
-    if (this.occlusionBuffer !== null) {
+    if (this.occlusionBuffer !== null && !this.drawingShadow) {
       const occlusionStarted = performance.now();
       drawCount = this.cullOccluded(drawCount, starts, counts, indirect, spheres);
       this._occlusionMs = performance.now() - occlusionStarted;
@@ -2795,13 +2945,23 @@ export class InstancedMesh extends BatchedMesh {
    *
    * `getRenderTarget()` 回傳 null 就代表畫到畫布上。
    */
+  /** 相機是不是正交的 —— 正交的選階不除以距離。每次收集前設定。 */
+  private orthographic = false;
+
   private projectionScale(renderer: WebGLRenderer, camera: Camera): number {
     const target = renderer.getRenderTarget();
     const height =
       target !== null ? target.height : renderer.getDrawingBufferSize(_size).height;
 
+    // 正交沒有透視收縮 —— 像素/單位是常數，與距離無關。呼叫端因此要把
+    // 選階的距離換成 1（見 `orthographic`）。
+    //
+    // 這條分支以前註解寫著「回傳的值之後仍會被除以距離，所以先乘回去」，
+    // 但式子裡根本沒有距離 —— 註解描述的事情程式碼沒做。以前沒人走到這條
+    // 路（沒有正交相機的量測），陰影相機是正交的，於是它變成熱路徑。
     const perspective = camera as Camera & { isPerspectiveCamera?: boolean; fov?: number };
     if (perspective.isPerspectiveCamera === true) {
+      this.orthographic = false;
       return pixelsPerUnit(height, (perspective.fov! * Math.PI) / 180);
     }
     const ortho = camera as Camera & {
@@ -2813,8 +2973,10 @@ export class InstancedMesh extends BatchedMesh {
     if (ortho.isOrthographicCamera === true) {
       // 正交投影沒有透視收縮，像素/單位是常數。回傳的值之後仍會被除以
       // 距離，所以先乘回去讓兩條路徑共用同一個熱迴圈。
+      this.orthographic = true;
       return (height * ortho.zoom!) / Math.max(ortho.top! - ortho.bottom!, 1e-6);
     }
+    this.orthographic = false;
     return height;
   }
 

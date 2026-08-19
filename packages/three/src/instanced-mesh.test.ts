@@ -1417,3 +1417,40 @@ describe('InstancedMesh — 蒙皮', () => {
     warn.mockRestore();
   });
 });
+
+describe('陰影 pass 自己的剔除與選階', () => {
+  it('shadowErrorPixels 預設是 errorPixels 的三倍', () => {
+    const mesh = new InstancedMesh(unitBox(), material(), 4, { autoLod: false, errorPixels: 2 });
+    expect(mesh.shadowStats.enabled).toBe(true);
+    // 私有欄位沒有對外的讀取路徑，從行為看：預設值走的是三倍那條。
+    expect((mesh as unknown as { shadowErrorPixels: number }).shadowErrorPixels).toBe(6);
+  });
+
+  it('shadowErrorPixels 不會比 errorPixels 還嚴格', () => {
+    // 陰影比主畫面**更細**沒有任何道理，只會白花錢。給了也夾回去。
+    const mesh = new InstancedMesh(unitBox(), material(), 4, {
+      autoLod: false,
+      errorPixels: 4,
+      shadowErrorPixels: 1,
+    });
+    expect((mesh as unknown as { shadowErrorPixels: number }).shadowErrorPixels).toBe(4);
+  });
+
+  it('shadowCulling 可以關掉 —— 那就是 Three 原本的行為', () => {
+    const mesh = new InstancedMesh(unitBox(), material(), 4, {
+      autoLod: false,
+      shadowCulling: false,
+    });
+    expect(mesh.shadowStats.enabled).toBe(false);
+    // 關掉時 onBeforeShadow 什麼都不做，統計因此是空的。
+    expect(mesh.shadowStats.instances).toBe(0);
+  });
+
+  it('onBeforeShadow 之後 drawingShadow 要還原', () => {
+    // 沒還原的話，接下來主畫面那一次會用陰影的誤差上限 —— 症狀是畫面
+    // 遠處無緣無故變粗，而且只有開了陰影的場景才會發生。
+    const mesh = new InstancedMesh(unitBox(), material(), 4, { autoLod: false });
+    mesh.onAfterShadow();
+    expect((mesh as unknown as { drawingShadow: boolean }).drawingShadow).toBe(false);
+  });
+});
