@@ -226,5 +226,59 @@ try {
   console.log('失敗：' + String(e).split('\n')[0].slice(0, 200));
   process.exitCode = 1;
 }
+// ## 因果測試：只重寫緩衝，內容完全不動
+//
+// 上面量到的是相關：cell 進來的那幾幀比較慢。但「同樣的三角形、更少的 JS、
+// 沒有長任務，而下一次 rAF 被押後」只是指向驅動同步 —— 那是推論。
+//
+// 這裡把它變成因果：場景靜止（沒有串流），只是每 N 幀把一批矩陣**用同樣的
+// 值再寫一次**。畫面一模一樣、JS 幾乎沒變，唯一多出來的就是那次緩衝改寫。
+try {
+  console.log("");
+  console.log('── 因果測試：靜止的場景，交錯地重寫矩陣（約一半的幀）');
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  page.setDefaultNavigationTimeout(240000);
+  // ## 條件要與串流時一致，否則量不到
+  //
+  // 第一版用 60,000 個密集擺放 —— 那個場景本身就 30 ms（GPU 綁住），而一個
+  // 20 ms 的 CPU 停頓會**整個藏在後面**。量出來「沒有變慢」是必然的，不是
+  // 證據。
+  //
+  // 串流時的條件是：緩衝**容量很大**（200,000），但真正畫出來的很少（多數
+  // 被剔掉），每次只改一格的量（400 個）。攤得很開就重現得出來。
+  await page.goto(`${base}/?count=200000&spread=8000&orbit=200&rewrite=50&rewriteCount=400`, { waitUntil: "load" });
+  await page.waitForFunction(() => window.__ww?.totalFrames > 120, undefined, { timeout: 240000 });
+
+  const out = await page.evaluate(async () => {
+    window.__ww.streamProbe.start();
+    await new Promise((resolve) => {
+      let n = 0;
+      const tick = () => (++n < 600 ? requestAnimationFrame(tick) : resolve());
+      requestAnimationFrame(tick);
+    });
+    return window.__ww.streamProbe.stop();
+  });
+  await page.close();
+
+  const avg = (xs, f) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + f(b), 0) / xs.length);
+  const wrote = out.filter((x) => x.rewrote);
+  const didnt = out.filter((x) => !x.rewrote);
+  console.log(`  重寫的那幾幀 ${wrote.length}，沒重寫的 ${didnt.length}`);
+  console.log(`    重寫幀   幀 ${avg(wrote, (x) => x.frameMs).toFixed(2)} ms   其中寫矩陣本身 ${avg(wrote, (x) => x.rewriteMs).toFixed(2)} ms`);
+  console.log(`    沒重寫   幀 ${avg(didnt, (x) => x.frameMs).toFixed(2)} ms`);
+  console.log(`    三角形   重寫 ${Math.round(avg(wrote, (x) => x.triangles)).toLocaleString()}   沒重寫 ${Math.round(avg(didnt, (x) => x.triangles)).toLocaleString()}`);
+  const delta = avg(wrote, (x) => x.frameMs) - avg(didnt, (x) => x.frameMs);
+  const jsDelta = avg(wrote, (x) => x.rewriteMs);
+  console.log(`    **多出來 ${delta.toFixed(2)} ms，其中 JS 只佔 ${jsDelta.toFixed(2)} ms**`);
+  console.log(
+    delta > jsDelta * 2 + 2
+      ? '  → 因果成立：內容完全沒變，只是重寫緩衝就變慢了，而且慢的不是 JS。'
+      : '  → 因果不成立：重寫緩衝本身不貴，尖峰的原因在別處。',
+  );
+} catch (e) {
+  console.log("因果測試失敗：" + String(e).split(String.fromCharCode(10))[0].slice(0, 200));
+  process.exitCode = 1;
+}
+
 await browser.close();
 server.close();

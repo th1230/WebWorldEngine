@@ -1,5 +1,5 @@
 import * as WW from '@webworld/three';
-import { OrthographicCamera, WebGLRenderTarget } from 'three';
+import { Matrix4, OrthographicCamera, WebGLRenderTarget } from 'three';
 import { makeSkinnedField, makeSkinnedRig } from './skinned.ts';
 import { makeWaterScene } from './water-scene.ts';
 import { makePhysicsScene, type PhysicsScene } from './physics-scene.ts';
@@ -470,6 +470,16 @@ const textureHeavy: TextureHeavyScene | null =
  */
 const vtScene: VirtualTextureScene | null = params.get('vt') === '1' ? makeVirtualTextureScene() : null;
 /** 正交相機，讓那張平面剛好鋪滿畫布：UV (0,0) 在左下、(1,1) 在右上。 */
+/** `?rewrite=P&rewriteCount=M`：**大約 P% 的幀**（交錯，不是定期）重寫 M 個矩陣。 */
+const rewriteProbe = {
+  every: Number(params.get('rewrite') ?? 0),
+  count: Number(params.get('rewriteCount') ?? 20000),
+  frame: 0,
+  lastMs: 0,
+  didWrite: false,
+};
+const rewriteMatrix = new Matrix4();
+
 const vtCamera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
 /** 驗證用的離屏目標。用到才建。 */
 let vtProbeTarget: WebGLRenderTarget | null = null;
@@ -671,6 +681,8 @@ const streamProbe = {
     visible: number;
     mergedInstances: number;
     triangles: number;
+    rewrote: boolean;
+    rewriteMs: number;
   }[],
   recording: false,
 };
@@ -749,6 +761,39 @@ const animate = (time: number): void => {
   renderFrame();
   if (streamProbe.recording) streamProbe.renderMs = performance.now() - renderStart;
 
+  // ## 只重寫矩陣，內容完全不變
+  //
+  // 串流的尖峰量到的是：同樣的三角形、同樣（更少）的 JS，而下一次 rAF
+  // 被押後 20–30 ms。最合理的解釋是驅動那側改寫 instance 緩衝時的同步，
+  // 但那是**推論**。
+  //
+  // 這裡把它變成可以驗的：場景完全靜止（沒有串流、沒有內容變動），只是
+  // 每 N 幀把一批矩陣**用同樣的值再寫一次**。畫面一模一樣、JS 幾乎沒變，
+  // 唯一多出來的就是那次緩衝改寫。尖峰跟著出現的話，因果就成立了。
+  // ## 要交錯，不能定期
+  //
+  // 第一版是「每 12 幀重寫一次」，量出來重寫的那幾幀比沒重寫的**快 14 ms**
+  // ——那顯然不是重寫造成的。這台機器的幀時間是雙峰的，固定週期會跟那個節奏
+  // 對上，於是量到的是相位差，不是效果。
+  //
+  // 改成用幀號的雜湊決定寫不寫：一樣是決定性的（重跑結果一樣），但不會跟
+  // 任何固定週期對上。`rewrite` 因此是**百分比**，不是週期。
+  const rewriteRoll = ((rewriteProbe.frame * 2654435761) >>> 0) % 100;
+  if (rewriteProbe.every > 0 && rewriteRoll < rewriteProbe.every) {
+    const mesh = rocks as WW.InstancedMesh;
+    const start = performance.now();
+    for (let i = 0; i < rewriteProbe.count && i < mesh.count; i++) {
+      mesh.getMatrixAt(i, rewriteMatrix);
+      mesh.setMatrixAt(i, rewriteMatrix);
+    }
+    rewriteProbe.lastMs = performance.now() - start;
+    rewriteProbe.didWrite = true;
+  } else {
+    rewriteProbe.lastMs = 0;
+    rewriteProbe.didWrite = false;
+  }
+  rewriteProbe.frame++;
+
   if (streamProbe.recording) {
     // **這一幀的，不是上一幀的。** 本來寫在 animate 結尾，而取樣在那之前
     // ——於是每一筆記到的都是前一幀的值。症狀很明顯卻很容易看漏：renderMs
@@ -774,6 +819,8 @@ const animate = (time: number): void => {
         visible: st.visible,
         mergedInstances: st.mergedInstances,
         triangles: renderer.info.render.triangles,
+        rewrote: rewriteProbe.didWrite,
+        rewriteMs: rewriteProbe.lastMs,
       });
     }
     lastProbeTime = time;
