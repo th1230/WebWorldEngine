@@ -12,6 +12,7 @@ import { makeDfShadowScene, type DfShadowScene } from './df-shadow-scene.ts';
 import { makeReflectionScene, type ReflectionScene } from './reflection-scene.ts';
 import { makeSkyScene, type SkyScene } from './sky-scene.ts';
 import { makeFogScene, type FogScene } from './fog-scene.ts';
+import { makeVsmScene, type VsmScene } from './vsm-scene.ts';
 import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
@@ -488,6 +489,11 @@ if (skyScene !== null) rocks.visible = false;
 /** `?fog=1` 一面有缺口的牆，太陽在後面 —— 光柱要被擋住。 */
 const fogScene: FogScene | null = params.get('fog') === '1' ? makeFogScene() : null;
 if (fogScene !== null) rocks.visible = false;
+/** `?vsm=N` 虛擬陰影圖，N 是最細階一邊幾頁（A/B 用）。 */
+const vsmScene: VsmScene | null = params.has('vsm')
+  ? makeVsmScene(Math.max(1, Number(params.get('vsm'))))
+  : null;
+if (vsmScene !== null) rocks.visible = false;
 if (reflectionScene !== null) rocks.visible = false;
 if (dfShadowScene !== null) rocks.visible = false;
 if (contactScene !== null) rocks.visible = false;
@@ -1786,6 +1792,20 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    vsm:
+      vsmScene === null
+        ? null
+        : {
+            settle: (): number => vsmScene.settle(renderer),
+            resolve: (debug?: number): void => vsmScene.resolve(renderer, debug),
+            edgeColumns: (): number[] => vsmScene.edgeColumns(renderer),
+            maskStats: (): unknown => vsmScene.maskStats(renderer),
+            maskMap: (): number[] => vsmScene.maskMap(renderer),
+            info: (): unknown => ({
+              ...vsmScene.info(),
+              maxTextureSize: renderer.capabilities.maxTextureSize,
+            }),
+          },
     fog:
       fogScene === null
         ? null

@@ -90,11 +90,10 @@ export class PageTable {
   readonly indirection: Uint8Array;
 
   private readonly slots: (Slot | null)[];
-  /** `level:px:py` → 圖集第幾格。 */
-  private readonly resident = new Map<string, number>();
-  private readonly wanted = new Set<string>();
+  /** 頁的鍵（數字，見 key）→ 圖集第幾格。 */
+  private readonly resident = new Map<number, number>();
+  private readonly wanted = new Set<number>();
   private tick = 0;
-  private dirty = true;
 
   constructor(layout: VirtualTextureLayout) {
     this.pageSize = Math.max(4, Math.floor(layout.pageSize ?? 128));
@@ -170,14 +169,16 @@ export class PageTable {
       this.slots[slot] = { level, px, py, used: this.tick, pinned: false };
       this.resident.set(k, slot);
       loads.push({ level, px, py, slotX: slot % this.atlasPages, slotY: (slot / this.atlasPages) | 0 });
-      this.dirty = true;
+      // 只重算這兩頁蓋住的範圍 —— 搬進來的那一頁，以及被踢掉的那一頁。
+      if (old !== null) {
+        const oldSpan = 1 << old.level;
+        this.rebuildRegion(old.px * oldSpan, old.py * oldSpan, oldSpan, oldSpan);
+      }
+      const span = 1 << level;
+      this.rebuildRegion(px * span, py * span, span, span);
     }
 
     this.wanted.clear();
-    if (this.dirty) {
-      this.rebuildIndirection();
-      this.dirty = false;
-    }
     return loads;
   }
 
@@ -214,14 +215,27 @@ export class PageTable {
   }
 
   /**
-   * 重算頁表：每一個最細階的格子填「最好的那個住著的祖先」。
+   * 重算整份頁表。只有建構時用一次。
    *
-   * 從最細往粗找，找到第一個住著的就停。最粗那階釘著，所以一定停得下來。
+   * 執行期走的是 `rebuildRegion` —— 整份重算是 `pagesPerSide²` 格，而每次
+   * 搬一頁就重算一次的話，512 頁一邊（26 萬格）會直接卡死。
    */
   private rebuildIndirection(): void {
+    this.rebuildRegion(0, 0, this.pagesPerSide, this.pagesPerSide);
+  }
+
+  /**
+   * 重算最細階的一塊矩形。
+   *
+   * 一頁在第 `level` 階蓋住 `2^level` 見方的最細階格子，所以搬一頁只需要
+   * 重算那一塊。被踢掉的頁同理 —— 那一塊會重新往上找到別的祖先。
+   */
+  private rebuildRegion(x0: number, y0: number, width: number, height: number): void {
     const n = this.pagesPerSide;
-    for (let py = 0; py < n; py++) {
-      for (let px = 0; px < n; px++) {
+    const xEnd = Math.min(n, x0 + width);
+    const yEnd = Math.min(n, y0 + height);
+    for (let py = Math.max(0, y0); py < yEnd; py++) {
+      for (let px = Math.max(0, x0); px < xEnd; px++) {
         let level = 0;
         let slot: number | undefined;
         for (; level < this.levels; level++) {
@@ -244,14 +258,14 @@ export class PageTable {
     }
   }
 }
-
-function key(level: number, px: number, py: number): string {
-  return `${level}:${px}:${py}`;
+function key(level: number, px: number, py: number): number {
+  return level * 67108864 + py * 8192 + px;
 }
 
-function parse(k: string): [number, number, number] {
-  const parts = k.split(':');
-  return [Number(parts[0]), Number(parts[1]), Number(parts[2])];
+function parse(k: number): [number, number, number] {
+  const level = Math.floor(k / 67108864);
+  const rest = k - level * 67108864;
+  return [level, rest % 8192, Math.floor(rest / 8192)];
 }
 
 /**

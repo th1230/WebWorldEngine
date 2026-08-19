@@ -91,3 +91,4 @@ export { TracedReflections, type TracedReflectionsOptions } from './traced-refle
 export { SkyAtmosphere, type SkyAtmosphereOptions } from './sky.ts';
 export { LOD_FADE_CAPACITY } from './lod-fade.ts';
 export { VolumetricFog, type VolumetricFogOptions } from './volumetric-fog.ts';
+export { VirtualShadowMap, type VirtualShadowMapOptions } from './virtual-shadow-map.ts';
