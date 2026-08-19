@@ -299,3 +299,89 @@ function tileGeometry(
   geometry.computeVertexNormals();
   return geometry;
 }
+
+/**
+ * 給物理引擎用的高度場，**與畫出來的地表取樣自同一個函式**。
+ *
+ * ## 為什麼這一定要由套件出，不能讓呼叫端自己取樣
+ *
+ * 物理的高度場與畫面的地表對不起來時，角色會**浮在空中或陷進地裡** ——
+ * 而且不報錯，只是「腳沒踩到地上」。
+ *
+ * 而對不起來幾乎是預設結果：呼叫端要自己決定取樣的原點在哪、格距多少、
+ * 列與行哪個是 x、有沒有差半格。任何一個猜錯就是靜靜地錯位，而那個錯
+ * 要走到那一塊地形上才看得到。
+ *
+ * 這裡用**同一個 `height` 函式、同一個範圍**取樣，所以兩邊在定義上就一致。
+ *
+ * ## 輸出的排列是給 Rapier 的
+ *
+ * Rapier 的 `ColliderDesc.heightfield(nrows, ncols, heights, scale)` 吃的是
+ * **column-major**（先走 row，再走 column），而且高度是**相對於中心**、
+ * 由 `scale` 縮放的。這裡直接產出那個形狀：
+ *
+ * ```js
+ * const field = WW.terrainHeightfield({ size: 2400, samples: 256, height });
+ * const desc = RAPIER.ColliderDesc.heightfield(
+ *   field.rows - 1, field.columns - 1, field.heights, field.scale,
+ * );
+ * ```
+ *
+ * 傳錯 major order 的症狀是地形**沿對角線鏡射** —— 山長在錯的地方，而
+ * 畫面上的地表是對的。那種錯很難歸因，所以這裡直接給對的排列。
+ */
+export interface TerrainHeightfield {
+  /** 取樣的列數（z 方向）。 */
+  rows: number;
+  /** 取樣的行數（x 方向）。 */
+  columns: number;
+  /** 高度，column-major。 */
+  heights: Float32Array;
+  /** 餵給 Rapier 的縮放。`y` 是 1 —— 高度已經是世界單位了。 */
+  scale: { x: number; y: number; z: number };
+}
+
+export interface TerrainHeightfieldOptions {
+  /** 整片地表多大，世界單位。**要與 `buildTerrain` 的 `size` 相同。** */
+  size: number;
+  /**
+   * 每邊取樣幾點。
+   *
+   * 與畫面的解析度**不必相同** —— 碰撞通常可以粗一點，那是記憶體與精度的
+   * 取捨，屬於開發者。但它必須蓋住同一個範圍，所以 `size` 不能不一樣。
+   */
+  samples: number;
+  /** 高度函式。**要與 `buildTerrain` 用同一個。** */
+  height: (x: number, z: number) => number;
+}
+
+export function terrainHeightfield(options: TerrainHeightfieldOptions): TerrainHeightfield {
+  const { size, samples, height } = options;
+  if (!Number.isInteger(samples) || samples < 2) {
+    throw new Error(`WW.terrainHeightfield: samples 要是 ≥ 2 的整數，收到 ${samples}。`);
+  }
+
+  const heights = new Float32Array(samples * samples);
+  const half = size / 2;
+  const step = size / (samples - 1);
+
+  // **column-major**：外層走 column（x），內層走 row（z）。
+  //
+  // 寫成 row-major 的話地形會沿對角線鏡射 —— 山長在錯的地方，而畫面上的
+  // 地表是對的。那個錯不會報，也很難歸因到「排列順序」上。
+  for (let c = 0; c < samples; c++) {
+    const x = -half + c * step;
+    for (let r = 0; r < samples; r++) {
+      const z = -half + r * step;
+      heights[c * samples + r] = height(x, z);
+    }
+  }
+
+  return {
+    rows: samples,
+    columns: samples,
+    heights,
+    // y 是 1：高度已經是世界單位，再乘一次就會把地形拉高。
+    scale: { x: size, y: 1, z: size },
+  };
+}
