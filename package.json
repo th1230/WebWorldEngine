@@ -36,7 +36,8 @@
     "webgpu-check": "node tools/gpu-check/webgpu-vat.mjs",
     "physics-check": "node tools/physics-check/verify.mjs",
     "gi-check": "node tools/gi-check/verify.mjs",
-    "occlusion-probe": "node tools/gpu-check/occlusion-saving.mjs"
+    "occlusion-probe": "node tools/gpu-check/occlusion-saving.mjs",
+    "occlusion-net": "node tools/gpu-check/occlusion-net.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

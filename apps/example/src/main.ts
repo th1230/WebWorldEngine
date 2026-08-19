@@ -123,6 +123,8 @@ const TERRAIN_MULTI = params.get('terrainMulti') === '1';
 const TERRAIN_SYSTEM = params.get('terrainSystem') === '1';
 
 const NO_HLOD = params.get('hlod') === '0';
+/** `?occlusion=1` 開遮蔽剔除。預設關 —— 它值不值得看內容有多密。 */
+const OCCLUSION = params.get('occlusion') === '1';
 const SINGLE_LOD = params.get('lodLevels') === '1';
 
 /**
@@ -320,6 +322,7 @@ const rocks = enhanced
       ...(NO_HLOD ? { hlod: false } : {}),
       ...(HLOD_BUDGET_MB === undefined ? {} : { hlodBudgetMB: HLOD_BUDGET_MB }),
       ...(ERROR_PIXELS === undefined ? {} : { errorPixels: ERROR_PIXELS }),
+      occlusion: OCCLUSION,
       ...(EXTEND_LOD ? { extendLodChain: true } : {}),
     })
   : new THREE.InstancedMesh(nativeGeometry, material, COUNT);
