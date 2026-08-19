@@ -11,6 +11,7 @@ import {
 } from 'three';
 import type { Material, Object3D, Scene, WebGLRenderer } from 'three';
 import { projectCubeToSH, type FacePixels } from './cube-sh.ts';
+import type { ReflectionProbes } from './reflection-probes.ts';
 import { IRRADIANCE_SAMPLE_GLSL, IRRADIANCE_UNIFORMS_GLSL } from './irradiance-glsl.ts';
 
 /** `invalidateAround` 每幀會走很多顆，不要每次配一個。 */
@@ -635,6 +636,19 @@ export interface IrradianceBakeOptions {
    * 時間差不到 10%，因為成本在讀回的同步點上，不在像素數上。
    */
   faceSize?: number;
+  /**
+   * 順便把同一批像素重取樣成反射探針。
+   *
+   * ## 一次拍攝，兩個產物
+   *
+   * 這裡已經把 cubemap 的六個面讀回 CPU 了，而讀回正是整件事最貴的一段
+   * （一顆 2.7 ms，其中畫只佔 0.3 ms）。反射探針要的是同一批像素的另一種
+   * 投影 —— 分開烘的話那 2.7 ms 要付兩次，換不到任何東西。
+   *
+   * 代價是兩者共用同一組探針位置與同一份過期清單。那是刻意的，見
+   * `ReflectionProbes`。
+   */
+  reflection?: ReflectionProbes;
   /** 近裁面。預設 0.1。 */
   near?: number;
   /** 遠裁面。預設 1000。 */
@@ -805,13 +819,26 @@ export async function bakeIrradiance(
   // 兩件事本來就沒有關係：翻轉看座標系，解碼看像素怎麼存。
   const decode =
     target.texture.type === HalfFloatType ? DataUtils.fromHalfFloat : (value: number): number => value;
+  const reflection = options.reflection;
+  if (reflection !== undefined && reflection.volume !== volume) {
+    // 兩份格子不一樣的話，反射會寫到別顆探針的位置上 —— 而症狀是「反射裡
+    // 的世界偏了一格」，不是錯誤。所以這裡直接擋掉。
+    throw new Error(
+      "WW.bakeIrradiance: reflection 的探針體積與傳進來的不是同一個。" +
+        "反射探針刻意共用輻照度探針的格子，見 ReflectionProbes。",
+    );
+  }
   for (const entry of pending) {
     const sh = projectCubeToSH(entry.faces, { faceSize, flip, decode });
     volume.setProbe(entry.index, sh.coefficients);
+    // 反射要在 markProbeDone **之前**寫 —— 標記完成之後這一輪就結束了，
+    // 而這批面像素只活到這個迴圈結束。
+    reflection?.writeTile(entry.index, entry.faces, { faceSize, flip, decode });
     volume.markProbeDone(entry.index);
   }
   const done = pending.length;
   volume.upload();
+  reflection?.upload();
   return done;
 }
 

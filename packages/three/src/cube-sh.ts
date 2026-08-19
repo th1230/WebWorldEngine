@@ -51,6 +51,43 @@ export interface CubeProjectionOptions {
 }
 
 /**
+ * 第 `faceIndex` 面第 `pixelIndex` 個像素，落在單位立方體上的哪一點。
+ *
+ * **不正規化** —— 長度本身有用：立體角的權重就是拿它算的（角落的像素
+ * 對應的立體角比中心的小）。要方向的話自己 `normalize`。
+ *
+ * 座標對應逐行照 Three 的 `LightProbeGenerator`。抽成函式是因為它有
+ * **第二個使用者**（八面體重取樣），而同一件事寫兩份遲早會分岔 —— 分岔的
+ * 症狀是「反射裡的世界跟間接光裡的世界左右相反」，而那不會報錯。
+ */
+export function cubeCoordAt(
+  faceIndex: number,
+  pixelIndex: number,
+  faceSize: number,
+  flip: number,
+  target: Vector3,
+): Vector3 {
+  const pixelSize = 2 / faceSize;
+  const col = (1 - ((pixelIndex % faceSize) + 0.5) * pixelSize) * flip;
+  const row = 1 - (Math.floor(pixelIndex / faceSize) + 0.5) * pixelSize;
+
+  switch (faceIndex) {
+    case 0:
+      return target.set(-1 * flip, row, col * flip);
+    case 1:
+      return target.set(1 * flip, row, -col * flip);
+    case 2:
+      return target.set(col, 1, -row);
+    case 3:
+      return target.set(col, -1, row);
+    case 4:
+      return target.set(col, row, 1);
+    default:
+      return target.set(-col, row, -1);
+  }
+}
+
+/**
  * 六個面 → 9 個 SH 係數（L2）。前 4 個就是 L1。
  *
  * @param faces 依序是 +x, −x, +y, −y, +z, −z —— 與 `readRenderTargetPixels`
@@ -66,7 +103,6 @@ export function projectCubeToSH(
   const basis = [0, 0, 0, 0, 0, 0, 0, 0, 0];
   const coord = new Vector3();
   const dir = new Vector3();
-  const pixelSize = 2 / faceSize;
   let totalWeight = 0;
 
   for (let faceIndex = 0; faceIndex < 6; faceIndex++) {
@@ -78,31 +114,7 @@ export function projectCubeToSH(
       const g = decode(data[i + 1]!);
       const b = decode(data[i + 2]!);
 
-      // 單位立方體上的座標。這一段與 Three 的 LightProbeGenerator 逐行相同。
-      const pixelIndex = i / 4;
-      const col = (1 - ((pixelIndex % faceSize) + 0.5) * pixelSize) * flip;
-      const row = 1 - (Math.floor(pixelIndex / faceSize) + 0.5) * pixelSize;
-
-      switch (faceIndex) {
-        case 0:
-          coord.set(-1 * flip, row, col * flip);
-          break;
-        case 1:
-          coord.set(1 * flip, row, -col * flip);
-          break;
-        case 2:
-          coord.set(col, 1, -row);
-          break;
-        case 3:
-          coord.set(col, -1, row);
-          break;
-        case 4:
-          coord.set(col, row, 1);
-          break;
-        default:
-          coord.set(-col, row, -1);
-          break;
-      }
+      cubeCoordAt(faceIndex, i / 4, faceSize, flip, coord);
 
       // 立方體上每個像素對應的立體角不一樣 —— 角落的比中心的小。這個權重
       // 就是那個修正，少了它天空的貢獻會被高估。

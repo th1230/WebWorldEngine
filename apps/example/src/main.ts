@@ -14,6 +14,10 @@ import { makeSkyScene, type SkyScene } from './sky-scene.ts';
 import { makeFogScene, type FogScene } from './fog-scene.ts';
 import { makeVsmScene, type VsmScene } from './vsm-scene.ts';
 import { makeShadowLodScene, type ShadowLodScene } from './shadow-lod-scene.ts';
+import {
+  makeReflectionProbeScene,
+  type ReflectionProbeScene,
+} from './reflection-probe-scene.ts';
 import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
@@ -499,6 +503,12 @@ if (skyScene !== null) rocks.visible = false;
 const fogScene: FogScene | null = params.get('fog') === '1' ? makeFogScene() : null;
 if (fogScene !== null) rocks.visible = false;
 /** `?vsm=N` 虛擬陰影圖，N 是最細階一邊幾頁（A/B 用）。 */
+/** `?reflprobe=1` 反射探針。 */
+const reflectionProbeScene: ReflectionProbeScene | null = params.has('reflprobe')
+  ? makeReflectionProbeScene()
+  : null;
+if (reflectionProbeScene !== null) rocks.visible = false;
+
 /** `?shadowlod=offscreen|field` 陰影 pass 自己的剔除與選階。 */
 const shadowLodScene: ShadowLodScene | null = params.has('shadowlod')
   ? makeShadowLodScene({
@@ -1813,6 +1823,21 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    reflProbe:
+      reflectionProbeScene === null
+        ? null
+        : {
+            settle: (): Promise<number> => reflectionProbeScene.settle(renderer),
+            render: (useProbes: boolean, debug?: number): void =>
+              reflectionProbeScene.render(renderer, useProbes, debug),
+            sample: (x: number, z: number): number[] =>
+              reflectionProbeScene.sampleAt(renderer, x, z),
+            screen: (x: number, z: number): number[] => reflectionProbeScene.screenAt(x, z),
+            reveal: (): void => reflectionProbeScene.reveal(),
+            invalidate: (): number => reflectionProbeScene.invalidate(),
+            info: (): unknown => reflectionProbeScene.info(),
+            debug: (): unknown => reflectionProbeScene.debug(renderer),
+          },
     shadowLod:
       shadowLodScene === null
         ? null

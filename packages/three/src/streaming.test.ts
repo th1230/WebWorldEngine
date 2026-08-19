@@ -416,3 +416,91 @@ describe('串流 — 載入很慢的時候', () => {
     });
   });
 });
+
+describe('onCellChanged：烘好的東西要知道世界變了', () => {
+  /**
+   * 探針、距離場、導航網格都是在**內容之前**就擺好的。世界還沒串流進來的
+   * 時候那一區拍到的是空的 —— 而它會一直是空的，因為烘過的不會再烘。
+   *
+   * 症狀是「這一區的反射裡少了一棟樓」，幀時間完全正常。
+   */
+  function watched(options: { cellSize?: number; radius?: number } = {}): {
+    scene: Scene;
+    cam: PerspectiveCamera;
+    events: { cellX: number; cellZ: number; centerX: number; centerZ: number; radius: number; loaded: boolean }[];
+  } {
+    const scene = new Scene();
+    const rocks = mesh();
+    scene.add(rocks);
+    const world = worldFor(scene);
+    const m = new Matrix4();
+    const events: {
+      cellX: number;
+      cellZ: number;
+      centerX: number;
+      centerZ: number;
+      radius: number;
+      loaded: boolean;
+    }[] = [];
+    world.stream({
+      cellSize: options.cellSize ?? 100,
+      radius: options.radius ?? 150,
+      load: (cx, cz, place) => {
+        place(rocks, m.makeTranslation(cx, cz, 0));
+      },
+      onCellChanged: (cell) => events.push(cell),
+    });
+    return { scene, cam: camera(), events };
+  }
+
+  it('載入一格會叫一次，帶著那一格的中心與半徑', async () => {
+    const { scene, cam, events } = watched({ cellSize: 100, radius: 150 });
+
+    tick(scene, cam, 0, 0);
+    await Promise.resolve();
+    await Promise.resolve();
+    tick(scene, cam, 0, 0);
+
+    expect(events.length).toBeGreaterThan(0);
+    const first = events.find((e) => e.cellX === 0 && e.cellZ === 0);
+    expect(first).toBeDefined();
+    expect(first!.loaded).toBe(true);
+    // 中心是格子的中心，不是角落 —— 拿角落去失效的話會偏半格。
+    expect(first!.centerX).toBe(50);
+    expect(first!.centerZ).toBe(50);
+    // 半徑要蓋得住四個角：cellSize × √2 ÷ 2 ≈ 70.7，而半邊長只有 50。
+    expect(first!.radius).toBeCloseTo(100 * Math.SQRT1_2, 6);
+    expect(first!.radius).toBeGreaterThan(50);
+  });
+
+  it('卸載也要叫 —— 東西不見了，那裡的反射也該跟著變', async () => {
+    const { scene, cam, events } = watched({ cellSize: 100, radius: 150 });
+
+    tick(scene, cam, 0, 0);
+    for (let i = 0; i < 6; i++) {
+      await Promise.resolve();
+      tick(scene, cam, 0, 0);
+    }
+    const loadedCells = new Set(events.filter((e) => e.loaded).map((e) => `${e.cellX},${e.cellZ}`));
+    expect(loadedCells.size).toBeGreaterThan(0);
+
+    // 走遠，讓原本那些格子全部超過卸載半徑。
+    for (let i = 0; i < 12; i++) {
+      tick(scene, cam, 5000, 5000);
+      await Promise.resolve();
+    }
+
+    const unloaded = new Set(events.filter((e) => !e.loaded).map((e) => `${e.cellX},${e.cellZ}`));
+    expect(unloaded.size).toBeGreaterThan(0);
+    for (const key of unloaded) expect(loadedCells.has(key)).toBe(true);
+  });
+
+  it('沒給 onCellChanged 也照樣跑', async () => {
+    // 這個回呼是選配的。忘了給不該讓串流壞掉。
+    const { scene, rocks, cam } = makeWorld(3);
+    tick(scene, cam, 0, 0);
+    await Promise.resolve();
+    tick(scene, cam, 0, 0);
+    expect(rocks.count).toBeGreaterThan(0);
+  });
+});

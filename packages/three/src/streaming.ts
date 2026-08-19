@@ -132,6 +132,45 @@ export interface StreamOptions {
    * 也就是「串流不該讓一幀比這台機器自己的基準長超過 50%」。
    */
   frameBudgetSlack?: number;
+  /**
+   * 一格的內容進場或離場時叫一次。
+   *
+   * ## 為什麼需要它
+   *
+   * 烘好的東西（間接光探針、反射探針、全域距離場）是在**內容之前**就擺好
+   * 的。世界還沒串流進來的時候，那一區的探針拍到的是空的 —— 而它會一直是
+   * 空的，因為烘過的就不會再烘。
+   *
+   * 症狀是「這一區的反射裡少了一棟樓」「這個山谷不會變暗」，而畫面不會
+   * 報錯、幀時間也完全正常。這是串流世界最典型的靜默錯誤。
+   *
+   * ```js
+   * onCellChanged: ({ centerX, centerZ, radius }) => {
+   *   probes.invalidateAround(new THREE.Vector3(centerX, 0, centerZ), radius);
+   * }
+   * ```
+   *
+   * ## 為什麼是回呼而不是直接收一個探針體積
+   *
+   * 串流不該知道有探針這種東西。要失效的可能是探針、可能是距離場、可能是
+   * 導航網格 —— 而那份清單只有呼叫端知道。
+   */
+  onCellChanged?: (cell: {
+    cellX: number;
+    cellZ: number;
+    /** 這一格中心的世界座標。 */
+    centerX: number;
+    centerZ: number;
+    /**
+     * 涵蓋這一格的半徑（含對角）—— 直接拿去當失效半徑。
+     *
+     * 用 `cellSize / 2` 的話四個角落沒被涵蓋到，而角落那幾顆探針
+     * 剛好是「兩格交界」那些，最需要重烘。
+     */
+    radius: number;
+    /** 進場還是離場。離場也要 —— 東西不見了，那裡的反射也該跟著變。 */
+    loaded: boolean;
+  }) => void;
 }
 
 /**
@@ -166,6 +205,7 @@ export class WorldStream {
   private readonly streamer: WorldStreamer<CellBlocks>;
   private readonly perMesh = new Map<InstancedMesh, MeshBlocks>();
   private readonly load: StreamOptions['load'];
+  private readonly onCellChanged: StreamOptions['onCellChanged'];
   private readonly cellSize: number;
   private lastFrameTime = 0;
 
@@ -202,13 +242,15 @@ export class WorldStream {
 
   constructor(options: StreamOptions) {
     this.load = options.load;
+    this.onCellChanged = options.onCellChanged;
     this.cellSize = options.cellSize;
     const unloadRadius = options.unloadRadius ?? options.radius * 1.25;
 
     const source: CellSource<CellBlocks> = {
       load: (cx, cz) => this.loadCell(cx, cz),
-      unload: (_cx, _cz, cells) => {
+      unload: (cx, cz, cells) => {
         for (const cell of cells) this.releaseCell(cell);
+        this.announce(cx, cz, false);
       },
     };
 
@@ -329,6 +371,24 @@ export class WorldStream {
    * 暫存的代價是每一格一次配置。它是暫時的，而且與同時在飛的載入數
    * 成正比，不與世界大小成正比。
    */
+  /**
+   * 告訴呼叫端這一格變了。
+   *
+   * 半徑用**對角**（cellSize × √2 ÷ 2）而不是半邊長：格子四個角落那幾顆
+   * 探針剛好是兩格交界處的，最需要重烘，而半邊長涵蓋不到它們。
+   */
+  private announce(cellX: number, cellZ: number, loaded: boolean): void {
+    if (this.onCellChanged === undefined) return;
+    this.onCellChanged({
+      cellX,
+      cellZ,
+      centerX: (cellX + 0.5) * this.cellSize,
+      centerZ: (cellZ + 0.5) * this.cellSize,
+      radius: this.cellSize * Math.SQRT1_2,
+      loaded,
+    });
+  }
+
   private async loadCell(cx: number, cz: number): Promise<CellBlocks[]> {
     const staged = new Map<InstancedMesh, number[]>();
     // ## 這裡是大世界精度的另外一半
@@ -371,6 +431,19 @@ export class WorldStream {
       state.blocks.push(block);
       cell.blocks.push({ mesh, block });
     }
+
+    // ## 通知放在這裡，不是放在呼叫端包一層
+    //
+    // 兩個理由。一是**內容寫進去之後**才通知：反過來的話收到通知的人去
+    // 重烘，拍到的還是舊的世界，而那正是這個回呼要解決的問題。
+    //
+    // 二是包一層 async 會多插一個 microtask，而串流器的完成處理是照
+    // microtask 排的 —— 實測直接讓一條既有的測試變紅（「慢的那幾格回來
+    // 之後接得上」等的是固定的兩個 tick）。時序不是實作細節。
+    //
+    // 上面那條「這一格沒東西」的早退不會走到這裡，那是對的：真的沒有內容
+    // 就沒有東西需要重烘。
+    this.announce(cx, cz, true);
     return [cell];
   }
 

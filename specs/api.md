@@ -360,6 +360,44 @@ composer 會讓每個物件都白付三角形，2048² 的 shadow map 對 1080p 
 多遠都佔一樣多的像素）。這條式子在逐一選階與遠景合併兩個地方都要一致 ——
 只改一個的症狀是「每個 instance 算出來要用第 3 階，整格卻被合併成最粗階」。
 
+### 反射探針借輻照度探針的格子，不自己開一份
+
+```js
+const probes = new WW.IrradianceVolume({ min, size, resolution: [8, 4, 8] });
+const reflections = new WW.ReflectionProbes(probes);
+// 每幀：一次拍攝，兩個產物
+await WW.bakeIrradiance(renderer, scene, probes, { reflection: reflections });
+```
+
+烘一顆探針最貴的一段是等 GPU 把 cubemap 讀回來（一顆 2.7 ms，其中「畫六次」
+只佔 0.3 ms）。同一批面像素投影成 SH 給間接光、重取樣成八面體給反射 ——
+分兩次拍是兩倍的成本，換不到任何東西。
+
+代價是反射探針不能有自己的密度。這是刻意的，而且傳錯體積會直接丟例外
+（位置分兩份記的症狀是「反射裡的世界比間接光偏了半格」，不會報錯）。
+
+### 烘好的東西要知道世界變了：`onCellChanged`
+
+```js
+WW.worldFor(scene).stream({
+  cellSize: 200,
+  radius: 700,
+  load: (cx, cz, place) => { … },
+  onCellChanged: ({ centerX, centerZ, radius }) => {
+    probes.invalidateAround(new THREE.Vector3(centerX, 0, centerZ), radius);
+  },
+});
+```
+
+探針、距離場、導航網格都是在**內容之前**就擺好的。世界還沒串流進來時那一區
+拍到的是空的，而它會一直是空的 —— 烘過的不會再烘。
+
+症狀是「這一區的反射裡少了一棟樓」「這個山谷不會變暗」，而畫面不會報錯、
+幀時間也完全正常。這是串流世界最典型的靜默錯誤。
+
+收回呼而不是直接收一個探針體積：串流不該知道有探針這種東西，而「要失效什麼」
+那份清單只有呼叫端知道。
+
 ---
 
 ## 十一、還沒決定的事

@@ -88,6 +88,7 @@ export { SceneDepthNormals, type SceneDepthNormalsOptions } from './depth-normal
 export { ContactShadows, type ContactShadowsOptions } from './contact-shadows.ts';
 export { DistanceFieldShadows, type DistanceFieldShadowsOptions } from './distance-field-shadows.ts';
 export { TracedReflections, type TracedReflectionsOptions } from './traced-reflections.ts';
+export { ReflectionProbes, type ReflectionProbesOptions } from './reflection-probes.ts';
 export { SkyAtmosphere, type SkyAtmosphereOptions } from './sky.ts';
 export { LOD_FADE_CAPACITY } from './lod-fade.ts';
 export { VolumetricFog, type VolumetricFogOptions } from './volumetric-fog.ts';

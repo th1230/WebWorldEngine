@@ -1,10 +1,15 @@
 import { Color, Matrix4, NoColorSpace, ShaderMaterial, Vector3, HalfFloatType, WebGLRenderTarget } from 'three';
 import { drawFullscreen, FULLSCREEN_VERTEX, VIEW_POSITION_GLSL } from './fullscreen.ts';
 import { IRRADIANCE_SAMPLE_GLSL, IRRADIANCE_UNIFORMS_GLSL } from './irradiance-glsl.ts';
+import {
+  REFLECTION_PROBE_SAMPLE_GLSL,
+  REFLECTION_PROBE_UNIFORMS_GLSL,
+} from './reflection-probes.ts';
 import type { Camera, PerspectiveCamera, Texture, WebGLRenderer } from 'three';
 import type { SceneDepthNormals } from './depth-normals.ts';
 import type { GlobalDistanceField } from './global-distance-field.ts';
 import type { IrradianceVolume } from './irradiance.ts';
+import type { ReflectionProbes } from './reflection-probes.ts';
 
 /**
  * 反射：先在畫面上找，找不到就去距離場裡找。
@@ -122,6 +127,21 @@ export class TracedReflections {
         uRange: { value: 1 },
         uRoughness: { value: this.options.roughness },
         uSky: { value: this.options.sky },
+        uHasProbes: { value: 0 },
+        uDebug: { value: 0 },
+        // ## 探針那幾個 uniform 必須**現在**就宣告，即使還沒有探針
+        //
+        // Three 只在程式第一次編譯時，拿當下 `material.uniforms` 有哪些鍵
+        // 去決定「每幀要上傳哪些」（`seqWithValue`）。之後才補進去的鍵
+        // 永遠不會被上傳 —— 而畫面不會報錯，只是反射永遠退回天空色。
+        wwReflAtlas: { value: null },
+        wwReflMin: { value: new Vector3() },
+        wwReflInvSize: { value: new Vector3(1, 1, 1) },
+        wwReflResolution: { value: new Vector3(2, 2, 2) },
+        wwReflColumns: { value: 1 },
+        wwReflStride: { value: 18 },
+        wwReflAtlasSize: { value: new Vector3(1, 1, 0) },
+        wwReflIntensity: { value: 1 },
       },
       vertexShader: FULLSCREEN_VERTEX,
       fragmentShader: FRAGMENT,
@@ -129,6 +149,12 @@ export class TracedReflections {
       depthWrite: false,
     });
   }
+
+  /**
+   * 把中間值畫出來。0 正常，1 體積座標，2 反射方向，3 第 0 顆探針，
+   * 4 八面體 uv，5 整張圖集，6 有沒有接上探針。
+   */
+  debugMode = 0;
 
   /** 表面的粗糙度。0 全走螢幕空間，1 全走距離場。 */
   get roughness(): number {
@@ -153,6 +179,7 @@ export class TracedReflections {
     colorTexture: Texture,
     field: GlobalDistanceField | null = null,
     irradiance: IrradianceVolume | null = null,
+    probes: ReflectionProbes | null = null,
   ): Texture | null {
     const depth = gbuffer.depthTexture;
     const normal = gbuffer.normalTexture;
@@ -207,6 +234,20 @@ export class TracedReflections {
     u.uFieldSteps!.value = this.options.fieldSteps;
     u.uRoughness!.value = this.options.roughness;
     u.uSky!.value = this.options.sky;
+    u.uDebug!.value = this.debugMode;
+
+    if (probes !== null) {
+      // 複製**值**進既有的 holder，不是換掉 holder。每幀都複製，所以
+      // 探針那邊改 intensity 這裡跟著動。
+      const probeUniforms = probes.uniforms();
+      for (const key of Object.keys(probeUniforms)) {
+        const slot = u[key];
+        if (slot !== undefined) slot.value = probeUniforms[key]!.value;
+      }
+      u.uHasProbes!.value = 1;
+    } else {
+      u.uHasProbes!.value = 0;
+    }
 
     const previous = renderer.getRenderTarget();
     renderer.setRenderTarget(this.target);
@@ -243,6 +284,9 @@ uniform sampler2D tNormal;
 uniform sampler3D tField;
 uniform sampler3D tAlbedo;
 ${IRRADIANCE_UNIFORMS_GLSL}
+${REFLECTION_PROBE_UNIFORMS_GLSL}
+uniform float uHasProbes;
+uniform float uDebug;
 uniform mat4 uProjection;
 uniform mat4 uProjectionInverse;
 uniform mat4 uCameraMatrix;
@@ -262,6 +306,7 @@ varying vec2 vUv;
 
 ${VIEW_POSITION_GLSL}
 ${IRRADIANCE_SAMPLE_GLSL}
+${REFLECTION_PROBE_SAMPLE_GLSL}
 
 float fieldAt( vec3 worldPoint ) {
   vec3 uvw = ( worldPoint - uFieldMin ) / uFieldExtent;
@@ -331,12 +376,40 @@ void main() {
   // ## 第二層：距離場
   //
   // 螢幕空間找不到的東西**不是不存在**，只是不在畫面上。這一層專門補那一段。
-  vec3 fieldColor = uSky;
+  // 世界座標在距離場與反射探針兩層都要用，所以提到外面算一次。
+  vec3 worldPosition = ( uCameraMatrix * vec4( viewPosition, 1.0 ) ).xyz;
+  vec3 worldNormal = normalize( mat3( uCameraMatrix ) * viewNormal );
+  vec3 worldReflected = normalize( mat3( uCameraMatrix ) * reflected );
+
+  // ## 第三層：反射探針
+  //
+  // 距離場答得出「那裡有東西、什麼顏色」，但它算的亮度是反照率 × 輻照度 ——
+  // 一個 Lambert 的假設。天空、場外面的一切、亮而有方向性的東西（太陽的
+  // 高光、發光的招牌）都不在裡面。
+  //
+  // 探針拍的是**實際的輻射**，所以它接的位置是「什麼都沒打到」那一條 ——
+  // 原本那裡是一個寫死的顏色。探針體積外面仍然退回那個顏色。
+  // ## 中間值印成畫面
+  //
+  // 反射答錯的時候，從外面只看得到「顏色不對」。而不對的原因可能在世界
+  // 座標、在反射方向、在八面體的 uv、在圖集的位置 —— 猜是猜不出來的。
+  if ( uDebug > 0.5 ) {
+    if ( uDebug < 1.5 ) { gl_FragColor = vec4( ( worldPosition - wwReflMin ) * wwReflInvSize, 1.0 ); return; }
+    if ( uDebug < 2.5 ) { gl_FragColor = vec4( worldReflected * 0.5 + 0.5, 1.0 ); return; }
+    if ( uDebug < 3.5 ) { gl_FragColor = vec4( wwReflProbe( 0.0, worldReflected ), 1.0 ); return; }
+    if ( uDebug < 4.5 ) { gl_FragColor = vec4( wwReflOctEncode( worldReflected ), 0.0, 1.0 ); return; }
+    if ( uDebug < 5.5 ) { gl_FragColor = vec4( texture( wwReflAtlas, vUv ).rgb, 1.0 ); return; }
+    if ( uDebug < 6.5 ) { gl_FragColor = vec4( vec3( uHasProbes ), 1.0 ); return; }
+  }
+
+  vec3 missColor = uSky;
+  if ( uHasProbes > 0.5 ) {
+    missColor = wwReflectionAt( worldPosition, worldReflected, uSky );
+  }
+
+  vec3 fieldColor = missColor;
   float fieldHit = 0.0;
   if ( uHasField > 0.5 ) {
-    vec3 worldPosition = ( uCameraMatrix * vec4( viewPosition, 1.0 ) ).xyz;
-    vec3 worldNormal = normalize( mat3( uCameraMatrix ) * viewNormal );
-    vec3 worldReflected = normalize( mat3( uCameraMatrix ) * reflected );
 
     vec3 p = worldPosition + worldNormal * uCell;
     float travelled = uCell;
@@ -368,7 +441,7 @@ void main() {
   //
   // 銳利的鏡面優先用螢幕空間（它銳利）；粗糙的表面本來就糊，直接偏向距離場。
   float screenWeight = screenHit * ( 1.0 - uRoughness );
-  vec3 result = mix( fieldHit > 0.5 ? fieldColor : uSky, screenColor, screenWeight );
+  vec3 result = mix( fieldHit > 0.5 ? fieldColor : missColor, screenColor, screenWeight );
   gl_FragColor = vec4( result, max( screenHit, fieldHit ) );
 }
 `;

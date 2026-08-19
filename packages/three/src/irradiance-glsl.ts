@@ -26,9 +26,15 @@ export const IRRADIANCE_SAMPLE_GLSL = /* glsl */ `
 vec3 wwIrradiance( vec3 worldPos, vec3 normal ) {
   vec3 uvw = ( worldPos - wwIrrMin ) * wwIrrInvSize;
   // 體積外就沒有間接光。夾住的話外面會拖著一條邊緣顏色，那比沒有更奇怪。
-  if ( any( lessThan( uvw, vec3( 0.0 ) ) ) || any( greaterThan( uvw, vec3( 1.0 ) ) ) ) {
+  //
+  // 但邊界上要留容差：地板貼著體積底部是最常見的擺法，而從深度重建出來的
+  // 世界座標會落在 −0.0001 那種地方。反射那邊實測踩到，整片地板的反射變成
+  // 天空色 —— 這裡是同一個坑，只是症狀換成「地板收不到間接光」。
+  const float wwEdge = 1e-3;
+  if ( any( lessThan( uvw, vec3( -wwEdge ) ) ) || any( greaterThan( uvw, vec3( 1.0 + wwEdge ) ) ) ) {
     return vec3( 0.0 );
   }
+  uvw = clamp( uvw, 0.0, 1.0 );
   vec3 c0 = texture( wwIrrSH0, uvw ).rgb;
   vec3 c1 = texture( wwIrrSH1, uvw ).rgb;
   vec3 c2 = texture( wwIrrSH2, uvw ).rgb;
