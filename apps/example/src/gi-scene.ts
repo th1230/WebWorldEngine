@@ -30,7 +30,19 @@ export interface GiScene {
   bake(renderer: THREE.WebGLRenderer, scene: THREE.Scene): Promise<number>;
   /** 把間接光整個關掉 —— A/B 用。node 材質那條路要重編，所以是非同步的。 */
   setEnabled(on: boolean): Promise<void>;
-  stats: () => { probes: number; baked: number; materials: number };
+  stats: () => { probes: number; baked: number; materials: number; stale: number };
+  /**
+   * 把那塊藍板子搬到某個位置，並且把附近的探針標成過期。
+   *
+   * 這是「會動的東西不反彈光」那個限制的驗證用具：板子是藍的，箱子是白的，
+   * 房間是紅的 —— 板子搬到箱子旁邊之後，箱子那一面應該**變藍**。
+   *
+   * 藍色在這個場景裡沒有別的來源，所以它是個乾淨的訊號（與紅房間那一條
+   * 判準同一個道理）。
+   */
+  moveBlocker: (x: number, y: number, z: number) => number;
+  /** 一直烘到沒有過期的為止。回傳烘了幾顆。 */
+  bakeStale: (renderer: THREE.WebGLRenderer, scene: THREE.Scene) => Promise<number>;
   /** 用 CPU 那份公式在同一個位置求值 —— 拿來分辨「烘的不一樣」還是「著色的不一樣」。 */
   sampleCpu: (p: [number, number, number], n: [number, number, number]) => [number, number, number];
 }
@@ -112,6 +124,17 @@ export function makeGiScene(
     intensity,
   });
 
+  // ## 一塊會動的藍板子
+  //
+  // 場景裡除了它以外沒有任何藍色，所以「箱子那一面有沒有變藍」是個
+  // 只有它做得出來的訊號。一開始放得很遠，免得影響第一次烘。
+  const blocker = new THREE.Mesh(
+    new THREE.BoxGeometry(8, 8, 1),
+    makeMaterial(0x1030ff, 0.9),
+  );
+  blocker.position.set(0, 4, ROOM - 2);
+  root.add(blocker);
+
   const materials = WW.applyIrradiance(volume, root);
 
   return {
@@ -125,7 +148,29 @@ export function makeGiScene(
       // WebGL 上這一行就夠了。node 材質（WebGPU）那條路改不動強度，所以
       // 那邊的 A/B 是開兩次頁面（見 tools/gi-check）。
     },
-    stats: () => ({ probes: volume.probeCount, baked: volume.baked, materials }),
+    stats: () => ({
+      probes: volume.probeCount,
+      baked: volume.baked,
+      materials,
+      stale: volume.stale,
+    }),
+    moveBlocker: (x, y, z) => {
+      // **搬之前也要標**：板子原本站的地方那幾顆探針記著它的藍色，
+      // 不重烘的話它走了藍色還留在原地。
+      let marked = volume.invalidateAround(blocker.position, 14);
+      blocker.position.set(x, y, z);
+      blocker.updateMatrixWorld(true);
+      marked += volume.invalidateAround(blocker.position, 14);
+      return marked;
+    },
+    bakeStale: async (renderer, scene) => {
+      let total = 0;
+      let guard = 0;
+      while (volume.stale > 0 && guard++ < 500) {
+        total += await WW.bakeIrradiance(renderer, scene, volume, { budgetMs: 12, faceSize });
+      }
+      return total;
+    },
     sampleCpu: (p, n) => {
       const v = volume.sampleAt(new THREE.Vector3(...p), new THREE.Vector3(...n));
       return [v.x, v.y, v.z];

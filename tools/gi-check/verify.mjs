@@ -172,6 +172,46 @@ function judge(label, out, off) {
   return gap;
 }
 
+/**
+ * 烘完之後把那塊藍板子搬到箱子旁邊，重烘過期的探針，再量一次。
+ */
+async function runDynamic(url, handle) {
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForFunction(
+    (h) => window[h] !== undefined && window[h].gi !== null && window[h].gi !== undefined,
+    handle,
+    { timeout: 120000 },
+  );
+  return page.evaluate(async (h) => {
+    const api = window[h];
+    const gi = api.gi;
+    let rounds = 0;
+    while (gi.stats().baked < gi.stats().probes && rounds < 2000) {
+      await gi.bake();
+      rounds++;
+    }
+
+    // ## 這一段量的是**探針資料**，不是畫面像素
+    //
+    // 第一版量畫面，而把板子搬到箱子旁邊之後它剛好擋在相機與箱子中間 ——
+    // 量到的那塊像素變成板子本身（紅色從 94.8 崩到 3.3）。那個數字看起來
+    // 像「間接光壞了」，其實是**量錯地方**：框裡的東西換人了。
+    //
+    // 問「附近的探針有沒有記到那塊藍板子」的話，直接問探針就好，而且它
+    // 完全不受遮擋影響。`sampleCpu` 用的是與 shader 逐字相同的公式。
+    const faceNormal = [-0.707, 0, -0.707];
+    const faceAt = [-5, 14, -5];
+    const before = gi.sampleCpu(faceAt, faceNormal);
+
+    // 搬到箱子旁邊（箱子在 0,14,0）。
+    const marked = gi.moveBlocker(-9, 12, -9);
+    const rebaked = await gi.bakeStale();
+    await api.step(0);
+    const after = gi.sampleCpu(faceAt, faceNormal);
+    return { before, after, marked, rebaked };
+  }, handle);
+}
+
 const base = `http://localhost:${server.address().port}`;
 try {
   // WebGL：同一頁裡改 uniform 就能關。
@@ -185,6 +225,41 @@ try {
   const gpuOff = await run(`${base}/webgpu.html?gi=1&giOff=1`, '__wwgpu', false);
   const gpuOn = await run(`${base}/webgpu.html?gi=1`, '__wwgpu', false);
   const gpuGap = judge('WebGPU（IrradianceNode + TSL）', gpuOn, gpuOff.on);
+
+  // ## 會動的東西：搬一塊藍板子過去，箱子那一面要變藍
+  //
+  // ADR-0006 原本寫的限制是「會動的東西不反彈光」。重烘附近的探針之後
+  // 它應該反彈得了 —— 而驗它的方式與整支檔案同一個邏輯：**顏色**。
+  //
+  // 場景裡除了那塊板子沒有任何藍色，所以藍色是個只有它做得出來的訊號。
+  // 用亮度的話搬一塊亮的東西過去本來就會變亮，證明不了是間接光。
+  const dynamic = await runDynamic(`${base}/?gi=1`, '__ww');
+  console.log('\n── 會動的東西（重烘附近的探針）');
+  console.log(`  搬過去標了 ${dynamic.marked} 顆過期，重烘了 ${dynamic.rebaked} 顆`);
+  const g = (v) => v.map((n) => n.toFixed(4)).join(", ");
+  console.log(`  箱子那一面的輻照度（探針算的）搬之前：${g(dynamic.before)}`);
+  console.log(`                搬之後：${g(dynamic.after)}`);
+
+  check(dynamic.marked > 0, '搬動有標到探針', `${dynamic.marked} 顆`);
+  check(dynamic.rebaked > 0, '過期的探針真的被重烘了', `${dynamic.rebaked} 顆`);
+
+  // 藍色在這個場景裡只可能來自那塊板子的反彈。
+  const blueBefore = dynamic.before[2];
+  const blueAfter = dynamic.after[2];
+  check(
+    blueAfter > blueBefore * 1.5,
+    '附近的探針記到了那塊藍板子',
+    `藍 ${blueBefore.toFixed(4)} → ${blueAfter.toFixed(4)}`,
+  );
+
+  // 而且藍要漲得比紅多 —— 不然只是「附近多了一個東西所以整體變亮」。
+  const blueGain = blueAfter - blueBefore;
+  const redGain = dynamic.after[0] - dynamic.before[0];
+  check(
+    blueGain > redGain,
+    '藍漲得比紅多，不是整體變亮',
+    `Δ藍 ${blueGain.toFixed(4)} vs Δ紅 ${redGain.toFixed(4)}`,
+  );
 
   console.log('');
   // 兩條路都要得到「明顯偏紅」。**不比絕對值**：兩個後端連烘出來的係數量級

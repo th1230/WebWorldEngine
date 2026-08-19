@@ -12,6 +12,9 @@ import {
 import type { Material, Object3D, Scene, WebGLRenderer } from 'three';
 import { projectCubeToSH, type FacePixels } from './cube-sh.ts';
 
+/** `invalidateAround` 每幀會走很多顆，不要每次配一個。 */
+const _invalidateAt = new Vector3();
+
 /**
  * 間接光：烘出來的輻照度探針體積。
  *
@@ -106,6 +109,13 @@ export class IrradianceVolume {
   private _warnedIntensity = false;
   private readonly data: Uint16Array[] = [];
   private _baked = 0;
+  /**
+   * 過期的探針，照加入順序排。
+   *
+   * 用 `Set` 是為了同一顆被標兩次不會排兩遍 —— 一個東西在兩顆探針之間
+   * 移動時，中間那幾顆每幀都會被標到。
+   */
+  private readonly _stale = new Set<number>();
   private dirty = true;
   /**
    * uniform 物件**建一次就不再換**。
@@ -255,6 +265,87 @@ export class IrradianceVolume {
       this.data[c]![texel + 3] = 0x3c00; // 半精度的 1.0
     }
     this.dirty = true;
+  }
+
+  /**
+   * 把一個範圍內的探針標成過期，下次烘的時候優先重烘。
+   *
+   * ## 這是「會動的東西不反彈光」那個限制的解法
+   *
+   * 烘出來的探針是靜態的：一台紅色的車開過白牆邊，牆不會沾到紅色。
+   * [ADR-0006](../../../specs/adr/0006-baked-irradiance-not-realtime-gi.md)
+   * 把那個限制寫下來了。
+   *
+   * 補它的方式**不是**寫一套螢幕空間 GI（那是渲染器的事），是重烘附近的
+   * 探針 —— 探針怎麼烘、怎麼分預算正是那份 ADR 說這裡該做的那一半。
+   *
+   * ## 它有多貴，以及為什麼那個數字重要
+   *
+   * 一顆探針 **2.7 ms**（原本 37 ms，見 roadmap）。所以這不是「每幀重烘
+   * 一整片」的功能 —— 標太多顆會直接吃掉幀。
+   *
+   * 合理的用法是「一個會動的東西，標它周圍那幾顆」，而且接受間接光**慢
+   * 幾幀才跟上**。那個延遲是這條路的代價，換來的是不必擁有渲染管線。
+   *
+   * @param center 世界座標。
+   * @param radius 這個半徑內的探針都重烘。
+   * @returns 標了幾顆（已經在排隊的不重複算）。
+   */
+  invalidateAround(center: Vector3, radius: number): number {
+    const [nx, ny, nz] = this.resolution;
+    // 換算成格子座標的範圍，只走那一塊 —— 整份掃過去的話大體積會很慢，
+    // 而這個函式是每幀被呼叫的。
+    const stepX = this.size.x / (nx - 1);
+    const stepY = this.size.y / (ny - 1);
+    const stepZ = this.size.z / (nz - 1);
+    const x0 = Math.max(0, Math.floor((center.x - radius - this.min.x) / stepX));
+    const x1 = Math.min(nx - 1, Math.ceil((center.x + radius - this.min.x) / stepX));
+    const y0 = Math.max(0, Math.floor((center.y - radius - this.min.y) / stepY));
+    const y1 = Math.min(ny - 1, Math.ceil((center.y + radius - this.min.y) / stepY));
+    const z0 = Math.max(0, Math.floor((center.z - radius - this.min.z) / stepZ));
+    const z1 = Math.min(nz - 1, Math.ceil((center.z + radius - this.min.z) / stepZ));
+
+    const radiusSq = radius * radius;
+    const at = _invalidateAt;
+    let marked = 0;
+    for (let z = z0; z <= z1; z++) {
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const index = (z * ny + y) * nx + x;
+          this.probePosition(index, at);
+          // 用球而不是盒 —— 盒的角落那幾顆離得比 radius 遠，重烘它們是白花錢。
+          if (at.distanceToSquared(center) > radiusSq) continue;
+          if (this._stale.has(index)) continue;
+          this._stale.add(index);
+          marked++;
+        }
+      }
+    }
+    return marked;
+  }
+
+  /** 還有幾顆排隊等重烘。 */
+  get stale(): number {
+    return this._stale.size;
+  }
+
+  /**
+   * 下一顆該烘哪一個：**過期的優先**，再來才是還沒烘過的。
+   *
+   * 過期的優先是因為那是**畫面上看得到的錯**（東西動了但光沒跟上）；
+   * 還沒烘的那些只是還沒亮起來，而那個過程本來就是漸進的。
+   *
+   * @returns 探針編號，沒有要烘的就回 −1。
+   */
+nextToBake(): number {
+    for (const index of this._stale) return index;
+    return this._baked < this.probeCount ? this._baked : -1;
+  }
+
+  /** 這一顆烘完了。過期佇列裡的移掉，沒烘過的推進度。 */
+  markProbeDone(index: number): void {
+    if (this._stale.delete(index)) return;
+    if (index === this._baked) this._baked = Math.min(this._baked + 1, this.probeCount);
   }
 
   /** 這一顆算烘好了。分開記是因為 `setProbe` 也用在測試與載入既有資料。 */
@@ -463,7 +554,7 @@ export async function bakeIrradiance(
   volume: IrradianceVolume,
   options: IrradianceBakeOptions = {},
 ): Promise<number> {
-  if (volume.baked >= volume.probeCount) return 0;
+  if (volume.nextToBake() < 0) return 0;
 
   const budgetMs = options.budgetMs ?? 8;
   const faceSize = options.faceSize ?? 16;
@@ -495,8 +586,13 @@ export async function bakeIrradiance(
   const pending: { index: number; faces: FacePixels[]; waits: Promise<unknown>[] }[] = [];
   const started = performance.now();
 
-  while (volume.baked + pending.length < volume.probeCount) {
-    const index = volume.baked + pending.length;
+  // 先把這一輪要烘的挑出來 —— 挑的時候不能就地標記完成（那要等讀回），
+  // 所以用一個本地的集合擋掉重複挑到同一顆。
+  const claimed = new Set<number>();
+  for (;;) {
+    const index = nextUnclaimed(volume, claimed);
+    if (index < 0) break;
+    claimed.add(index);
     volume.probePosition(index, at);
     camera.position.copy(at);
     camera.updateMatrixWorld(true);
@@ -552,11 +648,28 @@ export async function bakeIrradiance(
   for (const entry of pending) {
     const sh = projectCubeToSH(entry.faces, { faceSize, flip, decode });
     volume.setProbe(entry.index, sh.coefficients);
+    volume.markProbeDone(entry.index);
   }
   const done = pending.length;
-  volume.markBaked(done);
   volume.upload();
   return done;
+}
+
+/**
+ * 下一顆還沒被這一輪挑走的。
+ *
+ * `volume.nextToBake()` 每次都回同一顆（它要等烘完才會前進），所以同一輪
+ * 裡要自己記住挑過誰 —— 不記的話一輪會把同一顆烘七次。
+ */
+function nextUnclaimed(volume: IrradianceVolume, claimed: ReadonlySet<number>): number {
+  const first = volume.nextToBake();
+  if (first < 0) return -1;
+  if (!claimed.has(first)) return first;
+  // 過期的那幾顆挑完了，往還沒烘過的接下去。
+  for (let index = volume.baked; index < volume.probeCount; index++) {
+    if (!claimed.has(index)) return index;
+  }
+  return -1;
 }
 
 /**

@@ -288,3 +288,74 @@ describe('烘的進度', () => {
     expect(volume.baked).toBe(volume.probeCount);
   });
 });
+
+describe('會動的東西：把附近的探針標成過期', () => {
+  const volume = (): IrradianceVolume =>
+    new IrradianceVolume({
+      min: new Vector3(0, 0, 0),
+      size: new Vector3(30, 30, 30),
+      resolution: [4, 4, 4],
+    });
+
+  it('只標半徑內的，不標整片', () => {
+    const v = volume();
+    // 格距是 10，所以半徑 6 只碰得到最靠近的那幾顆。
+    const marked = v.invalidateAround(new Vector3(0, 0, 0), 6);
+    expect(marked).toBeGreaterThan(0);
+    expect(marked).toBeLessThan(v.probeCount);
+    expect(v.stale).toBe(marked);
+  });
+
+  it('用球不是盒 —— 盒的角落離得比半徑遠', () => {
+    // 半徑 10 的球只碰得到原點與三個軸上的鄰居（距離 10），碰不到
+    // 對角線上那顆（距離 10√2 ≈ 14.1）。
+    const v = volume();
+    v.invalidateAround(new Vector3(0, 0, 0), 10.5);
+    expect(v.stale).toBe(4);
+  });
+
+  it('同一顆標兩次不會排兩遍', () => {
+    const v = volume();
+    const first = v.invalidateAround(new Vector3(0, 0, 0), 6);
+    const second = v.invalidateAround(new Vector3(0, 0, 0), 6);
+    expect(second).toBe(0);
+    expect(v.stale).toBe(first);
+  });
+
+  it('過期的排在還沒烘過的前面 —— 那是畫面上看得到的錯', () => {
+    const v = volume();
+    // 還沒烘任何東西時，下一顆是 0。
+    expect(v.nextToBake()).toBe(0);
+    // 標一顆遠一點的過期，它要插隊。
+    v.invalidateAround(new Vector3(30, 30, 30), 1);
+    const next = v.nextToBake();
+    expect(next).toBe(v.probeCount - 1);
+  });
+
+  it('烘完之後從佇列裡消失', () => {
+    const v = volume();
+    v.invalidateAround(new Vector3(30, 30, 30), 1);
+    const index = v.nextToBake();
+    v.markProbeDone(index);
+    expect(v.stale).toBe(0);
+    // 佇列空了就回去烘還沒烘過的。
+    expect(v.nextToBake()).toBe(0);
+  });
+
+  it('沒有過期也沒有沒烘過的時候回 −1', () => {
+    const v = volume();
+    for (let i = 0; i < v.probeCount; i++) v.markProbeDone(i);
+    expect(v.nextToBake()).toBe(-1);
+  });
+
+  it('進度不會被重烘倒退', () => {
+    // 重烘一顆早就烘好的，不該讓 `baked` 退回去 —— 退回去的話畫面會從
+    // 那一顆開始重新亮一次。
+    const v = volume();
+    for (let i = 0; i < v.probeCount; i++) v.markProbeDone(i);
+    expect(v.baked).toBe(v.probeCount);
+    v.invalidateAround(new Vector3(0, 0, 0), 1);
+    v.markProbeDone(v.nextToBake());
+    expect(v.baked).toBe(v.probeCount);
+  });
+});
