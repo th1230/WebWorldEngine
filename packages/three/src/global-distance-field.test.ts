@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BoxGeometry, Matrix4, Vector3 } from 'three';
 import { DistanceFieldVolume } from './distance-field-gi.ts';
 import { GlobalDistanceField } from './global-distance-field.ts';
+import { IrradianceVolume } from './irradiance.ts';
 
 /** 一個放在指定位置的盒子距離場。 */
 function boxAt(x: number, y: number, z: number): { volume: DistanceFieldVolume; matrixWorld: Matrix4 } {
@@ -123,5 +124,129 @@ describe('全域距離場：把很多個合成一個', () => {
     settle(field, new Vector3(0, 0, 0));
     // 原點附近應該是空曠的。
     expect(field.distanceAt(new Vector3(0, 0, 0))).toBeGreaterThan(50);
+  });
+});
+
+describe('全域距離場：追蹤回傳的是顏色，不只是擋不擋', () => {
+  /** 一個有顏色的盒子。 */
+  function colouredBox(
+    x: number,
+    y: number,
+    z: number,
+    albedo: [number, number, number],
+  ): { volume: DistanceFieldVolume; matrixWorld: Matrix4 } {
+    return {
+      volume: new DistanceFieldVolume(new BoxGeometry(10, 10, 10), {
+        resolution: 16,
+        padding: 0.5,
+        albedo,
+      }),
+      matrixWorld: new Matrix4().makeTranslation(x, y, z),
+    };
+  }
+
+  /** 到處都一樣亮的白光，讓測試量到的差別只可能來自表面。 */
+  const whiteLight = (): Vector3 => new Vector3(1, 1, 1);
+
+  it('打到紅牆回來的是紅光 —— 這是整件事的重點', () => {
+    // 只有遮蔽的話一面紅牆與一面白牆是一樣的。有顏色才叫反彈。
+    const field = new GlobalDistanceField({ resolution: 32, extent: 100 });
+    field.add(colouredBox(0, 0, -20, [1, 0, 0]));
+    settle(field, new Vector3(0, 0, 0));
+
+    const light = field.radianceAlong(new Vector3(0, 0, 0), new Vector3(0, 0, -1), whiteLight);
+    expect(light.x).toBeGreaterThan(0.5);
+    expect(light.y).toBeLessThan(0.1);
+    expect(light.z).toBeLessThan(0.1);
+  });
+
+  it('同一點、不同方向，顏色不一樣', () => {
+    // 兩邊一樣的話它就只是一個環境色常數 —— 那沒有用。
+    const field = new GlobalDistanceField({ resolution: 32, extent: 100 });
+    field.add(colouredBox(0, 0, -20, [1, 0, 0]));
+    field.add(colouredBox(0, 0, 20, [0, 0, 1]));
+    settle(field, new Vector3(0, 0, 0));
+
+    const back = field.radianceAlong(new Vector3(0, 0, 0), new Vector3(0, 0, -1), whiteLight, 40);
+    const front = field.radianceAlong(new Vector3(0, 0, 0), new Vector3(0, 0, 1), whiteLight, 40, new Vector3());
+    expect(back.x).toBeGreaterThan(back.z);
+    expect(front.z).toBeGreaterThan(front.x);
+  });
+
+  it('射向空的地方回來是 0，不是黑色的表面', () => {
+    // 差別是實質的：0 代表那個方向沒有東西（該由天空補），黑色的表面代表
+    // 那裡有東西而且不反光。混在一起的話天空會被吃掉。
+    const field = new GlobalDistanceField({ resolution: 32, extent: 100 });
+    field.add(colouredBox(0, 0, -20, [1, 0, 0]));
+    settle(field, new Vector3(0, 0, 0));
+
+    const up = field.radianceAlong(new Vector3(0, 0, 0), new Vector3(0, 1, 0), whiteLight, 20);
+    expect(up.length()).toBeCloseTo(0, 5);
+  });
+
+  it('那一點越亮，反彈回來的越多 —— 反照率乘的是收到的光', () => {
+    // 存反照率而不是存算好的光照，理由就在這裡：光變了這份快取不用重烘，
+    // 乘一次就跟上了。
+    const field = new GlobalDistanceField({ resolution: 32, extent: 100 });
+    field.add(colouredBox(0, 0, -20, [1, 1, 1]));
+    settle(field, new Vector3(0, 0, 0));
+
+    const dim = field.radianceAlong(new Vector3(0, 0, 0), new Vector3(0, 0, -1), () => new Vector3(0.2, 0.2, 0.2));
+    const bright = field.radianceAlong(
+      new Vector3(0, 0, 0),
+      new Vector3(0, 0, -1),
+      () => new Vector3(1, 1, 1),
+      25,
+      new Vector3(),
+    );
+    expect(bright.x).toBeGreaterThan(dim.x * 3);
+  });
+
+  it('接得上真的探針體積 —— 兩半合起來才是一次反彈', () => {
+    // 這一條測的是**介面對得上**，不是數學。分開寫的兩個東西各自測過還是
+    // 可能接不起來（一個吃法線一個不吃、一個回 Color 一個回 Vector3），而
+    // 那種錯只有真的接一次才看得到。
+    const probes = new IrradianceVolume({
+      min: new Vector3(-50, -50, -50),
+      size: new Vector3(100, 100, 100),
+      resolution: [2, 2, 2],
+    });
+    // 均勻輻照度 2：L0 乘上 0.886227 就是輻照度。
+    const l0 = 2 / 0.886227;
+    for (let i = 0; i < probes.probeCount; i++) {
+      probes.setProbe(i, [
+        { x: l0, y: l0, z: l0 },
+        { x: 0, y: 0, z: 0 },
+        { x: 0, y: 0, z: 0 },
+        { x: 0, y: 0, z: 0 },
+      ]);
+    }
+
+    const field = new GlobalDistanceField({ resolution: 32, extent: 100 });
+    field.add(colouredBox(0, 0, -20, [1, 0, 0]));
+    settle(field, new Vector3(0, 0, 0));
+
+    const light = field.radianceAlong(new Vector3(0, 0, 0), new Vector3(0, 0, -1), (point, normal) =>
+      probes.sampleAt(point, normal),
+    );
+    // 紅牆 × 亮度 2 → 紅色通道大約 2，另外兩個是 0。
+    expect(light.x).toBeCloseTo(2, 1);
+    expect(light.y).toBeCloseTo(0, 5);
+    expect(light.z).toBeCloseTo(0, 5);
+  });
+
+  it('問輻照度的時候法線是朝著光線來的方向', () => {
+    // 朝反了的話牆會拿到牆背面的光 —— 症狀是背光的牆亮得莫名其妙。
+    const field = new GlobalDistanceField({ resolution: 32, extent: 100 });
+    field.add(colouredBox(0, 0, -20, [1, 1, 1]));
+    settle(field, new Vector3(0, 0, 0));
+
+    let seen: Vector3 | null = null;
+    field.radianceAlong(new Vector3(0, 0, 0), new Vector3(0, 0, -1), (_point, normal) => {
+      seen = normal.clone();
+      return new Vector3(1, 1, 1);
+    });
+    expect(seen).not.toBeNull();
+    expect((seen as unknown as Vector3).z).toBeCloseTo(1, 5);
   });
 });

@@ -15,3 +15,4 @@ export * from './geometric-error.ts';
 export { innerBox, type InnerBox, type InnerBoxOptions } from './inner-box.ts';
 export { splitGeometry, type SplitOptions, type SplitPiece } from './split-geometry.ts';
 export { bakeDistanceField, type DistanceField, type DistanceFieldOptions } from './distance-field.ts';
+export { bakeSurfaceCache, type SurfaceCache, type SurfaceCacheOptions } from './surface-cache.ts';

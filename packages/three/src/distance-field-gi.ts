@@ -6,7 +6,7 @@ import {
   RedFormat,
   Vector3,
 } from 'three';
-import { bakeDistanceField, type DistanceFieldOptions } from '@webworld/format';
+import { bakeDistanceField, bakeSurfaceCache, type DistanceFieldOptions, type SurfaceCache } from '@webworld/format';
 import type { BufferGeometry } from 'three';
 
 /**
@@ -48,6 +48,12 @@ export interface DistanceFieldGiOptions extends DistanceFieldOptions {
    * 兩者應該接近 —— 差太多的話同一個角落會被算兩次或漏掉。
    */
   occlusionRange?: number;
+  /**
+   * 這份幾何的反照率，追蹤打到它時反彈出來的顏色。
+   *
+   * 沒給的話用頂點顏色；兩個都沒有就是白的（只做遮蔽，不做反彈）。
+   */
+  albedo?: [number, number, number];
 }
 
 /**
@@ -62,6 +68,13 @@ export class DistanceFieldVolume {
   readonly size: Vector3;
   readonly resolution: number;
   readonly occlusionRange: number;
+  /**
+   * 表面快取：這附近的表面是什麼顏色。
+   *
+   * 距離場答得出「有沒有東西擋著」，答不出**那是什麼顏色** —— 而沒有
+   * 顏色就只能做遮蔽，做不了反彈。這一份就是補那一半。
+   */
+  readonly surface: SurfaceCache;
 
   constructor(geometry: BufferGeometry, options: DistanceFieldGiOptions = {}) {
     const position = geometry.getAttribute('position');
@@ -79,6 +92,20 @@ export class DistanceFieldVolume {
     this.min = new Vector3(...field.min);
     this.size = new Vector3(...field.size);
     this.occlusionRange = options.occlusionRange ?? Math.max(...field.size) * 0.25;
+
+    const colorAttribute = geometry.getAttribute('color');
+    this.surface = bakeSurfaceCache(
+      position.array as ArrayLike<number>,
+      index === null ? null : (index.array as ArrayLike<number>),
+      colorAttribute === undefined ? null : (colorAttribute.array as ArrayLike<number>),
+      {
+        resolution: Math.max(4, Math.floor(field.resolution / 2)),
+        // **必須與距離場同一個 padding**，否則兩份場對不上 —— 追蹤在
+        // 距離場裡停在表面，查表面快取時卻查到隔壁。
+        padding: options.padding ?? 0.25,
+        flat: options.albedo ?? [1, 1, 1],
+      },
+    );
 
     const texture = new Data3DTexture(field.data, field.resolution, field.resolution, field.resolution);
     texture.format = RedFormat;
@@ -158,6 +185,17 @@ export class DistanceFieldVolume {
     }
     // 完全沒擦到任何東西就是沒有遮蔽。
     return Math.max(0, Math.min(1, 1 - closest));
+  }
+
+  /** 查一點附近的表面顏色（最近的格子，不內插 —— 反彈光是低頻的）。 */
+  albedoAt(point: Vector3, target: Vector3): Vector3 {
+    const cache = this.surface;
+    const n = cache.resolution;
+    const gx = Math.min(n - 1, Math.max(0, Math.floor(((point.x - cache.min[0]) / cache.size[0]) * n)));
+    const gy = Math.min(n - 1, Math.max(0, Math.floor(((point.y - cache.min[1]) / cache.size[1]) * n)));
+    const gz = Math.min(n - 1, Math.max(0, Math.floor(((point.z - cache.min[2]) / cache.size[2]) * n)));
+    const cell = ((gz * n + gy) * n + gx) * 3;
+    return target.set(cache.data[cell]!, cache.data[cell + 1]!, cache.data[cell + 2]!);
   }
 
   dispose(): void {

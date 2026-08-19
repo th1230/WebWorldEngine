@@ -252,6 +252,78 @@ export class GlobalDistanceField {
     return Math.max(0, Math.min(1, 1 - closest));
   }
 
+  /**
+   * 往一個方向追蹤，回傳**打到的表面反彈出來的光**。
+   *
+   * ## 這是第二次反彈
+   *
+   * `occlusionAlong` 只答「有沒有被擋住」。這一支再往前一步：打到之後
+   * 去查那個表面是什麼顏色（表面快取），乘上那一點的輻照度（探針），
+   * 得到它射出多少光。
+   *
+   * 而**那正是為什麼第二次反彈便宜**：不是再追一次，是查一次表。Lumen
+   * 的 surface cache 與 radiance cache 就是在做這件事。
+   *
+   * @param irradianceAt 查一點的輻照度。通常接 `IrradianceVolume.sampleAt`。
+   * @returns 反彈回來的光。沒打到東西就是 0（那個方向是空的）。
+   */
+  radianceAlong(
+    origin: Vector3,
+    direction: Vector3,
+    irradianceAt: (point: Vector3, normal: Vector3) => Vector3,
+    range = this.extent * 0.25,
+    target = new Vector3(),
+  ): Vector3 {
+    target.set(0, 0, 0);
+    const point = _radianceAt.copy(origin);
+    const bias = this.cell;
+    let travelled = bias;
+    point.addScaledVector(direction, bias);
+
+    for (let step = 0; step < 48 && travelled < range; step++) {
+      const distance = this.distanceAt(point);
+      if (distance < this.cell * 0.5) {
+        // 打到了。找出是誰，查它的表面顏色。
+        const instance = this.nearestInstance(point);
+        if (instance === null) return target;
+        const local = _radianceLocal
+          .copy(point)
+          .applyMatrix4(_radianceInverse.copy(instance.matrixWorld).invert());
+        instance.volume.albedoAt(local, _radianceAlbedo);
+        // 射出的光 = 反照率 × 那一點收到的光。法線用**反向的光線**近似
+        // ——真正的法線要從距離場的梯度算，而那要多三次查表；反彈光是
+        // 低頻的，這個近似看不出差別。
+        const incoming = irradianceAt(point, _radianceNormal.copy(direction).negate());
+        return target.set(
+          _radianceAlbedo.x * incoming.x,
+          _radianceAlbedo.y * incoming.y,
+          _radianceAlbedo.z * incoming.z,
+        );
+      }
+      point.addScaledVector(direction, distance);
+      travelled += distance;
+    }
+    return target;
+  }
+
+  /** 哪一個物件離這一點最近 —— 追蹤打到之後要問它的顏色。 */
+  private nearestInstance(worldPoint: Vector3): FieldInstance | null {
+    let best: FieldInstance | null = null;
+    let bestDistance = Infinity;
+    for (const instance of this.instances) {
+      const local = _radianceLocal
+        .copy(worldPoint)
+        .applyMatrix4(_radianceInverse.copy(instance.matrixWorld).invert());
+      const outside = distanceToBox(local, instance.volume.min, instance.volume.size);
+      const distance = outside > 0 ? outside : Math.abs(instance.volume.distanceAt(local));
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = instance;
+      }
+    }
+    return best;
+  }
+
   dispose(): void {
     this.texture.dispose();
   }
@@ -261,6 +333,11 @@ const _updateAt = new Vector3();
 const _composeLocal = new Vector3();
 const _composeInverse = new Matrix4();
 const _traceAt = new Vector3();
+const _radianceAt = new Vector3();
+const _radianceLocal = new Vector3();
+const _radianceInverse = new Matrix4();
+const _radianceAlbedo = new Vector3();
+const _radianceNormal = new Vector3();
 
 /** 點到一個軸對齊盒子的距離，裡面回 0。 */
 function distanceToBox(point: Vector3, min: Vector3, size: Vector3): number {
