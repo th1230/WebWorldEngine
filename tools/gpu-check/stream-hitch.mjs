@@ -91,7 +91,14 @@ try {
       requestAnimationFrame(tick);
     });
     observer.disconnect();
-    return { samples: window.__ww.streamProbe.stop(), longTasks };
+    // 自適應預算有沒有在動 —— 引擎自己有沒有已經在壓載入速率。
+    const streaming = window.__ww.stats ?? null;
+    return {
+      samples: window.__ww.streamProbe.stop(),
+      longTasks,
+      budget: window.__ww.budget ?? null,
+      streaming,
+    };
   });
   await page.close();
   const out = measured.samples;
@@ -156,6 +163,29 @@ try {
   const spikeLoad = mid(spikes, (s) => s.loadMs);
   const share = (spikeLoad / Math.max(spikeFrame, 1e-6)) * 100;
   console.log(`    **回呼佔尖峰的 ${share.toFixed(1)}%，其餘 ${(100 - share).toFixed(1)}% 在下游**\n`);
+
+  if (measured.budget !== null) {
+    const b = measured.budget;
+    console.log(`  自適應預算：基準 ${b.baselineMs.toFixed(2)} ms，預算 ${b.budgetMs.toFixed(2)} ms，載入速率 ${b.loadRate}`);
+    // 基準若黏在**最快的那一幀**上，它就不是「這台機器的基準」，
+    // 而是「這台機器打嗝時最短的那一幀」——那會讓預算永遠達不到。
+    const fastest = Math.min(...shifted.map((x) => x.frameMs));
+    console.log(`    最快的那一幀 ${fastest.toFixed(2)} ms，而 p50 是 ${p50.toFixed(2)} ms`);
+    // 黏住的特徵是：基準**比任何真的量到的幀都還低**。而不是「接近最快的
+    // 那一幀」—— 修好之後基準本來就會落在 p25 附近，那與最快的幀本來就近。
+    // 第一版的判準寫成後者，於是修好之後它照樣喊「黏住了」。
+    console.log(
+      b.baselineMs < fastest * 0.8
+        ? `    → **基準（${b.baselineMs.toFixed(2)}）比最快的那一幀還低**，代表它黏在很久以前的某一幀上，預算永遠達不到。`
+        : '    → 基準落在真實的幀時間範圍裡，自適應是活的。',
+    );
+    console.log(
+      b.loadRate <= 1
+        ? '    → 載入速率已經到底。'
+        : `    → 載入速率 ${b.loadRate}，還在依幀時間調整。`,
+    );
+
+  }
 
   if (longTasks.length > 0) {
     const total = longTasks.reduce((a, b) => a + b.duration, 0);
@@ -287,9 +317,15 @@ try {
   });
   await page.close();
 
+  // 與主掃描、其他因果測試同一套處理：錯開一格配對、丟暖機、中位數。
+  // 三個測試各用各的處理方式，本身就是把不可比的數字放在一起。
+  const rows = out
+    .slice(1)
+    .map((sample, i) => ({ ...out[i], frameMs: sample.frameMs }))
+    .slice(60);
   const mid = (xs, f) => { if (xs.length === 0) return 0; const v = xs.map(f).sort((a, b) => a - b); return v[v.length >> 1]; };
-  const wrote = out.filter((x) => x.rewrote);
-  const didnt = out.filter((x) => !x.rewrote);
+  const wrote = rows.filter((x) => x.rewrote);
+  const didnt = rows.filter((x) => !x.rewrote);
   console.log(`  重寫的那幾幀 ${wrote.length}，沒重寫的 ${didnt.length}`);
   console.log(`    重寫幀   幀 ${mid(wrote, (x) => x.frameMs).toFixed(2)} ms   其中寫矩陣本身 ${mid(wrote, (x) => x.rewriteMs).toFixed(2)} ms`);
   console.log(`    沒重寫   幀 ${mid(didnt, (x) => x.frameMs).toFixed(2)} ms`);
@@ -332,9 +368,15 @@ try {
   });
   await page.close();
 
+  // 與主掃描、其他因果測試同一套處理：錯開一格配對、丟暖機、中位數。
+  // 三個測試各用各的處理方式，本身就是把不可比的數字放在一起。
+  const rows = out
+    .slice(1)
+    .map((sample, i) => ({ ...out[i], frameMs: sample.frameMs }))
+    .slice(60);
   const mid = (xs, f) => { if (xs.length === 0) return 0; const v = xs.map(f).sort((a, b) => a - b); return v[v.length >> 1]; };
-  const did = out.filter((x) => x.churned);
-  const didnt = out.filter((x) => !x.churned);
+  const did = rows.filter((x) => x.churned);
+  const didnt = rows.filter((x) => !x.churned);
   console.log(`  走了寫入路徑的 ${did.length} 幀，沒走的 ${didnt.length} 幀`);
   console.log(`    走了   幀 ${mid(did, (x) => x.frameMs).toFixed(2)} ms   其中 writeMatrices 本身 ${mid(did, (x) => x.churnMs).toFixed(2)} ms`);
   console.log(`    沒走   幀 ${mid(didnt, (x) => x.frameMs).toFixed(2)} ms`);
@@ -351,6 +393,109 @@ try {
   );
 } catch (e) {
   console.log("因果測試二失敗：" + String(e).split(String.fromCharCode(10))[0].slice(0, 200));
+  process.exitCode = 1;
+}
+
+// ## 第三個因果測試：改 instance 的數量
+//
+// 前兩個證明了寫矩陣本身不貴。串流與它們唯一還沒對上的差別是：串流會改
+// instance 的**數量** —— 而那條路不一樣（空間格失效、區塊表截斷、
+// BatchedMesh 那側的繪製範圍改變）。
+//
+// 攤得很開的場景裡 200,000 個只有約 6,600 個看得見，所以動最後 400 個
+// 畫面完全不變 —— 變的只有那條路徑。
+try {
+  console.log("");
+  console.log('── 因果測試三：靜止的場景，交錯地改 instance 數量');
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  page.setDefaultNavigationTimeout(240000);
+  await page.goto(`${base}/?count=200000&spread=8000&orbit=200&countToggle=50&countDelta=400`, { waitUntil: "load" });
+  await page.waitForFunction(() => window.__ww?.totalFrames > 120, undefined, { timeout: 240000 });
+
+  const raw = await page.evaluate(async () => {
+    window.__ww.streamProbe.start();
+    await new Promise((resolve) => {
+      let n = 0;
+      const tick = () => (++n < 600 ? requestAnimationFrame(tick) : resolve());
+      requestAnimationFrame(tick);
+    });
+    return window.__ww.streamProbe.stop();
+  });
+  await page.close();
+
+  // 同樣要錯開一格配對，同樣丟掉暖機，同樣用中位數。
+  const rows = raw
+    .slice(1)
+    .map((sample, i) => ({ ...raw[i], frameMs: sample.frameMs }))
+    .slice(60);
+  const mid = (xs, f) => { if (xs.length === 0) return 0; const v = xs.map(f).sort((a, b) => a - b); return v[v.length >> 1]; };
+  const did = rows.filter((x) => x.countToggled);
+  const didnt = rows.filter((x) => !x.countToggled);
+  console.log(`  改了數量的 ${did.length} 幀，沒改的 ${didnt.length} 幀`);
+  console.log(`    改了   幀 ${mid(did, (x) => x.frameMs).toFixed(2)} ms   render() ${mid(did, (x) => x.renderMs).toFixed(2)} ms`);
+  console.log(`    沒改   幀 ${mid(didnt, (x) => x.frameMs).toFixed(2)} ms   render() ${mid(didnt, (x) => x.renderMs).toFixed(2)} ms`);
+  console.log(`    三角形 改了 ${Math.round(mid(did, (x) => x.triangles)).toLocaleString()}   沒改 ${Math.round(mid(didnt, (x) => x.triangles)).toLocaleString()}`);
+  console.log(`    引擎 CPU 改了 ${mid(did, (x) => x.cpuMs).toFixed(2)} ms   沒改 ${mid(didnt, (x) => x.cpuMs).toFixed(2)} ms`);
+  const delta = mid(did, (x) => x.frameMs) - mid(didnt, (x) => x.frameMs);
+  console.log(`    **多出來 ${delta.toFixed(2)} ms**`);
+  console.log(
+    delta > 3
+      ? '  → 因果成立：畫面完全沒變，只是改 instance 數量就變慢了。那就是尖峰的來源。'
+      : '  → 這條路徑也不是原因。串流與靜止場景還有別的差別沒對上。',
+  );
+} catch (e) {
+  console.log("因果測試三失敗：" + String(e).split(String.fromCharCode(10))[0].slice(0, 200));
+  process.exitCode = 1;
+}
+
+// ## 第四個因果測試：把遠景合併關掉
+//
+// 前三個都在靜止的場景上測，而靜止的場景**烘不出新的合併幾何** —— HLOD
+// 在暖機那幾十幀就烘完了，而暖機正好是被丟掉的那一段。
+//
+// 串流不一樣：相機一直走，一直有新的格子要合併，於是一直有**新的幾何**
+// 要上傳。而 Three 是在 draw 的時候才上傳的 —— 那正好落在 render() 裡面，
+// 也正好不在引擎自己的計時裡（`mergeMs` 量的是 CPU 那一半）。
+//
+// 這一條是場景層級的 A/B：同一條相機路徑，一次開 HLOD 一次關。
+try {
+  console.log("");
+  console.log('── 因果測試四：同一條串流路徑，開／關遠景合併');
+  const run = async (query, label) => {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    page.setDefaultNavigationTimeout(240000);
+    await page.goto(`${base}/${query}`, { waitUntil: "load" });
+    await page.waitForFunction(() => window.__ww?.totalFrames > 120, undefined, { timeout: 240000 });
+    const raw = await page.evaluate(async () => {
+      window.__ww.streamProbe.start();
+      await new Promise((resolve) => {
+        let n = 0;
+        const tick = () => (++n < 500 ? requestAnimationFrame(tick) : resolve());
+        requestAnimationFrame(tick);
+      });
+      return window.__ww.streamProbe.stop();
+    });
+    await page.close();
+    const rows = raw.slice(1).map((sample, i) => ({ ...raw[i], frameMs: sample.frameMs })).slice(60);
+    const f = rows.map((r) => r.frameMs).sort((a, b) => a - b);
+    const q = (x) => f[Math.min(f.length - 1, Math.floor(f.length * x))];
+    const loading = rows.filter((r) => r.cells > 0);
+    console.log(`  ${label}`);
+    console.log(`    幀 p50 ${q(0.5).toFixed(2)} ms   p95 ${q(0.95).toFixed(2)} ms   尖峰倍率 ${(q(0.95) / q(0.5)).toFixed(2)}×`);
+    console.log(`    有 cell 進來的 ${loading.length} 幀，合併的繪製 ${rows[rows.length - 1]?.merged ?? "—"}`);
+    return { p50: q(0.5), p95: q(0.95), ratio: q(0.95) / q(0.5) };
+  };
+
+  const on = await run("?stream=1&count=200000&orbit=5000", "開 HLOD");
+  const off = await run("?stream=1&count=200000&orbit=5000&hlod=0", "關 HLOD");
+  console.log(`    **尖峰倍率：開 ${on.ratio.toFixed(2)}× → 關 ${off.ratio.toFixed(2)}×**`);
+  console.log(
+    on.ratio > off.ratio * 1.4
+      ? '  → 因果成立：關掉遠景合併之後尖峰明顯變小，尖峰來自新合併幾何的上傳。'
+      : '  → 這條路徑也不是原因（或不只是它）。',
+  );
+} catch (e) {
+  console.log("因果測試四失敗：" + String(e).split(String.fromCharCode(10))[0].slice(0, 200));
   process.exitCode = 1;
 }
 

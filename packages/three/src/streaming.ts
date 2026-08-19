@@ -181,7 +181,10 @@ export class WorldStream {
    * 任何數字都是**替某一台機器調校**。
    *
    * 對的值是這台機器安靜時的幀間隔，而那只有在使用者的機器上跑起來才
-   * 量得到。取觀察到的最小值：串流忙的時候幀會變長，那些取樣不該定義基準。
+   * 量得到。
+   *
+   * 取的是最近 120 幀的 **p25**，不是最小值 —— 最小值會被單一異常的快幀
+   * 綁架，而且再也上不來。整段理由見 `observeFrame`。
    */
   private baselineMs = Infinity;
 
@@ -253,9 +256,7 @@ export class WorldStream {
     if (this.lastFrameTime !== 0) {
       const frameMs = now - this.lastFrameTime;
       if (this.fixedBudgetMs === undefined) {
-        // 基準會慢慢往上放（每幀 +0.1%），這樣機器真的變慢了（散熱降頻、
-        // 使用者開了別的東西）之後基準跟得上，不會永遠卡在開機時那一刻。
-        this.baselineMs = Math.min(this.baselineMs * 1.001, Math.max(frameMs, 1e-3));
+        this.observeFrame(Math.max(frameMs, 1e-3));
         this.streamer.setFrameBudgetMs(this.baselineMs * this.slack);
       }
       this.streamer.reportFrameMs(frameMs);
@@ -263,6 +264,48 @@ export class WorldStream {
     this.lastFrameTime = now;
     this.streamer.update(cameraX, cameraZ);
   }
+
+  /**
+   * 記一幀，並更新「這台機器的基準」。
+   *
+   * ## 為什麼不是取最小值
+   *
+   * 第一版是 `baselineMs = min(baselineMs * 1.001, frameMs)` —— 想法是「取最快
+   * 的那一幀當基準，再讓它每幀放寬 0.1%，這樣機器變慢了也跟得上」。
+   *
+   * 那個 `min` 把放寬完全吃掉了：**只要之後再出現一幀很快的，基準就被壓回去**。
+   * 而「很快的一幀」隨時會發生 —— 分頁剛載入、rAF 補送兩次、瀏覽器打嗝之後
+   * 連著兩幀。於是基準黏在那一幀上，永遠不再上來。
+   *
+   * 實測（串流、每秒 600 單位）：基準 0.74–0.86 ms，而**取樣視窗裡最快的一幀
+   * 是 5.60 ms、p50 是 6.10 ms**。預算 = 基準 × 1.5 ≈ 1.2 ms，任何真實的幀都
+   * 超過它，所以載入速率被一路砍到底、**永遠停在 1**。
+   *
+   * 那不是「自適應在保護幀率」，那是自適應**壞掉之後剛好卡在最保守的一端**。
+   * 症狀是世界填得比這台機器實際做得到的慢很多，而畫面完全正常、沒有任何錯誤
+   * ——正是最難發現的那一種。
+   *
+   * ## 為什麼是 p25，不是中位數
+   *
+   * 中位數會**自己往上飄**：載入讓幀變慢 → 中位數上升 → 預算變寬 → 載入更多。
+   * 那是一個正回饋。
+   *
+   * p25 貼近「沒在載入時的幀」（載入的幀是比較慢的那一半），又不像最小值那樣
+   * 被單一異常值綁架。視窗 120 幀 ≈ 兩秒，夠久到蓋過打嗝，夠短到跟得上降頻。
+   */
+  private observeFrame(frameMs: number): void {
+    this.frameWindow[this.frameCursor % this.frameWindow.length] = frameMs;
+    this.frameCursor++;
+    // 每 15 幀才重算一次。基準不需要每幀精確，而排序 120 個數字每幀都做是白花的。
+    if (this.frameCursor % 15 !== 0 && Number.isFinite(this.baselineMs)) return;
+    const filled = Math.min(this.frameCursor, this.frameWindow.length);
+    const sorted = Array.from(this.frameWindow.subarray(0, filled)).sort((a, b) => a - b);
+    this.baselineMs = sorted[Math.floor(filled * 0.25)] ?? sorted[0] ?? 1e-3;
+  }
+
+  /** 最近的幀間隔。基準取它的 p25 —— 見 `observeFrame`。 */
+  private readonly frameWindow = new Float64Array(120);
+  private frameCursor = 0;
 
   /** 目前用的幀預算與這台機器的基準。沒有這個就沒辦法判斷自適應有沒有生效。 */
   get budget(): { baselineMs: number; budgetMs: number; loadRate: number } {

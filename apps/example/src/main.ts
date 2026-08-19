@@ -481,6 +481,21 @@ const rewriteProbe = {
 const rewriteMatrix = new Matrix4();
 
 /**
+ * 量測用的亂數：決定性的（重跑一樣），但**不是週期性的**。
+ *
+ * 先前用 `(frame * K) % 100` 當交錯，那看起來像亂數，其實是週期 100 的線性
+ * 序列 —— 每一步固定跳同樣的量。這台機器的幀時間是雙峰的，兩個週期一對上，
+ * 量到的就是相位差而不是效果（實測：A 組與 B 組的中位數剛好是那兩個峰）。
+ *
+ * 這條坑這個 session 踩了三次，每次形式都不一樣。
+ */
+let probeSeed = 0x9e3779b9;
+function probeRandom(): number {
+  probeSeed = (Math.imul(probeSeed, 1664525) + 1013904223) >>> 0;
+  return probeSeed % 100;
+}
+
+/**
  * `?churn=P&churnCount=M`：大約 P% 的幀（交錯）走一次**真正的串流寫入路徑**。
  *
  * ## 為什麼不能用 setMatrixAt
@@ -495,6 +510,26 @@ const rewriteMatrix = new Matrix4();
  * 這裡改成呼叫 `writeMatrices`，而且寫回**一模一樣的內容**（開場抄一份留著）。
  * 畫面因此完全不變，唯一多出來的就是那條路徑本身。
  */
+/**
+ * `?countToggle=P&countDelta=N`：大約 P% 的幀（交錯）把 `count` 減掉 N。
+ *
+ * ## 這是串流與前兩個實驗唯一還沒對上的差別
+ *
+ * 前兩個實驗證明了「寫矩陣本身不貴」（`setMatrixAt` 與 `writeMatrices` 都是）。
+ * 但串流除了寫矩陣還會**改 instance 的數量** —— 而改 count 走的是另一條路：
+ * 空間格失效、區塊表截斷、BatchedMesh 那側的繪製範圍改變。
+ *
+ * 攤得很開的場景裡 200,000 個只有約 6,600 個看得見，所以動最後 400 個
+ * **畫面完全不變**（它們本來就被剔掉了）—— 變的只有那條路徑。
+ */
+const countProbe = {
+  every: Number(params.get('countToggle') ?? 0),
+  delta: Number(params.get('countDelta') ?? 400),
+  frame: 0,
+  full: 0,
+  didToggle: false,
+};
+
 const churnProbe = {
   every: Number(params.get('churn') ?? 0),
   count: Number(params.get('churnCount') ?? 400),
@@ -710,6 +745,8 @@ const streamProbe = {
     rewriteMs: number;
     churned: boolean;
     churnMs: number;
+    countToggled: boolean;
+    merged: number;
   }[],
   recording: false,
 };
@@ -805,7 +842,7 @@ const animate = (time: number): void => {
   //
   // 改成用幀號的雜湊決定寫不寫：一樣是決定性的（重跑結果一樣），但不會跟
   // 任何固定週期對上。`rewrite` 因此是**百分比**，不是週期。
-  const rewriteRoll = ((rewriteProbe.frame * 2654435761) >>> 0) % 100;
+  const rewriteRoll = probeRandom();
   if (rewriteProbe.every > 0 && rewriteRoll < rewriteProbe.every) {
     const mesh = rocks as WW.InstancedMesh;
     const start = performance.now();
@@ -822,7 +859,7 @@ const animate = (time: number): void => {
   rewriteProbe.frame++;
 
   // 真正的串流寫入路徑，交錯地跑。
-  const churnRoll = ((churnProbe.frame * 2246822519) >>> 0) % 100;
+  const churnRoll = probeRandom();
   if (churnProbe.every > 0 && churnRoll < churnProbe.every) {
     const mesh = rocks as WW.InstancedMesh;
     if (churnProbe.block === null) {
@@ -843,6 +880,16 @@ const animate = (time: number): void => {
     churnProbe.didChurn = false;
   }
   churnProbe.frame++;
+
+  // 改 count —— 交錯，而且畫面不變（動到的是本來就被剔掉的那些）。
+  if (countProbe.every > 0) {
+    const mesh = rocks as WW.InstancedMesh;
+    if (countProbe.full === 0) countProbe.full = mesh.count;
+    const roll = probeRandom();
+    countProbe.didToggle = roll < countProbe.every;
+    mesh.count = countProbe.didToggle ? Math.max(0, countProbe.full - countProbe.delta) : countProbe.full;
+    countProbe.frame++;
+  }
 
   if (streamProbe.recording) {
     // **這一幀的，不是上一幀的。** 本來寫在 animate 結尾，而取樣在那之前
@@ -873,6 +920,8 @@ const animate = (time: number): void => {
         rewriteMs: rewriteProbe.lastMs,
         churned: churnProbe.didChurn,
         churnMs: churnProbe.lastMs,
+        countToggled: countProbe.didToggle,
+        merged: st.merged,
       });
     }
     lastProbeTime = time;
@@ -1760,6 +1809,10 @@ Object.assign(window, {
               return vtScene.vt.table.residentCount;
             },
           },
+    /** 串流的自適應預算 —— 引擎有沒有已經在壓載入速率。 */
+    get budget(): unknown {
+      return world?.streaming?.budget ?? null;
+    },
     streamProbe: {
       start(): void {
         streamProbe.samples.length = 0;

@@ -239,6 +239,61 @@ describe('World.stream', () => {
     expect(stream.budget.loadRate).toBeGreaterThan(0);
   });
 
+  it('一幀特別快，不會把基準永遠壓在那裡', async () => {
+    // ## 這條是回歸測試
+    //
+    // 第一版是 `baselineMs = min(baselineMs * 1.001, frameMs)`。那個 min 把
+    // 「每幀放寬 0.1%」完全吃掉：只要之後再出現一幀很快的，基準就被壓回去。
+    // 而很快的一幀隨時會有 —— 分頁剛載入、rAF 補送兩次、打嗝之後連兩幀。
+    //
+    // 實測後果：基準 0.74–0.86 ms，而實際最快的幀是 5.60 ms、p50 是 6.10 ms。
+    // 預算 = 基準 × 1.5 ≈ 1.2 ms，任何真實的幀都超過，於是載入速率**永遠停在**
+    // **最低的 1** —— 世界填得比機器做得到的慢很多，而畫面完全正常。
+    //
+    // 舊的斷言只檢查 `baselineMs > 0`，所以它驗不到這件事。
+    const { world } = makeWorld(2);
+    const stream = world.streaming!;
+
+    let t = 0;
+    const advance = (ms: number): void => {
+      t += ms;
+      stream.update(0, 0, t);
+    };
+
+    for (let i = 0; i < 60; i++) advance(10);
+    const before = stream.budget.baselineMs;
+    expect(before).toBeGreaterThan(8);
+    expect(before).toBeLessThan(12);
+
+    // 一幀異常地快。
+    advance(0.5);
+    for (let i = 0; i < 60; i++) advance(10);
+
+    // 基準要還在 10 附近，而不是被那一幀拉到 0.5。
+    expect(stream.budget.baselineMs).toBeGreaterThan(8);
+    expect(stream.budget.baselineMs).toBeLessThan(12);
+  });
+
+  it('機器真的變慢了，基準跟得上 —— 那才是自適應', async () => {
+    // 原本那句註解說的就是這件事（散熱降頻、使用者開了別的東西），但 min
+    // 的寫法做不到：基準只會被壓低，不會上來。
+    const { world } = makeWorld(2);
+    const stream = world.streaming!;
+
+    let t = 0;
+    const advance = (ms: number): void => {
+      t += ms;
+      stream.update(0, 0, t);
+    };
+
+    for (let i = 0; i < 130; i++) advance(5);
+    expect(stream.budget.baselineMs).toBeLessThan(7);
+
+    // 機器變慢一倍，而且是持續的。
+    for (let i = 0; i < 130; i++) advance(20);
+    expect(stream.budget.baselineMs).toBeGreaterThan(15);
+  });
+
   it('明確傳了 frameBudgetMs 就用那個，不再自己量', async () => {
     const scene = new Scene();
     const rocks = mesh();
