@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { chromium } from 'playwright';
+import { listenSafe } from '../lib/listen-safe.mjs';
 
 /**
  * 「大地表」與「一個極細物件」那兩條軸：**分塊值多少**。
@@ -138,7 +139,7 @@ async function serve(dir) {
       () => res.writeHead(404).end(),
     );
   });
-  await new Promise((resolve) => server.listen(0, resolve));
+  await listenSafe(server);
   return { url: `http://localhost:${server.address().port}/`, close: () => server.close() };
 }
 

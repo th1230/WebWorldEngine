@@ -12,6 +12,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { chromium } from 'playwright';
+import { listenSafe } from '../lib/listen-safe.mjs';
 
 const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const DIST = join(root, 'apps/example/dist');
@@ -35,7 +36,7 @@ const server = createServer((req, res) => {
     () => res.writeHead(404).end(),
   );
 });
-await new Promise((r) => server.listen(0, r));
+await listenSafe(server);
 
 const COUNT = 20000;
 const DISTANCES = [300, 700, 1500, 3000, 6000];
@@ -124,6 +125,12 @@ await browser.close();
 server.close();
 if (failed > 0) {
   console.log(`Impostor 關卡：${failed} 項沒過`);
+  process.exit(1);
+}
+// 上面 catch 到例外的話 failed 還是 0 —— 少了這一句就會在整關掛掉之後
+// 印「全過」。而印出來的字才是人會相信的那個。
+if (process.exitCode) {
+  console.log('Impostor 關卡：掛了，沒跑完');
   process.exit(1);
 }
 console.log('Impostor 關卡：全過');

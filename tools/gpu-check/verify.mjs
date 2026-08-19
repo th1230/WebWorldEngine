@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { chromium } from 'playwright';
+import { listenSafe } from '../lib/listen-safe.mjs';
 
 /**
  * 旋鈕到底有沒有省到 GPU —— **量它，而且擋它**。
@@ -211,7 +212,7 @@ async function serve(dir) {
       () => res.writeHead(404).end(),
     );
   });
-  await new Promise((resolve) => server.listen(0, resolve));
+  await listenSafe(server);
   return { url: `http://localhost:${server.address().port}/`, close: () => server.close() };
 }
 

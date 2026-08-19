@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { listenSafe } from '../lib/listen-safe.mjs';
 
 /**
  * 把每一個會發布的套件打包起來，裝進一個**乾淨的專案**，然後真的用一次。
@@ -242,7 +243,7 @@ Promise.all([mesh.lodReady, asset]).then(
       () => res.writeHead(404).end(),
     );
   });
-  await new Promise((resolve) => server.listen(0, resolve));
+  await listenSafe(server);
   const port = server.address().port;
 
   // 與 benchmark runner 同一條退路：先試系統 Chrome，再試 Playwright 自帶的。

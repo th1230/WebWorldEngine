@@ -36,6 +36,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { chromium } from 'playwright';
+import { listenSafe } from '../lib/listen-safe.mjs';
 
 const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const DIST = join(root, 'apps/example/dist');
@@ -60,7 +61,7 @@ const server = createServer((req, res) => {
     () => res.writeHead(404).end(),
   );
 });
-await new Promise((r) => server.listen(0, r));
+await listenSafe(server);
 
 const SEGMENTS = 1200;
 const CONFIGS = [

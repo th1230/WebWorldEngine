@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { chromium } from 'playwright';
+import { listenSafe } from '../lib/listen-safe.mjs';
 
 /**
  * 接長鏈之後多出來的那 0.02%，是**抗鋸齒**還是**真的位移超過 2 像素**？
@@ -119,7 +120,7 @@ async function serve(dir) {
       () => res.writeHead(404).end(),
     );
   });
-  await new Promise((resolve) => server.listen(0, resolve));
+  await listenSafe(server);
   return { url: `http://localhost:${server.address().port}/`, close: () => server.close() };
 }
 

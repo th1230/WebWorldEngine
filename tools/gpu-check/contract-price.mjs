@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { chromium } from 'playwright';
+import { listenSafe } from '../lib/listen-safe.mjs';
 
 /**
  * 品質契約每嚴一格，要付多少 GPU 時間。
@@ -47,7 +48,7 @@ const server = createServer((req, res) => {
     res.end(b);
   }, () => res.writeHead(404).end());
 });
-await new Promise((r) => server.listen(0, r));
+await listenSafe(server);
 const url = `http://localhost:${server.address().port}/`;
 const browser = await chromium.launch({ channel: 'chrome' });
 const BASE = '?cooked=1&count=20000&hlodBudgetMB=512';
