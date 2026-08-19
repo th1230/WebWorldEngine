@@ -45,7 +45,8 @@
     "contact-scale": "node tools/gpu-check/contact-scale.mjs",
     "ssgi-check": "node tools/gpu-check/ssgi.mjs 40",
     "impostor-check": "node tools/gpu-check/impostor.mjs",
-    "frame-bound": "node tools/gpu-check/frame-bound.mjs"
+    "frame-bound": "node tools/gpu-check/frame-bound.mjs",
+    "stream-hitch": "node tools/gpu-check/stream-hitch.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -621,13 +621,56 @@ const scattered = SCATTER
       ])
   : null;
 
+/**
+ * 串流時那幾幀為什麼比較慢 —— 量測用（tools/gpu-check/stream-hitch.mjs）。
+ *
+ * p95 22.4 ms 對 p50 9.6 ms 這個差距先前被記成「載入本身（建幾何、上傳）」
+ * 然後就擱著了。而「建幾何」與「上傳」是兩件完全不同的事，解法也不同 ——
+ * 前者要分攤，後者要換上傳方式。分不開就只能猜，所以這裡把回呼自己的時間
+ * 與整幀的時間分開記。
+ */
+const streamProbe = {
+  loadMs: 0,
+  renderMs: 0,
+  tickMs: 0,
+  placed: 0,
+  cells: 0,
+  samples: [] as {
+    frameMs: number;
+    loadMs: number;
+    placed: number;
+    cells: number;
+    cpuMs: number;
+    hlodBuild: number;
+    hlodMerge: number;
+    hlodUpload: number;
+    grid: number;
+    bake: number;
+    renderMs: number;
+    tickMs: number;
+    visible: number;
+    mergedInstances: number;
+    triangles: number;
+  }[],
+  recording: false,
+};
+
 if (useStream && world !== null) {
   world.stream({
     cellSize: CELL_SIZE,
     radius: 600,
-    load(cx, cz, place) {
+    load(cx, cz, rawPlace) {
+      // 回呼自己花了多久（產生矩陣 + 呼叫 place），與這一幀總共花多久
+      // 是兩個數字。差額才是下游（寫入批次、上傳、重建）的成本。
+      const probeStart = performance.now();
+      streamProbe.cells++;
+      const place: typeof rawPlace = (mesh, m) => {
+        streamProbe.placed++;
+        return rawPlace(mesh, m);
+      };
       if (scattered !== null) {
         scattered(cx, cz, place, CELL_SIZE);
+        streamProbe.loadMs += performance.now() - probeStart;
         return;
       }
       // 決定性的：座標算出種子，所以走出去再走回來是同一批石頭。
@@ -646,6 +689,7 @@ if (useStream && world !== null) {
         // 刻意重複使用同一個 Matrix4 —— 那是 Three.js 的慣例，介面必須撐得住。
         place(rocks as WW.InstancedMesh, matrix.compose(position, quaternion, scale.setScalar(size)));
       }
+      streamProbe.loadMs += performance.now() - probeStart;
     },
   });
 }
@@ -662,14 +706,61 @@ addEventListener('resize', () => {
   composer?.setSize(innerWidth, innerHeight);
 });
 
+let lastProbeTime = 0;
 const animate = (time: number): void => {
+  // ## 整個 rAF 回呼花多久
+  //
+  // 幀時間扣掉這個，剩下的是**瀏覽器把我們擋住的時間** —— GC、合成、
+  // 驅動的背壓都在那裡。分不出這一段就會把「瀏覽器在忙」誤讀成
+  // 「我們的程式碼慢」，然後去優化一個沒有問題的地方。
+  const tickStart = streamProbe.recording ? performance.now() : 0;
   const t = time / 1000;
   const radius = ORBIT;
   camera.position.set(Math.cos(t * 0.12) * radius, 14 * SIZE, Math.sin(t * 0.12) * radius);
   camera.lookAt(Math.cos(t * 0.12 + 1.2) * (radius * 0.23), 8 * SIZE, Math.sin(t * 0.12 + 1.2) * (radius * 0.23));
   walker.position.set(camera.position.x * 0.9, 1.4, camera.position.z * 0.9);
 
+  // ## 送指令的時間，不是 GPU 的時間
+  //
+  // 這兩個要分開：主執行緒**卡在上傳**的話，這個數字會跟著尖峰一起漲；
+  // 而如果它很短但幀很長，那就是 GPU 那邊比較忙（畫的東西變多了），
+  // 那是另一回事，也不該用「分攤上傳」去解。
+  const renderStart = streamProbe.recording ? performance.now() : 0;
   renderFrame();
+  if (streamProbe.recording) streamProbe.renderMs = performance.now() - renderStart;
+
+  if (streamProbe.recording) {
+    // **這一幀的，不是上一幀的。** 本來寫在 animate 結尾，而取樣在那之前
+    // ——於是每一筆記到的都是前一幀的值。症狀很明顯卻很容易看漏：renderMs
+    // 大於 tickMs，而後者本來就包著前者。
+    streamProbe.tickMs = performance.now() - tickStart;
+    // 幀時間用 rAF 的間隔 —— 量 renderFrame() 只量到送指令，那個坑踩過了。
+    if (lastProbeTime > 0) {
+      // 引擎自己的分項照抄一份 —— 尖峰跟哪一項一起動，比猜快得多。
+      const st = (rocks as WW.InstancedMesh).stats;
+      streamProbe.samples.push({
+        frameMs: time - lastProbeTime,
+        loadMs: streamProbe.loadMs,
+        placed: streamProbe.placed,
+        cells: streamProbe.cells,
+        cpuMs: st.cpuMs,
+        hlodBuild: st.hlod.buildMs,
+        hlodMerge: st.hlod.mergeMs,
+        hlodUpload: st.hlod.uploadMs,
+        grid: st.cpuParts.grid,
+        bake: st.cpuParts.bake,
+        renderMs: streamProbe.renderMs,
+        tickMs: streamProbe.tickMs,
+        visible: st.visible,
+        mergedInstances: st.mergedInstances,
+        triangles: renderer.info.render.triangles,
+      });
+    }
+    lastProbeTime = time;
+    streamProbe.loadMs = 0;
+    streamProbe.placed = 0;
+    streamProbe.cells = 0;
+  }
 
   // 滑動視窗，不是開機以來的平均 —— 平均會把切換場景前後的兩段混在一起。
   windowFrames++;
@@ -1500,6 +1591,20 @@ if (enhanced) void measureLodBlocking();
 
 Object.assign(window, {
   __ww: {
+    streamProbe: {
+      start(): void {
+        streamProbe.samples.length = 0;
+        lastProbeTime = 0;
+        streamProbe.loadMs = 0;
+        streamProbe.placed = 0;
+        streamProbe.cells = 0;
+        streamProbe.recording = true;
+      },
+      stop(): typeof streamProbe.samples {
+        streamProbe.recording = false;
+        return streamProbe.samples.slice();
+      },
+    },
     physics: (): unknown => physicsScene?.stats() ?? null,
     bigMesh: bigMesh === null ? null : { triangles: bigMesh.triangles, pieces: bigMesh.pieces },
     impostor:
