@@ -89,6 +89,9 @@ export class OriginRebase {
   readonly thresholdSq: number;
   private readonly onRebase: ((offset: Vector3) => void) | undefined;
   private _count = 0;
+  /** 連續觸發了幾幀。見 `update` 裡那段警告。 */
+  private streak = 0;
+  private warned = false;
 
   constructor(options: OriginRebaseOptions = {}) {
     this.threshold = options.threshold ?? 4096;
@@ -126,7 +129,26 @@ export class OriginRebase {
    */
   update(camera: Camera): boolean {
     const at = camera.position;
-    if (at.lengthSq() < this.thresholdSq) return false;
+    // ## 只看水平距離，而且只搬水平
+    //
+    // 「大世界」大的是水平方向 —— 垂直再怎麼樣也就幾公里，float32 在那個
+    // 範圍還很精確。搬 Y 沒有好處，而且**會主動壞事**：
+    //
+    // 相機高度通常是一個固定值（離地多高），而那個值是絕對的：應用程式
+    // 每幀把它設回 14，不會因為世界搬過就跟著改。
+    //
+    // 把 Y 也搬的話，每次重定位就把**整個世界往下推一個相機高度**，而相機
+    // 自己被歸零到 y = 0。下一幀高度又被設回 14，世界卻已經沉下去了 —— 而
+    // 且每次重定位再沉一次。實測畫面上只剩地面那 2 個三角形。
+    //
+    // 水平那兩軸沒有這個問題，因為相機**真的**在水平方向移動，搬完之後
+    // 應用程式算出來的新位置本來就該在原點附近（減掉 origin 之後）。
+    const horizontalSq = at.x * at.x + at.z * at.z;
+    if (horizontalSq < this.thresholdSq) {
+      // 沒觸發就歸零 —— 偶爾跨過門檻是正常的，**連續**才是病。
+      this.streak = 0;
+      return false;
+    }
 
     // ## 平移量取整到 1 單位，不是直接用相機位置
     //
@@ -136,7 +158,7 @@ export class OriginRebase {
     //
     // 取整之後每一次平移都是**可以被 float32 精確表示的整數**，所以
     // `origin` 是精確的，累積多少次都不會漂。
-    this.offset.set(-Math.round(at.x), -Math.round(at.y), -Math.round(at.z));
+    this.offset.set(-Math.round(at.x), 0, -Math.round(at.z));
     this._origin.sub(this.offset);
 
     for (const target of this.targets) target.translateInstances(this.offset);
@@ -145,6 +167,30 @@ export class OriginRebase {
 
     this._count++;
     this.onRebase?.(this.offset);
+
+    // ## 連續每幀都在重定位 = 呼叫端的相機是用絕對座標算的
+    //
+    // 重定位把世界與相機一起搬回原點附近，所以**下一幀相機應該還在原點
+    // 附近**。除非呼叫端每幀從一條絕對路徑重設 `camera.position` —— 那樣
+    // 它會立刻跳回遠處，而世界已經被搬走了。
+    //
+    // 於是世界每幀再往外飄一個 offset，幾幀之後畫面上什麼都不剩。實測就是
+    // 這樣：**0 次繪製、0 個三角形、而且沒有任何錯誤**。
+    //
+    // 這個形態偵測得出來（連續觸發），而症狀（空畫面）完全看不出原因。
+    this.streak++;
+    if (this.streak >= 3 && !this.warned) {
+      this.warned = true;
+      console.warn(
+        [
+          'WW: 原點重定位連續每幀都在觸發，世界會一直往外飄，最後畫面上什麼都不剩。',
+          '幾乎可以確定是相機每幀被設回一個**絕對**座標（例如照時間算的軌道路徑）。',
+          '相機路徑要減掉目前的原點：',
+          '  camera.position.set(x - world.origin.x, y, z - world.origin.z)',
+          '（origin 記得世界座標，所以「相機在世界的哪裡」還是問得出來。）',
+        ].join('\n'),
+      );
+    }
     return true;
   }
 }

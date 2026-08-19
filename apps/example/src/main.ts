@@ -1,5 +1,6 @@
 import * as WW from '@webworld/three';
 import { makeSkinnedField, makeSkinnedRig } from './skinned.ts';
+import { makeWaterScene } from './water-scene.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -77,6 +78,18 @@ const EXTEND_LOD = params.get('extendLod') === '1';
 const SKINNED = params.has('skinned') ? Number(params.get('skinned')) : 0;
 /** `?vat=N` 同樣的 rig，但烘成貼圖用 `WW.AnimatedInstancedMesh` 畫。 */
 const VAT = params.has('vat') ? Number(params.get('vat')) : 0;
+/**
+ * `?rebase=N` 開原點重定位，門檻 N 單位。
+ *
+ * 這個開關存在的理由是它**從來沒有真的跑過**：單元測試驗得了「矩陣被平移
+ * 了」，驗不了「平移之後畫面還是對的」。而它會重寫所有 instance 的矩陣、
+ * 搬相機、搬遠景合併的分組中心 —— 任何一個漏掉都是畫面出事而不是報錯。
+ */
+const REBASE = params.has('rebase') ? Number(params.get('rebase')) : 0;
+/** `?water=1` 畫一片會動的水，並讓一批球浮在上面。 */
+const WATER = params.get('water') === '1';
+/** `?scatter=1` 用規則式擺放代替亂數灑點。 */
+const SCATTER = params.get('scatter') === '1';
 /** `?vatLod=0` 關掉 VAT 那條路的 LOD —— 要與蒙皮基準比同樣的三角形數時用。 */
 const VAT_LOD = params.get('vatLod') !== '0';
 /**
@@ -381,6 +394,29 @@ async function loadSkinnedGlb(name: string): Promise<{ mesh: THREE.SkinnedMesh; 
 
 const loadedRig = GLB !== null && VAT > 0 ? await loadSkinnedGlb(GLB) : null;
 
+const waterScene = WATER ? makeWaterScene(SPREAD * 0.9, 40) : null;
+if (waterScene !== null) {
+  scene.add(waterScene.root);
+  rocks.visible = false;
+}
+
+/**
+ * 原點重定位。**它會重寫所有 instance 的矩陣**，所以自己的東西也要跟著搬
+ * —— 這裡示範的就是那一行。
+ */
+const rebase =
+  REBASE > 0
+    ? WW.worldFor(scene).rebaseOrigin({
+        threshold: REBASE,
+        onRebase(offset) {
+          // 光源、地面、水面：套件不碰使用者的 Object3D，所以自己搬。
+          WW.translateObject(sun, offset);
+          WW.translateObject(ground, offset);
+          if (waterScene !== null) WW.translateObject(waterScene.root, offset);
+        },
+      })
+    : null;
+
 const vatField = (() => {
   if (VAT <= 0) return null;
   // 與 `?skinned=N` 用同一根 rig —— 兩條路比的必須是同一個東西。
@@ -474,11 +510,35 @@ const world = enhanced ? WW.worldFor(scene) : null;
 const CELL_SIZE = 120;
 const PER_CELL = 400;
 
+/**
+ * `?scatter=1` 改用規則式擺放。
+ *
+ * 手寫 `load` 是「這一格有幾個、各在哪」都自己算；`WW.scatter` 是宣告
+ * 「密度多少、朝向怎麼給、縮放範圍多大」，決定性由它保證。
+ *
+ * 接在同一個 `stream` 上，所以兩種寫法**產出的東西是同一種** —— 那才
+ * 比得出差別。
+ */
+const scattered = SCATTER
+  && enhanced
+    ? WW.scatter([
+        {
+          mesh: rocks as WW.InstancedMesh,
+          density: PER_CELL / (CELL_SIZE * CELL_SIZE),
+          scale: [0.6, 3],
+        },
+      ])
+  : null;
+
 if (useStream && world !== null) {
   world.stream({
     cellSize: CELL_SIZE,
     radius: 600,
     load(cx, cz, place) {
+      if (scattered !== null) {
+        scattered(cx, cz, place, CELL_SIZE);
+        return;
+      }
       // 決定性的：座標算出種子，所以走出去再走回來是同一批石頭。
       // 不決定性的內容會讓「回頭發現世界變了」，而那種 bug 在巡遊測試裡
       // 表現為「記憶體沒漏但畫面對不上」。
@@ -602,7 +662,10 @@ function updateHud(): void {
  * 沒辦法靠動畫迴圈 —— 必須能自己推一幀。這也是「畫進使用者的 scene」
  * 這個決定的附帶好處：從外面拿到 `renderer` 就能完整重現一幀。
  */
+let lastT = 0;
+
 function step(t = 0): void {
+  lastT = t;
   // 開串流的話走直線遠離原點 —— 繞圈永遠只碰到同一批 cell，量不出
   // 「一直載入一直卸載」會不會漏。
   if (useStream) {
@@ -619,8 +682,25 @@ function step(t = 0): void {
     camera.lookAt(0, 10, 0);
   } else {
     const radius = ORBIT;
-    camera.position.set(Math.cos(t * 0.12) * radius, 14 * SIZE, Math.sin(t * 0.12) * radius);
-    camera.lookAt(Math.cos(t * 0.12 + 1.2) * (radius * 0.23), 8 * SIZE, Math.sin(t * 0.12 + 1.2) * (radius * 0.23));
+    // ## 相機路徑要減掉原點
+    //
+    // 開了重定位之後世界會被搬回相機腳下，而這條軌道是用**絕對**座標算的
+    // ——不減掉原點的話相機每幀跳回遠處，世界又被搬走一次，於是它每幀往外
+    // 飄一個 offset。實測：0 次繪製、0 個三角形，**而且沒有任何錯誤**。
+    //
+    // 這是使用重定位時唯一要改的一行，套件也會在連續觸發時警告。
+    const ox = rebase === null ? 0 : rebase.origin.x;
+    const oz = rebase === null ? 0 : rebase.origin.z;
+    camera.position.set(
+      Math.cos(t * 0.12) * radius - ox,
+      14 * SIZE,
+      Math.sin(t * 0.12) * radius - oz,
+    );
+    camera.lookAt(
+      Math.cos(t * 0.12 + 1.2) * (radius * 0.23) - ox,
+      8 * SIZE,
+      Math.sin(t * 0.12 + 1.2) * (radius * 0.23) - oz,
+    );
   }
   // 骨頭要真的動 —— 姿勢不變的話量到的不是動畫的成本。
   skinnedField?.update(t);
@@ -639,6 +719,9 @@ function renderFrame(): void {
   // CSM 的每一盞光都跟著相機的視錐走，所以每幀都要更新一次。忘了的話
   // 陰影會留在開場那一幀的位置 —— 相機走遠之後整片陰影就不見了。
   csm?.update();
+  waterScene?.update(lastT);
+  // 相機走遠了就把世界搬回它腳下。平常這裡只是一次長度比較。
+  if (rebase !== null) WW.worldFor(scene).updateOrigin(camera);
   if (composer !== null) composer.render();
   else renderer.render(scene, camera);
 

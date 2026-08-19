@@ -207,3 +207,35 @@ describe('大世界精度的另外一半：內容寫進來的那一刻', () => {
     world.stopStream();
   });
 });
+
+describe('只搬水平 —— 垂直搬會把世界推到看不見', () => {
+  it('origin.y 永遠是 0，相機高度不會被歸零', () => {
+    // 相機高度通常是絕對的（離地多高），應用程式每幀設回同一個值。
+    // 連 Y 一起搬的話，每次重定位就把整個世界往下推一個相機高度，而下一幀
+    // 高度又被設回去 —— 世界越沉越深。
+    //
+    // 實測（`?rebase=200`）畫面上只剩地面那 2 個三角形，而且沒有任何錯誤。
+    const mesh = new InstancedMesh(new BoxGeometry(1, 1, 1), material(), 2, { autoLod: false });
+    mesh.setMatrixAt(0, new Matrix4().makeTranslation(0, 0, 0));
+
+    const rebase = new OriginRebase({ threshold: 100 });
+    rebase.add(mesh);
+    const camera = new PerspectiveCamera();
+    camera.position.set(500, 14, 500);
+
+    expect(rebase.update(camera)).toBe(true);
+    expect(rebase.origin.y).toBe(0);
+    // 高度原封不動 —— 世界沒有被往下推。
+    expect(camera.position.y).toBe(14);
+    // 水平則搬回原點附近。
+    expect(Math.hypot(camera.position.x, camera.position.z)).toBeLessThan(1);
+  });
+
+  it('高度再大也不會自己觸發重定位', () => {
+    // 門檻看的是水平距離。一台拉得很高的相機不該讓整個世界被搬動。
+    const rebase = new OriginRebase({ threshold: 1000 });
+    const camera = new PerspectiveCamera();
+    camera.position.set(0, 50_000, 0);
+    expect(rebase.update(camera)).toBe(false);
+  });
+});
