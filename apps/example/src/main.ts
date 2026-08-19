@@ -2,6 +2,7 @@ import * as WW from '@webworld/three';
 import { makeSkinnedField, makeSkinnedRig } from './skinned.ts';
 import { makeWaterScene } from './water-scene.ts';
 import { makePhysicsScene, type PhysicsScene } from './physics-scene.ts';
+import { makeGiScene, type GiScene } from './gi-scene.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -91,6 +92,8 @@ const REBASE = params.has('rebase') ? Number(params.get('rebase')) : 0;
 const WATER = params.get('water') === '1';
 /** `?physics=1` 有碰撞的地表 + 會掉會浮的箱子（求解器用 Rapier）。 */
 const PHYSICS = params.get('physics') === '1';
+/** `?gi=1` 紅房間 + 白箱子，用來證明間接光真的是反彈來的。 */
+const GI = params.get('gi') === '1';
 /** `?scatter=1` 用規則式擺放代替亂數灑點。 */
 const SCATTER = params.get('scatter') === '1';
 /** `?vatLod=0` 關掉 VAT 那條路的 LOD —— 要與蒙皮基準比同樣的三角形數時用。 */
@@ -403,6 +406,19 @@ if (physicsScene !== null) {
   rocks.visible = false;
 }
 
+const giScene: GiScene | null = GI ? makeGiScene() : null;
+if (giScene !== null) {
+  scene.add(giScene.root);
+  rocks.visible = false;
+  // 間接光的證明要求場景裡**沒有其他環境光源** —— 有的話箱子的背面本來
+  // 就是亮的，那就證明不了光是從紅牆反彈過來的。
+  for (const child of [...scene.children]) {
+    if (child !== giScene.root && (child as THREE.Light).isLight === true) scene.remove(child);
+  }
+  scene.background = new THREE.Color(0x000000);
+  scene.environment = null;
+}
+
 const waterScene = WATER ? makeWaterScene(SPREAD * 0.9, 40) : null;
 if (waterScene !== null) {
   scene.add(waterScene.root);
@@ -692,6 +708,11 @@ function step(t = 0): void {
     // 所以相機壓低、看向遠方 —— 腳下清清楚楚、地平線那端只有幾個像素。
     camera.position.set(Math.cos(t * 0.12) * 900, 40, Math.sin(t * 0.12) * 900);
     camera.lookAt(0, 10, 0);
+  } else if (giScene !== null) {
+    // 固定機位，而且**看得到箱子的背光面**（朝 −x／−z 那兩面）—— 量的就是
+    // 那裡有沒有沾到紅色。會動的相機會讓每次量到的像素都不一樣。
+    camera.position.set(-34, 16, -34);
+    camera.lookAt(0, 12, 0);
   } else {
     const radius = ORBIT;
     // ## 相機路徑要減掉原點
@@ -1300,6 +1321,40 @@ if (enhanced) void measureLodBlocking();
 Object.assign(window, {
   __ww: {
     physics: (): unknown => physicsScene?.stats() ?? null,
+    gi:
+      giScene === null
+        ? null
+        : {
+            stats: () => giScene.stats(),
+            bake: () => giScene.bake(renderer, scene),
+            setEnabled: (on: boolean) => giScene.setEnabled(on),
+            /**
+             * 量畫面上一塊區域的平均顏色。
+             *
+             * 從 `renderer.domElement` 讀，而不是自己再畫一次 —— 讀的必須是
+             * 真正送到螢幕上的那一份像素，中間每一步（色調對應、後製、
+             * sRGB 轉換）都算數。
+             */
+            sample: (x: number, y: number, w: number, h: number) => {
+              const canvas = renderer.domElement;
+              const flat = document.createElement('canvas');
+              flat.width = canvas.width;
+              flat.height = canvas.height;
+              const ctx = flat.getContext('2d')!;
+              ctx.drawImage(canvas, 0, 0);
+              const data = ctx.getImageData(x, y, w, h).data;
+              let r = 0;
+              let g = 0;
+              let b = 0;
+              for (let i = 0; i < data.length; i += 4) {
+                r += data[i]!;
+                g += data[i + 1]!;
+                b += data[i + 2]!;
+              }
+              const n = data.length / 4;
+              return { r: r / n, g: g / n, b: b / n, pixels: n };
+            },
+          },
     renderer,
     scene,
     camera,

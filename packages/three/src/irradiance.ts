@@ -96,21 +96,31 @@ export class IrradianceVolume {
   readonly size: Vector3;
   readonly resolution: readonly [number, number, number];
   readonly probeCount: number;
-  intensity: number;
 
   /** 每顆探針 4 個係數 × RGB，攤平。 */
   private readonly sh: Float32Array;
-  private readonly textures: Data3DTexture[] = [];
+  private readonly _textures: Data3DTexture[] = [];
+  /** node 材質那條路的 intensity uniform，跟著一起改。 */
+  private readonly _nodeIntensity = new Set<{ value: number }>();
   private readonly data: Uint16Array[] = [];
   private _baked = 0;
   private dirty = true;
+  /**
+   * uniform 物件**建一次就不再換**。
+   *
+   * `onBeforeCompile` 只在編譯時跑一次，它把這些物件塞進 shader 的 uniforms。
+   * 之後要改的必須是**同一個物件的 `.value`** —— 每次回傳一份新的話，接上去
+   * 之後改 `intensity` 完全沒有反應，而且不會報錯。
+   *
+   * 這個坑差一點就踩到：A/B 比較正是靠改 `intensity` 做的，而它會靜靜地
+   * 兩邊都量到同一個值。
+   */
+  private readonly _uniforms: Record<string, { value: unknown }>;
 
   constructor(options: IrradianceVolumeOptions) {
     this.min = options.min.clone();
     this.size = options.size.clone();
     this.resolution = [...options.resolution];
-    this.intensity = options.intensity ?? 1;
-
     const [nx, ny, nz] = this.resolution;
     if (nx < 2 || ny < 2 || nz < 2) {
       // 任何一軸只有一層的話三線性內插在那個方向退化成常數，而症狀是
@@ -133,8 +143,55 @@ export class IrradianceVolume {
       texture.wrapR = ClampToEdgeWrapping;
       texture.needsUpdate = true;
       this.data.push(data);
-      this.textures.push(texture);
+      this._textures.push(texture);
     }
+
+    this._uniforms = {
+      wwIrrSH0: { value: this._textures[0] },
+      wwIrrSH1: { value: this._textures[1] },
+      wwIrrSH2: { value: this._textures[2] },
+      wwIrrSH3: { value: this._textures[3] },
+      wwIrrMin: { value: this.min },
+      wwIrrInvSize: { value: new Vector3(1 / this.size.x, 1 / this.size.y, 1 / this.size.z) },
+      wwIrrIntensity: { value: options.intensity ?? 1 },
+    };
+  }
+
+  /**
+   * 整體強度。改它會**立刻**反映到已經接上的材質（見 `_uniforms`）。
+   *
+   * 設成 0 就等於關掉間接光，而且走的還是**同一條著色器路徑** —— A/B 比較
+   * 要用這個。換材質做 A/B 比的是兩個不同的著色器，那個比較說明不了間接光。
+   */
+  get intensity(): number {
+    return this._uniforms.wwIrrIntensity!.value as number;
+  }
+
+  set intensity(value: number) {
+    this._uniforms.wwIrrIntensity!.value = value;
+    // node 材質那條路有自己的 uniform 節點，不共用這個物件。兩邊一起改，
+    // 否則在 WebGPU 上調 intensity 完全沒反應 —— 而那不會報錯。
+    for (const node of this._nodeIntensity) node.value = value;
+  }
+
+  /**
+   * 探針貼圖。node 材質那條路要直接拿去做 `texture3D`。
+   *
+   * 開出來是因為兩條路共用的必須是**同一批貼圖** —— 各自持有一份的話烘好的
+   * 資料只會進到其中一邊，而症狀是「其中一個後端沒有間接光」。
+   */
+  get textures(): readonly Data3DTexture[] {
+    return this._textures;
+  }
+
+  /**
+   * 讓 node 那條路的 intensity uniform 跟著 `volume.intensity` 走。
+   *
+   * 由 `applyIrradianceNode` 呼叫，一般不必自己碰。
+   */
+  attachNodeIntensity(node: { value: number }): void {
+    this._nodeIntensity.add(node);
+    node.value = this.intensity;
   }
 
   /** 已經烘好幾顆。等於 `probeCount` 就是烘完了。 */
@@ -193,7 +250,7 @@ export class IrradianceVolume {
   /** 把改動推上 GPU。改了探針而沒有推的症狀是畫面停在上一版。 */
   upload(): void {
     if (!this.dirty) return;
-    for (const texture of this.textures) texture.needsUpdate = true;
+    for (const texture of this._textures) texture.needsUpdate = true;
     this.dirty = false;
   }
 
@@ -201,17 +258,7 @@ export class IrradianceVolume {
    * 給 shader 的 uniform。`applyIrradiance` 會用它，一般不必自己碰。
    */
   uniforms(): Record<string, { value: unknown }> {
-    return {
-      wwIrrSH0: { value: this.textures[0] },
-      wwIrrSH1: { value: this.textures[1] },
-      wwIrrSH2: { value: this.textures[2] },
-      wwIrrSH3: { value: this.textures[3] },
-      wwIrrMin: { value: this.min },
-      wwIrrInvSize: {
-        value: new Vector3(1 / this.size.x, 1 / this.size.y, 1 / this.size.z),
-      },
-      wwIrrIntensity: { value: this.intensity },
-    };
+    return this._uniforms;
   }
 
   /**
@@ -260,7 +307,7 @@ export class IrradianceVolume {
   }
 
   dispose(): void {
-    for (const texture of this.textures) texture.dispose();
+    for (const texture of this._textures) texture.dispose();
   }
 }
 
@@ -276,14 +323,22 @@ function clamp01(v: number): number {
  */
 function evaluateSH(sh: ArrayLike<number>, normal: Vector3): Vector3 {
   const { x, y, z } = normal;
+  // ## 負值要夾掉，而且要**跟 shader 夾在同一個地方**
+  //
+  // L1 的振幅大過 L0 的時候，背光那一面會算出負的輻照度 —— 那沒有物理意義，
+  // 而畫面上它是一個把周圍光吃掉的黑洞。
+  //
+  // 這一份與 shader 裡的 `max( result, vec3( 0.0 ) )` 對應。少了它兩邊會
+  // 在「哪些位置是負的」這件事上分岔，而這一份的存在理由就是當 shader 的
+  // 對照組 —— 對不上的話它反而會替錯的值背書。
   return new Vector3(
-    sh[0]! * 0.886227 + 1.023328 * (sh[3]! * y + sh[6]! * z + sh[9]! * x),
-    sh[1]! * 0.886227 + 1.023328 * (sh[4]! * y + sh[7]! * z + sh[10]! * x),
-    sh[2]! * 0.886227 + 1.023328 * (sh[5]! * y + sh[8]! * z + sh[11]! * x),
+    Math.max(sh[0]! * 0.886227 + 1.023328 * (sh[3]! * y + sh[6]! * z + sh[9]! * x), 0),
+    Math.max(sh[1]! * 0.886227 + 1.023328 * (sh[4]! * y + sh[7]! * z + sh[10]! * x), 0),
+    Math.max(sh[2]! * 0.886227 + 1.023328 * (sh[5]! * y + sh[8]! * z + sh[11]! * x), 0),
   );
 }
 
-export interface BakeOptions {
+export interface IrradianceBakeOptions {
   /**
    * 這一次呼叫最多花多久，毫秒。預設 8。
    *
@@ -333,7 +388,7 @@ export async function bakeIrradiance(
   renderer: WebGLRenderer,
   scene: Scene,
   volume: IrradianceVolume,
-  options: BakeOptions = {},
+  options: IrradianceBakeOptions = {},
 ): Promise<number> {
   if (volume.baked >= volume.probeCount) return 0;
 
@@ -396,7 +451,7 @@ export function applyIrradiance(volume: IrradianceVolume, root: Object3D): numbe
     for (const one of Array.isArray(material) ? material : [material]) {
       if (seen.has(one)) continue;
       seen.add(one);
-      inject(one, uniforms);
+      inject(one, uniforms, volume);
     }
   });
 
@@ -411,10 +466,36 @@ export function applyIrradiance(volume: IrradianceVolume, root: Object3D): numbe
 
 /** 已經接過的材質不再接第二次 —— 同一份材質被很多物件共用是常態。 */
 const injected = new WeakSet<Material>();
+/** 只吼一次。整個場景都是 basic 材質的話會有幾百個。 */
+let warnedUnlit = false;
 
-function inject(material: Material, uniforms: Record<string, { value: unknown }>): void {
+function inject(
+  material: Material,
+  uniforms: Record<string, { value: unknown }>,
+  volume: IrradianceVolume,
+): void {
   if (injected.has(material)) return;
   injected.add(material);
+
+  // ## node 材質走另一條路
+  //
+  // `onBeforeCompile` 是 WebGL 那條路的鉤子，`WebGPURenderer` 的編譯**完全
+  // 不經過它**。在這裡不分流的話，WebGPU 上是靜靜地完全沒有間接光 —— 看
+  // 起來像「烘壞了」或「這個場景本來就這麼暗」。
+  //
+  // 這個專案在 VAT 上踩過一模一樣的坑（實作在 WebGL、量測在 WebGPU），
+  // 所以那之後的規矩是兩邊一起做、兩邊一起驗。
+  if ((material as { isNodeMaterial?: boolean }).isNodeMaterial === true) {
+    // 動態 import，所以是非同步的。失敗要吼出來 —— 靜靜跳過就回到上面那個
+    // 「看起來像烘壞了」的狀態。
+    void import('./irradiance-node.ts').then(
+      (m) => m.applyIrradianceNode(material as never, volume),
+      (error: unknown) => {
+        console.error('WW.applyIrradiance: node 材質那條路接失敗，WebGPU 上不會有間接光。', error);
+      },
+    );
+    return;
+  }
 
   const previous = material.onBeforeCompile;
 
@@ -447,6 +528,27 @@ function inject(material: Material, uniforms: Record<string, { value: unknown }>
         // 這裡自己算一份，不依賴那個條件。
         '#include <worldpos_vertex>\nwwWorldPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;',
       );
+
+    // ## 沒有光照的材質接不上，而且是**靜靜地**接不上
+    //
+    // `MeshBasicMaterial` 這一類根本不做光照，它的片段著色器裡沒有
+    // `lights_fragment_maps` 這個插入點。字串取代找不到目標時不會報錯，
+    // 只是原樣返回 —— 於是那個材質完全沒有間接光，其他材質有。
+    //
+    // 那正是這個專案最怕的形狀：局部失效、沒有錯誤、看起來像「烘得不夠亮」。
+    if (!shader.fragmentShader.includes('#include <lights_fragment_maps>')) {
+      if (!warnedUnlit) {
+        warnedUnlit = true;
+        console.warn(
+          [
+            'WW.applyIrradiance: 有材質不做光照（例如 MeshBasicMaterial），接不上間接光。',
+            '症狀是那些東西看起來比周圍平，而且不會有任何錯誤訊息。',
+            '要間接光的話換成 MeshStandardMaterial 這一類會受光的材質。',
+          ].join('\n'),
+        );
+      }
+      return;
+    }
 
     shader.fragmentShader = shader.fragmentShader
       .replace(

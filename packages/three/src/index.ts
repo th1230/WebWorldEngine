@@ -35,6 +35,13 @@ export {
 } from './vertex-animation.ts';
 export { worldFor, World, type WorldStats } from './world.ts';
 export { applyShadows, type CascadedShadows } from './shadows.ts';
+export {
+  IrradianceVolume,
+  bakeIrradiance,
+  applyIrradiance,
+  type IrradianceVolumeOptions,
+  type IrradianceBakeOptions,
+} from './irradiance.ts';
 export { Water, DEFAULT_WAVES, type WaterWave, type WaterOptions } from './water.ts';
 export {
   computeBuoyancy,
