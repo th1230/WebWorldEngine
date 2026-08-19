@@ -359,3 +359,46 @@ describe('會動的東西：把附近的探針標成過期', () => {
     expect(v.baked).toBe(v.probeCount);
   });
 });
+
+describe('半徑太小的時候要講出來', () => {
+  it('半徑小於格距而且一顆都沒標到 → 警告', () => {
+    // 探針只在格點上，半徑太小的球會整個落在格與格之間 —— 一顆都碰不到，
+    // 間接光完全不更新，而畫面上只是「那個東西不反彈光」。
+    const v = new IrradianceVolume({
+      min: new Vector3(0, 0, 0),
+      size: new Vector3(80, 80, 80),
+      resolution: [2, 2, 2],
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // 格距 80，半徑 5，而且位置刻意落在格子中間。
+    expect(v.invalidateAround(new Vector3(40, 40, 40), 5)).toBe(0);
+    expect(warn).toHaveBeenCalled();
+    expect(String(warn.mock.calls[0]?.[0])).toContain('比探針格距');
+    warn.mockRestore();
+  });
+
+  it('標得到的時候不會亂吼', () => {
+    const v = new IrradianceVolume({
+      min: new Vector3(0, 0, 0),
+      size: new Vector3(80, 80, 80),
+      resolution: [2, 2, 2],
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(v.invalidateAround(new Vector3(0, 0, 0), 5)).toBeGreaterThan(0);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('半徑夠大但剛好沒東西的時候不吼 —— 那不是設定錯', () => {
+    const v = new IrradianceVolume({
+      min: new Vector3(0, 0, 0),
+      size: new Vector3(80, 80, 80),
+      resolution: [2, 2, 2],
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // 半徑比格距大，但整個在體積外面。
+    expect(v.invalidateAround(new Vector3(500, 500, 500), 100)).toBe(0);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});

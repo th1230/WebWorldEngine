@@ -70,6 +70,8 @@ export function makeGiScene(
   intensity = 1,
   /** cubemap 每面邊長 —— 拿來量「烘的成本是被像素還是被讀回綁住」。 */
   faceSize = 16,
+  /** 探針網格解析度 —— 拿來量「接觸尺度的反彈是不是解析度問題」。 */
+  probeRes = 8,
 ): GiScene {
   const root = new THREE.Group();
 
@@ -120,7 +122,7 @@ export function makeGiScene(
   const volume = new WW.IrradianceVolume({
     min: new THREE.Vector3(-ROOM, 0, -ROOM),
     size: new THREE.Vector3(ROOM * 2, ROOM, ROOM * 2),
-    resolution: [8, 4, 8],
+    resolution: [probeRes, Math.max(2, probeRes >> 1), probeRes],
     intensity,
   });
 

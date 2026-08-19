@@ -107,6 +107,7 @@ export class IrradianceVolume {
   /** 有沒有接過 node 材質。有的話 intensity 就改不動了 —— 見 setter。 */
   private _hasNodeMaterial = false;
   private _warnedIntensity = false;
+  private _warnedRadius = false;
   private readonly data: Uint16Array[] = [];
   private _baked = 0;
   /**
@@ -319,6 +320,26 @@ export class IrradianceVolume {
           this._stale.add(index);
           marked++;
         }
+      }
+    }
+    // ## 半徑比格距還小的話一顆都標不到，而那是靜靜地沒效果
+    //
+    // 探針只在格點上。半徑小於格距的時候，那個球有可能整個落在格與格之間 ——
+    // 一顆都碰不到，回傳 0，然後間接光完全不更新。
+    //
+    // 實測踩到：4×2×4 的體積格距 26.7，用半徑 14 去標**一顆都沒標到**，
+    // 而畫面上就只是「那個東西不反彈光」，看起來像功能沒做。
+    if (marked === 0 && !this._warnedRadius) {
+      const spacing = Math.max(stepX, stepY, stepZ);
+      if (radius < spacing) {
+        this._warnedRadius = true;
+        console.warn(
+          [
+            `WW.IrradianceVolume.invalidateAround: 半徑 ${radius} 比探針格距 ${spacing.toFixed(1)} 還小，`,
+            '這一次一顆都沒標到 —— 間接光不會更新，而且不會有其他徵兆。',
+            '半徑至少要一個格距才保證碰得到探針，或者把 resolution 調高。',
+          ].join('\n'),
+        );
       }
     }
     return marked;

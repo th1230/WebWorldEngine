@@ -41,7 +41,8 @@
     "split-value": "node tools/gpu-check/split-value.mjs",
     "impostor-ceiling": "node tools/gpu-check/impostor-ceiling.mjs",
     "probe-cost": "node tools/gpu-check/probe-cost.mjs",
-    "texture-pressure": "node tools/gpu-check/texture-pressure.mjs"
+    "texture-pressure": "node tools/gpu-check/texture-pressure.mjs",
+    "contact-scale": "node tools/gpu-check/contact-scale.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

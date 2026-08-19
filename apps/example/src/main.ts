@@ -456,7 +456,7 @@ if (bigMesh !== null) {
 }
 
 const giScene: GiScene | null = GI
-  ? makeGiScene(undefined, 1, Number(params.get('probeFace') ?? 16))
+  ? makeGiScene(undefined, 1, Number(params.get('probeFace') ?? 16), Number(params.get('probeRes') ?? 8))
   : null;
 if (giScene !== null) {
   scene.add(giScene.root);
