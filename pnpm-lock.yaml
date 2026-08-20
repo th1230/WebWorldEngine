@@ -100,8 +100,8 @@ importers:
   apps/example:
     dependencies:
       '@dimforge/rapier3d-compat':
-        specifier: ^0.12.0
-        version: 0.12.0
+        specifier: ^0.20.0
+        version: 0.20.0
       '@web-world-engine/three':
         specifier: workspace:*
         version: link:../../packages/three
@@ -318,6 +318,9 @@ packages:
 
   '@dimforge/rapier3d-compat@0.12.0':
     resolution: {integrity: sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==}
+
+  '@dimforge/rapier3d-compat@0.20.0':
+    resolution: {integrity: sha512-X4W9pJBdGRX5CO3c/gUNjBFEFG2fn4nYxp9k8STdBDaLa0/w5XTW2ArpayS+9jGFojTi3uFSOWAElCd4rkpekA==}
 
   '@emnapi/runtime@1.11.3':
     resolution: {integrity: sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA==}
@@ -2066,6 +2069,8 @@ snapshots:
     optional: true
 
   '@dimforge/rapier3d-compat@0.12.0': {}
+
+  '@dimforge/rapier3d-compat@0.20.0': {}
 
   '@emnapi/runtime@1.11.3':
     dependencies:
