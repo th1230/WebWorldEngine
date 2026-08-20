@@ -422,6 +422,9 @@ Object.assign(window, {
             bake: () => giScene.bake(renderer as never, scene as never),
             setEnabled: (on: boolean) => giScene.setEnabled(on),
             sampleCpu: (p: [number, number, number], n: [number, number, number]) => giScene.sampleCpu(p, n),
+            // 畫出來的像素 —— SH 對得上不代表著色端也對得上。
+            renderedWindowAsync: (u: number, v: number, size: number): Promise<number[]> =>
+              giScene.renderedWindowAsync(renderer as never, scene as never, u, v, size),
             sample: (x: number, y: number, w: number, h: number) => {
               const flat = document.createElement('canvas');
               flat.width = canvas.width;

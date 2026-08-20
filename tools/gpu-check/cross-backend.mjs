@@ -59,6 +59,8 @@ const check = (ok, message) => {
  *   而「整張暗的比例」有意義的差異只有千分之幾 —— 於是 0.00524 對 0.00596
  *   （差 13.7%）被報成 0.000%，而那個差正是一個 4 倍的實作改動造成的。
  */
+// 兩項間接光比的是同一塊畫面：一個開著、一個在**建構時**就把強度設成 0。
+// 分成兩個頁面而不是同一頁開關 —— node 那條路的強度是編譯期常數。
 const EFFECTS = [
   {
     name: '天空（大氣散射）',
@@ -733,11 +735,66 @@ const EFFECTS = [
     },
   },
   {
+    name: '間接光關掉時的直接光',
+    key: 'gi',
+    glUrl: '/?gi=1&giOff=1&verify=1',
+    gpuUrl: '/webgpu.html?gi=1&giOff=1',
+    labels: [
+      '畫面 中 R', '畫面 中 G', '畫面 中 B',
+      '畫面 右 R', '畫面 右 G', '畫面 右 B',
+      '畫面 下 R', '畫面 下 G', '畫面 下 B',
+    ],
+    floor: 1 / 255,
+    /**
+     * ## 這一項是上一項的**對照組**
+     *
+     * 上一項量到「畫出來的像素兩邊差到兩倍」。那個差有兩個可能的來源：
+     *
+     * 1. 兩份間接光的著色實作不一樣（`irradiance-node.ts` vs 注入的 GLSL）
+     * 2. 兩份標準材質本身就不一樣（`MeshStandardMaterial` vs
+     *    `MeshStandardNodeMaterial`）—— 這個專案在 `MeshNormalNodeMaterial`
+     *    上量過一次，那份會多套一次 sRGB 轉換
+     *
+     * 把間接光的強度在**建構時**設成 0，剩下的就只有直接光。這一項綠而上一項
+     * 紅的話，差在間接光；兩項一起紅的話，差在材質本身。
+     *
+     * 強度只能在建構時給：node 那條路的它是編譯期常數，之後改不動 —— 那是
+     * 量過並且已經在 `IrradianceVolume` 的 setter 裡吼出來的限制。所以這個
+     * 對照組是**另一個頁面**，不是同一頁上的開關。
+     */
+    tolerance: 0.02,
+    measure: async (api) => {
+      const out = [];
+      // 探針還是要烘 —— 烘與不烘會走到不同的材質分支，而這一項要比的是
+      // 「同樣的路徑上，強度 0 的時候兩邊一不一樣」。
+      let rounds = 0;
+      while (api.stats().baked < api.stats().probes && rounds < 2000) {
+        await api.bake();
+        rounds++;
+      }
+      // 三塊：直接光為主的、幾乎全是間接光的、地面。窗口 64×64。
+      const RENDER_WINDOWS = [
+        [0.5, 0.4],
+        [0.7, 0.45],
+        [0.5, 0.7],
+      ];
+      for (const [u, v] of RENDER_WINDOWS) out.push(...(await api.renderedWindowAsync(u, v, 64)));
+      return out;
+    },
+    /** 直接光要真的有東西 —— 全黑的話上面那個比對是在比兩片黑。 */
+    absolute: (get) => [
+      [
+        get('畫面 中 R') > 0.05,
+        `直接光真的畫出東西 —— 中間那塊 R ${get('畫面 中 R').toFixed(3)}`,
+      ],
+    ],
+  },
+  {
     name: '間接光探針的 SH 係數',
     key: 'gi',
     glUrl: '/?gi=1&verify=1',
     gpuUrl: '/webgpu.html?gi=1',
-    labels: ['朝 −x−z', '朝 +x+z', '朝上', '朝下'],
+    labels: ['朝 −x−z', '朝 +x+z', '朝上', '朝下', '畫面 中 R', '畫面 中 G', '畫面 中 B', '畫面 右 R', '畫面 右 G', '畫面 右 B', '畫面 下 R', '畫面 下 G', '畫面 下 B'],
     floor: 0.005,
     /**
      * ## 這一項的容差比別的鬆，而那是有理由的
@@ -749,7 +806,29 @@ const EFFECTS = [
      * 但它仍然抓得到真正的錯：cube target 的型別設錯時，方向性整個被抹平
      * （兩個相反的法線 0.626 對 0.636），那是 120% 的差。
      */
-    tolerance: 0.1,
+    /**
+     * ## 畫出來的像素才是主張，SH 是它的中間值
+     *
+     * 上面四個 SH 的量比的是兩邊**各自把場景拍成 cubemap 再投影**的結果，
+     * 光柵化規則與材質實作本來就有差異。而畫出來的像素是使用者真正看到的
+     * 東西 —— 那一組現在對到 5% 以內。
+     *
+     * 這一項第一次加上畫面比對時量到的是**兩倍**（右下那塊 0.023 對 0.046）。
+     * 原因是 WebGL 那條注入把 Three 片段著色器裡的 `normal` 直接餵進世界空間的
+     * SH，而那個 `normal` 是**視空間**的 —— 間接光跟著相機轉。改成
+     * `inverseTransformDirection( normal, viewMatrix )` 之後兩邊對上。
+     *
+     * 而在那之前，只比 SH 的關卡**看不見它**：SH 是烘出來的，著色端用什麼
+     * 法線取樣它不知道。
+     *
+     * 每個量的門檻都是量到的差的兩倍上下：
+     */
+    tolerance: {
+      '朝 +x+z': 0.2, // 量到 14.1%
+      朝: 0.12, // 另外三個方向量到 0–6.6%
+      畫面: 0.08, // 量到 0–5.1%
+      default: 0.08,
+    },
     measure: async (api) => {
       let rounds = 0;
       while (api.stats().baked < api.stats().probes && rounds < 2000) {
@@ -763,7 +842,24 @@ const EFFECTS = [
         [[-5, 14, -5], [0, -1, 0]],
       ];
       // 只看紅通道 —— 那個場景裡紅牆是唯一的間接光來源，訊號全在那裡。
-      return points.map(([p, n]) => api.sampleCpu(p, n)[0]);
+      const out = points.map(([p, n]) => api.sampleCpu(p, n)[0]);
+
+      // ## 畫出來的像素也要比
+      //
+      // 上面四個量的是**烘出來的 SH**，而那只是一半 —— 著色端還要把它取樣
+      // 出來加進光照。兩份著色實作分岔的話這四個照樣全綠。
+      // ## 畫出來的像素也要比
+      //
+      // 上面四個量的是**烘出來的 SH**，而那只是一半 —— 著色端還要把它取樣
+      // 出來加進光照。兩份著色實作分岔的話那四個照樣全綠。
+      // 三塊：直接光為主的、幾乎全是間接光的、地面。窗口 64×64。
+      const RENDER_WINDOWS = [
+        [0.5, 0.4],
+        [0.7, 0.45],
+        [0.5, 0.7],
+      ];
+      for (const [u, v] of RENDER_WINDOWS) out.push(...(await api.renderedWindowAsync(u, v, 64)));
+      return out;
     },
   },
 ];

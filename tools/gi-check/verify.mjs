@@ -266,10 +266,25 @@ try {
   );
 
   console.log('');
-  // 兩條路都要得到「明顯偏紅」。**不比絕對值**：兩個後端連烘出來的係數量級
-  // 都差了兩倍多（實測 1.033 對 0.444），那是這個模組管不到的渲染器差異，
-  // 而紅綠比兩邊是一致的（24.6 對 22.2）—— 那才是這裡要問的。
+  // ## 兩條路的**絕對值**也要對得上
+  //
+  // 這裡原本只問「兩邊都大於 20」，而註解宣稱兩邊差兩倍是「這個模組管不到
+  // 的渲染器差異」。那個解釋沒有量過，而它讓那個兩倍在畫面上印了很久卻
+  // 沒有人再看（doctrine 8 與 21）。
+  //
+  // 真正的原因是 WebGL 那條注入把 Three 片段著色器裡的 `normal` 直接餵進
+  // 世界空間的 SH —— 而那個 `normal` 是**視空間**的。也就是間接光會跟著
+  // 相機轉。node 那份用的是 `normalWorld`，一直是對的。
+  //
+  // 修好之後兩邊差 0.9%（124.8 對 123.7）。剩下的是烘的時候各自把場景拍成
+  // cubemap 的差異，光柵化規則本來就不同。
   check(glGap > 20 && gpuGap > 20, '兩個後端都有間接光', `WebGL R−B ${f(glGap)}，WebGPU R−B ${f(gpuGap)}`);
+  const gapRatio = Math.max(glGap, gpuGap) / Math.max(Math.min(glGap, gpuGap), 1e-6);
+  check(
+    gapRatio < 1.1,
+    '而且兩邊的量級一致 —— 不是一邊亮一倍',
+    `比值 ${gapRatio.toFixed(3)}`,
+  );
 
   check(errors.length === 0, '沒有主控台錯誤', errors.slice(0, 2).join(' | ') || undefined);
 } catch (e) {

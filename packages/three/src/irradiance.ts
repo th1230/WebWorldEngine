@@ -1016,7 +1016,7 @@ ${IRRADIANCE_SAMPLE_GLSL}`,
       // `RE_IndirectDiffuse` 吃掉的位置。
       .replace(
         '#include <lights_fragment_maps>',
-        '#include <lights_fragment_maps>\nirradiance += wwIrradiance( wwWorldPos, normal );',
+        '#include <lights_fragment_maps>\nirradiance += wwIrradiance( wwWorldPos, inverseTransformDirection( normal, viewMatrix ) );',
       );
   };
 

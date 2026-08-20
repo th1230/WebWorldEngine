@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as WW from '@webworld/three';
+import { readPixelsAsync } from './readback.ts';
 
 /**
  * 間接光的證明場景：一面紅地板、一顆白箱子、一盞從上面來的光。
@@ -70,6 +71,25 @@ export interface GiScene {
   ) => { r: number; g: number; b: number; perFrameMs: number };
   /** 一直烘到沒有過期的為止。回傳烘了幾顆。 */
   bakeStale: (renderer: THREE.WebGLRenderer, scene: THREE.Scene) => Promise<number>;
+  /**
+   * 把場景畫進自己的 target，讀回一小塊的平均顏色。
+   *
+   * ## 為什麼要有這一支
+   *
+   * `sampleCpu` 量的是**烘出來的 SH**，而那只是一半 —— 著色端還要把它取樣
+   * 出來加進光照。兩邊的 SH 對得上而畫出來的差兩倍，是這個專案量過的事實，
+   * 而那個差距在只比 SH 的關卡底下完全看不見。
+   *
+   * 相機是**場景自己的**，不是頁面的：兩個頁面的畫布大小不見得一樣，而
+   * 「畫面的第幾個像素」要是同一件事才比得下去。
+   */
+  renderedWindowAsync: (
+    renderer: unknown,
+    scene: THREE.Scene,
+    u: number,
+    v: number,
+    size: number,
+  ) => Promise<number[]>;
   /** 用 CPU 那份公式在同一個位置求值 —— 拿來分辨「烘的不一樣」還是「著色的不一樣」。 */
   sampleCpu: (p: [number, number, number], n: [number, number, number]) => [number, number, number];
 }
@@ -171,6 +191,19 @@ export function makeGiScene(
 
   const materials = WW.applyIrradiance(volume, root);
 
+  // ## 量測用的相機與 target
+  //
+  // 機位與兩個頁面畫出來的那一個一樣（`(-34, 16, -34)` 看向 `(0, 12, 0)`），
+  // 但**尺寸固定**：畫布大小兩邊不見得一樣，而「畫面的第幾個像素」要是同
+  // 一件事才比得下去。
+  const measureCamera = new THREE.PerspectiveCamera(50, 16 / 9, 0.5, 500);
+  measureCamera.position.set(-34, 16, -34);
+  measureCamera.lookAt(0, 12, 0);
+  measureCamera.updateMatrixWorld(true);
+  const measureTarget = new THREE.WebGLRenderTarget(1280, 720, {
+    colorSpace: THREE.NoColorSpace,
+  });
+
   return {
     root,
     volume,
@@ -213,6 +246,29 @@ export function makeGiScene(
       blocker.updateMatrixWorld(true);
       marked += volume.invalidateAround(blocker.position, 14);
       return marked;
+    },
+    renderedWindowAsync: async (renderer, scene, u, v, size) => {
+      const gl = renderer as THREE.WebGLRenderer;
+      const previous = gl.getRenderTarget();
+      gl.setRenderTarget(measureTarget);
+      gl.render(scene, measureCamera);
+      gl.setRenderTarget(previous);
+      const x = Math.min(
+        measureTarget.width - size,
+        Math.max(0, Math.round(u * measureTarget.width) - (size >> 1)),
+      );
+      const y = Math.min(
+        measureTarget.height - size,
+        Math.max(0, Math.round(v * measureTarget.height) - (size >> 1)),
+      );
+      const data = await readPixelsAsync(renderer, measureTarget, x, y, size, size, (n) =>
+        new Uint8Array(n),
+      );
+      const sum = [0, 0, 0];
+      for (let i = 0; i < size * size; i++) {
+        for (let c = 0; c < 3; c++) sum[c]! += data[i * 4 + c] ?? 0;
+      }
+      return sum.map((value) => value / (size * size) / 255);
     },
     measureScreenSpace: (renderer, scene, camera, rect) => {
       // ## 先把場景畫進一張 target，那就是 SSGI 的輸入

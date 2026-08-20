@@ -653,8 +653,10 @@ if (bigMesh !== null) {
   rocks.visible = false;
 }
 
+/** `?giOff=1` 把間接光的強度在**建構時**設成 0 —— node 那條路只有這個時機改得動。 */
+const GI_OFF = params.get('giOff') === '1';
 const giScene: GiScene | null = GI
-  ? makeGiScene(undefined, 1, Number(params.get('probeFace') ?? 16), Number(params.get('probeRes') ?? 8))
+  ? makeGiScene(undefined, GI_OFF ? 0 : 1, Number(params.get('probeFace') ?? 16), Number(params.get('probeRes') ?? 8))
   : null;
 if (giScene !== null) {
   scene.add(giScene.root);
@@ -2243,6 +2245,9 @@ Object.assign(window, {
             bake: () => giScene.bake(renderer, scene),
             setEnabled: (on: boolean) => giScene.setEnabled(on),
             sampleCpu: (p: [number, number, number], n: [number, number, number]) => giScene.sampleCpu(p, n),
+            // 畫出來的像素 —— SH 對得上不代表著色端也對得上。
+            renderedWindowAsync: (u: number, v: number, size: number): Promise<number[]> =>
+              giScene.renderedWindowAsync(renderer, scene, u, v, size),
             moveBlocker: (x: number, y: number, z: number) => giScene.moveBlocker(x, y, z),
             bakeStale: () => giScene.bakeStale(renderer, scene),
             invalidateAll: () => giScene.invalidateAll(),
