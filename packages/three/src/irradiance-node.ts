@@ -109,7 +109,6 @@ export async function applyIrradianceNode(
   material.setupMaterialLightings = (builder: unknown): unknown[] => {
     // **先接住原本那個。** 搶掉的話材質的環境光、light map、AO 全會消失，
     // 而那看起來像「間接光把別的光蓋掉了」。
-    console.log('WWDEBUG setupMaterialLightings called');
     const nodes = previous ? previous(builder) : [];
     nodes.push(new webgpu.IrradianceNode(result));
     return nodes;

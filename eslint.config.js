@@ -90,6 +90,24 @@ export default tseslint.config(
     },
   },
 
+  // ── 出貨的套件裡不可以有 console.log ─────────────────────────────────
+  //
+  // `warn` / `error` / `info` 是刻意的：那些是要講給使用者聽的話（缺前置、
+  // 接不上、只有一階幾何）。`log` 與 `debug` 只會是**查問題時留下的**。
+  //
+  // 這條規則不是潔癖：實測有一行 `console.log('WWDEBUG …')` 一路留到
+  // `packages/three/dist` 裡 —— 那會噴進每一個使用者的主控台，而 typecheck、
+  // 測試、二十道關卡沒有一個看得到它。
+  //
+  // cook 是 CLI，那裡的 `console.log` 就是它的輸出，所以不包含在內。
+  {
+    files: ['packages/three/src/**/*.ts', 'packages/format/src/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      'no-console': ['error', { allow: ['warn', 'error', 'info'] }],
+    },
+  },
+
   // ── 依賴方向 ────────────────────────────────────────────────────────────
   // core：零依賴。不可依賴任何其他 workspace package。
   layer('core', [
