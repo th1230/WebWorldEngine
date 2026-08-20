@@ -137,7 +137,16 @@ export const DEFAULT_RUNS: readonly SceneRun[] = [
     warmup: 30,
     frames: 900,
     params: { interval: '40', losses: '20' },
-    smoke: { warmup: 5, frames: 120, params: { interval: '20', losses: '5' } },
+    // ## 只在真 GPU 上跑
+    //
+    // 這一關驗的是「device 遺失之後每次都恢復得回來」。SwiftShader 落到
+    // WebGL2，強制遺失之後停在 `reacquiring` 回不到 `running` —— 而那不是
+    // 這個引擎的問題，是那個 adapter 根本沒有那條路。
+    //
+    // 照跑的話 CI 每一次都紅，而紅的原因與程式碼無關 —— 那正是訓練人忽略
+    // 紅燈的方式。`ci.yml` 的註解本來就寫著「真實 device loss 這些 WebGPU
+    // 專屬路徑不會被 CI 覆蓋」，這一行讓那句話變成真的。
+    profiles: ['hardware'],
   },
   {
     id: 'compute-indirect',
