@@ -1,0 +1,17 @@
+# 產物與相依
+**/dist/**
+**/node_modules/**
+**/.vite/**
+pnpm-lock.yaml
+
+# 第三方的美術資產與上游測試資產庫 —— 那不是我們的程式碼
+assets/source/**
+
+# 量測結果與報告：機器產生的，格式化它只會製造 diff
+benchmarks/results/**
+playwright-report/**
+test-results/**
+
+# Markdown 不進來：specs 裡的表格與斷行是手排的，而那些排版本身帶著意思
+# （量到的數字對齊、一行一個判準）。交給格式化工具只會把它們攤平。
+**/*.md

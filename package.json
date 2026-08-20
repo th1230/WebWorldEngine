@@ -18,11 +18,11 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test",
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
     "package-check": "node tools/package-check/verify.mjs",
     "site-check": "node tools/site-check/verify.mjs",
     "visual-check": "node tools/visual-check/verify.mjs",
-    "verify:all": "pnpm verify && pnpm build:example && pnpm package-check && pnpm site-check && pnpm visual-check && pnpm physics-check && pnpm gi-check && pnpm ssgi-check && pnpm impostor-check && pnpm gpu-check && pnpm webgpu-check && pnpm vt-check && pnpm daynight-check && pnpm contact-check && pnpm df-shadow-check && pnpm reflect-check && pnpm sky-check && pnpm lod-fade-check && pnpm fog-check && pnpm vsm-check && pnpm shadow-lod-check && pnpm reflprobe-check && pnpm water-look-check && pnpm cross-check",
+    "verify:all": "pnpm verify && pnpm build:example && pnpm bundle-check && pnpm package-check && pnpm site-check && pnpm visual-check && pnpm physics-check && pnpm gi-check && pnpm ssgi-check && pnpm impostor-check && pnpm gpu-check && pnpm webgpu-check && pnpm vt-check && pnpm daynight-check && pnpm contact-check && pnpm df-shadow-check && pnpm reflect-check && pnpm sky-check && pnpm lod-fade-check && pnpm fog-check && pnpm vsm-check && pnpm shadow-lod-check && pnpm reflprobe-check && pnpm water-look-check && pnpm cross-check",
     "bench": "tsx tools/benchmark-runner/src/cli.ts run --profile hardware",
     "bench:smoke": "tsx tools/benchmark-runner/src/cli.ts run --profile smoke",
     "bench:baseline": "tsx tools/benchmark-runner/src/cli.ts baseline",
@@ -61,7 +61,10 @@
     "reflprobe-check": "node tools/gpu-check/reflection-probes.mjs",
     "build:example": "pnpm --filter @ww/example-app build",
     "water-look-check": "node tools/gpu-check/water-look.mjs",
-    "cross-check": "node tools/gpu-check/cross-backend.mjs"
+    "cross-check": "node tools/gpu-check/cross-backend.mjs",
+    "bundle-check": "node tools/bundle-check/verify.mjs",
+    "format": "prettier --write \"**/*.{ts,mjs,js,json}\"",
+    "format:check": "prettier --check \"**/*.{ts,mjs,js,json}\""
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -75,6 +78,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.67.0",
     "vite": "^8.2.1",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "prettier": "^3.4.2"
   }
 }

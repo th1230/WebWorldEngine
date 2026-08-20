@@ -19,11 +19,9 @@
   "bugs": "https://github.com/thomasYeh/WebWorldEngine/issues",
   "homepage": "https://github.com/thomasYeh/WebWorldEngine/tree/main/packages/cook#readme",
   "type": "module",
+  "sideEffects": false,
   "engines": {
     "node": ">=22.12"
-  },
-  "bin": {
-    "ww-cook": "./dist/cli.js"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -67,5 +65,8 @@
     "@ww/core": "workspace:*",
     "draco3d": "^1.5.7",
     "vite-plugin-dts": "^4.5.4"
+  },
+  "bin": {
+    "ww-cook": "./dist/cli.js"
   }
 }

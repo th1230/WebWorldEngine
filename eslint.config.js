@@ -108,6 +108,36 @@ export default tseslint.config(
     },
   },
 
+  // ── 預設關門 ────────────────────────────────────────────────────────────
+  //
+  // 下面每一條 `layer()` 都是**替某個目錄開例外**。沒有這一條的話，新開一個
+  // `internal/foo` 會落在所有規則之外 —— 沒有 three 的禁令，也沒有依賴方向。
+  // 而那正是這道防線最該擋住的情況：一個新的層悄悄長出來，然後往上依賴。
+  //
+  // 所以預設是「什麼都不准」，要什麼自己在下面寫清楚。清單式的防線要
+  // **列出允許的**，不是列出禁止的 —— 後者永遠會漏掉還沒出現的東西。
+  {
+    files: ['internal/**/*.ts'],
+    rules: {
+      'no-restricted-imports': 'off',
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            THREE_BAN,
+            {
+              group: ['@ww/*', '@webworld/*'],
+              message:
+                '這個目錄還沒有在 eslint.config.js 裡宣告依賴方向。' +
+                '先加一條 layer()，把它允許依賴的東西寫下來 —— ' +
+                '見 specs/adr/0001-three-as-adapter.md。',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // ── 依賴方向 ────────────────────────────────────────────────────────────
   // core：零依賴。不可依賴任何其他 workspace package。
   layer('core', [
@@ -154,9 +184,18 @@ export default tseslint.config(
   ]),
 
   // ecs：純粹的 ECS 機制，不含任何領域知識，只可依賴 core。
+  //
+  // **`internal/ecs` 目前不存在** —— 這條是先寫好的。留著是因為上面那條
+  // 「預設關門」會先擋住它，而那個錯誤訊息會叫人來這裡；先寫好就少一步。
   layer('ecs', [
     {
-      group: ['@ww/engine', '@ww/render-core', '@ww/render-three', '@ww/platform-web', '@ww/diagnostics'],
+      group: [
+        '@ww/engine',
+        '@ww/render-core',
+        '@ww/render-three',
+        '@ww/platform-web',
+        '@ww/diagnostics',
+      ],
       message: UPWARD('@ww/ecs', '@ww/core'),
     },
   ]),
