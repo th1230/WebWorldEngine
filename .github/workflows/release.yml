@@ -81,29 +81,24 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "三個套件都是 $VERSION"
 
-      - run: pnpm cook:builtins -- --verify
-
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm format:check
-      - run: pnpm test
-      - run: pnpm metadata-check
-      - run: pnpm docs-check
-
+      # ## 這裡**不驗證**
+      #
+      # 驗證是 `ci.yml` 的職責，而它在往 `main` 的那個 PR 上跑過了 ——
+      # GitHub 的 `pull_request` 事件測的就是合併後的樹。到了這裡，
+      # 「對不對」已經有答案了。
+      #
+      # 先前這裡從頭又跑一遍（typecheck、lint、test、六道關卡）。那不是多
+      # 一層保險，是**兩個地方各自宣稱自己守著同一件事** —— 而其中一個一定
+      # 會先漂走。職責重疊比職責缺漏更難查，因為兩邊看起來都在做事。
+      #
+      # ⚠️ 這個分工靠的是「PR 沒過 CI 就合併不了」，而那是 GitHub 的**分支
+      #    保護設定**，不是 workflow 寫得出來的。`main` 上要開
+      #    「Require status checks to pass」並勾選 CI 的兩個 job。沒開的話，
+      #    直接推 `main` 就會發布沒驗過的東西。
+      #
+      # 這一步是**建置**不是驗證：發出去的 dist 要在這裡產生。
       - run: pnpm build:pkg
 
-      # 只用 WebGL 的人不該下載 WebGPU 那一半。
-      # 生態系自己的兩把尺：publint 驗 package.json 與 tarball，
-      # attw 驗型別在四種解析模式下找不找得到。它們第一次跑就抓到
-      # @web-world-engine/cook 的型別整個是斷的 —— 而這裡沒有任何東西看得見。
-      - run: pnpm publish-check
-
-      - run: pnpm bundle-check
-
-      # 打包 → 裝進乾淨專案 → 真的用一次。發布前最後一道，也是唯一一道
-      # 會走「使用者那一側」解析規則的。
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: node tools/package-check/verify.mjs
 
       # 依相依順序發。format 先上去，另外兩個才解析得到它。
       # ## dist-tag 要從版本號推出來
@@ -123,19 +118,17 @@ jobs:
           esac
           echo "dist=$DIST" >> "$GITHUB_OUTPUT"
           echo "$VERSION → dist-tag $DIST"
-
-      # ## 已經發布過的那幾個要跳過，不是整個停
+      # ## 有沒有真的發出去，要記下來
       #
-      # 三個是一個一個發的。中間任何一個失敗（網路、npm 抽風）之後重跑
-      # 同一個 tag，前面成功的那些會以「不能覆蓋已發布的版本」擋下來 ——
-      # 於是後面沒發成的永遠發不出去。
-      #
-      # 所以先問 registry 上有沒有這個版本，有就跳過。**這不是忽略錯誤**：
-      # 真的發布失敗照樣讓整個 job 紅。
+      # 這一步在「版本沒動」時什麼都不做（三個都已經在 registry 上）。
+      # 下面打 tag 那一步必須知道這件事 —— 沒發布卻去打 tag，就是第一次
+      # 合併 PR 之後那個 `v0.1.0 already exists` 的紅線。
       - name: Publish
+        id: publish
         run: |
           set -e
           VERSION="${{ steps.version.outputs.version }}"
+          PUBLISHED=false
           for pkg in format three cook; do
             if npm view "@web-world-engine/$pkg@$VERSION" version > /dev/null 2>&1; then
               echo "@web-world-engine/$pkg@$VERSION 已經在 registry 上了，跳過"
@@ -143,22 +136,34 @@ jobs:
             fi
             pnpm --filter "@web-world-engine/$pkg" publish \
               --no-git-checks --access public --tag "${{ steps.tag.outputs.dist }}"
+            PUBLISHED=true
           done
+          echo "published=$PUBLISHED" >> "$GITHUB_OUTPUT"
+          if [ "$PUBLISHED" = "false" ]; then
+            echo "版本沒動，這一次沒有發布任何東西。"
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # ## 發完之後補上 tag
       #
-      # 觸發改成「合併到 main」之後，npm 上的版本就沒有東西對得回一個
-      # commit 了。這一步把它補回來：`v0.2.0` 指著實際發布的那一次合併。
+      # 觸發是「合併到 main」，所以 npm 上的版本沒有東西對得回一個 commit。
+      # 這一步把它補回來：`v0.2.0` 指著實際發布的那一次合併。
       #
-      # 放在發布**之後**是刻意的 —— 發布失敗時不留下一個指著沒發出去的
-      # 版本的 tag。已經存在就跳過（重跑同一個 commit 時）。
+      # **只在真的發布了才跑。** 第一版踩過兩次：
+      #
+      # 1. 版本沒動的合併也去打 tag，而 tag 已經存在 → push 被拒、job 紅
+      # 2. 那個「已經存在就跳過」用的是 `git rev-parse`，查的是**本地** ——
+      #    而 `actions/checkout` 預設不抓 tag，所以本地永遠查不到，每次都
+      #    重建、每次都被遠端拒絕
+      #
+      # 現在兩邊都修：沒發布就不跑，要跑也是問遠端。
       - name: 打 tag
+        if: steps.publish.outputs.published == 'true'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          if git rev-parse "v$VERSION" > /dev/null 2>&1; then
-            echo "v$VERSION 已經存在，跳過"
+          if [ -n "$(git ls-remote --tags origin "refs/tags/v$VERSION")" ]; then
+            echo "v$VERSION 在遠端已經存在，跳過"
             exit 0
           fi
           git config user.name "github-actions[bot]"
