@@ -1,7 +1,40 @@
+/**
+ * 這個套件的中心：一個換掉 `THREE.InstancedMesh` 就有 LOD 與剔除的 `Object3D`。
+ *
+ * ## 這個檔案裡有什麼
+ *
+ * 依序是（搜尋 `// ==` 可以跳）：
+ *
+ * | 段 | 做什麼 |
+ * | --- | --- |
+ * | 選項與統計 | `InstancedMeshOptions`、`LodStats` —— 每一個旋鈕背後的量測都寫在它自己的註解裡 |
+ * | 建構與 LOD 鏈 | 三條路（單一幾何／自備鏈／cook 過的資產）收斂成同一個內部形狀 |
+ * | 換階淡入 | 把抖動遮罩接上使用者的材質，兩個後端各一條路 |
+ * | 容量與矩陣 | `ensureCapacity`、`writeMatrices`、`moveInstances` —— 串流搬東西時走這裡 |
+ * | 包圍球 | 逐 instance 的球，髒了才重算 |
+ * | 空間分割 | `InstanceGrid` 的維護與「這個格子值不值得建」的權衡 |
+ * | HLOD | 遠景合併：挑格、烘、槽位池、逐幀預算 |
+ * | 收集 | 每幀真正跑的那一段：剔除、選階、寫繪製清單 |
+ *
+ * ## 為什麼 HLOD 還在這裡
+ *
+ * 它有 700 行，看起來最該分出去。但量過了：那一段碰 36 個本體的欄位
+ * （`spheres`、`traversalOrder`、`matricesArray`、`internals`，以及 `BatchedMesh` 的
+ * `addGeometry` / `setGeometryAt` / `deleteInstance`……），自己的只有 36 個。
+ *
+ * 那個一比一不是「還沒整理好」，是**它做的事就是換掉本體要畫什麼**。硬分
+ * 出去要把 36 個私有欄位變成公開欄位 —— 把編譯器守得住的封裝換成一份沒有
+ * 人守的約定，那比一個長檔案更糟。
+ *
+ * 分出去的兩個是量出來契約窄的：
+ *
+ * - `occlusion-cull.ts` —— 遮蔽剔除，只借兩樣
+ * - `geometry-prep.ts` —— 四個純函式，一個狀態都沒有
+ *
+ * 標準是**契約的寬度**，不是行數。
+ */
 import {
   BatchedMesh,
-  BufferAttribute,
-  BufferGeometry as ThreeBufferGeometry,
   DynamicDrawUsage,
   InstancedBufferAttribute,
   Matrix4,
@@ -14,19 +47,21 @@ import {
   type Scene,
   type WebGLRenderer,
 } from 'three';
-import { OcclusionBuffer } from '@ww/engine';
-import { innerBox } from '@webworld/format';
+import { OcclusionCuller } from './occlusion-cull.ts';
+import { toBufferGeometry, toGeometryData, unifyIndexing, warnSkinned } from './geometry-prep.ts';
 import { createFrustum, frustumFromCamera, type Frustum } from './camera-frustum.ts';
 import { InstanceBlocks } from './instance-blocks.ts';
 import { InstanceGrid } from './instance-grid.ts';
 import { pixelsPerUnit, resolveLodChain, selectLevel, type GeometrySource } from './lod-chain.ts';
 import { LOD_FADE_CAPACITY, LOD_FADE_FRAGMENT_GLSL, LOD_FADE_VERTEX_GLSL } from './lod-fade.ts';
-import type { GeneratedLevel, GeometryData, LodGenerationOptions } from './lod-generation.ts';
+import type { GeneratedLevel, LodGenerationOptions } from './lod-generation.ts';
 import { requestLodLevels } from './lod-service.ts';
 import { mergeInstances, mergedSize, placeholderLike } from './hlod.ts';
 import { assertBatchedMeshInternals, type BatchedMeshInternals } from './three-internals.ts';
 
 /** 自動產生 LOD 的成本拆解。 */
+// == 選項與統計 ==
+
 export interface LodStats {
   /** 最後總共有幾階。 */
   levels: number;
@@ -309,61 +344,7 @@ interface HlodSlot {
 }
 
 const _cameraLocal = new Vector3();
-/**
- * 最多畫幾個遮蔽物。
- *
- * 密集散佈的內容裡遮蔽是**集體**的，所以這個數字不能小 —— 48 個的版本在
- * 兩萬顆石頭的場景上剔掉 0 個。
- */
-const OCCLUDER_BUDGET = 2048;
-/**
- * 螢幕大小要有最大那個的多少才值得畫進去。
- *
- * 比較的是螢幕大小的**平方**（省一次開根號），所以 0.01 相當於「邊長是
- * 最大那個的十分之一」。
- */
-const OCCLUDER_SCORE_RATIO = 0.01;
-/**
- * 少於這麼多 instance 就不做遮蔽剔除。
- *
- * 畫遮蔽物與重建粗層是**固定成本**，跟被測的數量無關。內容不夠多的時候
- * 那個固定成本收不回來 —— 而「省下來的要扣掉它自己的成本」是 doctrine
- * 第 9 條，材質那個旋鈕就是這樣被拿掉的。
- */
-const MIN_OCCLUSION_INSTANCES = 512;
-
-/**
- * 把區域空間的盒子變成裁剪空間的 8 個角，順序是 x + 2y + 4z。
- */
-function writeBoxCorners(
-  box: Float32Array,
-  instance: Matrix4,
-  viewProjection: Matrix4,
-  out: Float32Array,
-): void {
-  const m = _boxClip.multiplyMatrices(viewProjection, instance).elements;
-  let i = 0;
-  for (let z = 0; z < 2; z++) {
-    const bz = box[z * 3 + 2]!;
-    for (let y = 0; y < 2; y++) {
-      const by = box[y * 3 + 1]!;
-      for (let x = 0; x < 2; x++) {
-        const bx = box[x * 3]!;
-        out[i++] = m[0]! * bx + m[4]! * by + m[8]! * bz + m[12]!;
-        out[i++] = m[1]! * bx + m[5]! * by + m[9]! * bz + m[13]!;
-        out[i++] = m[2]! * bx + m[6]! * by + m[10]! * bz + m[14]!;
-        out[i++] = m[3]! * bx + m[7]! * by + m[11]! * bz + m[15]!;
-      }
-    }
-  }
-}
-const _boxClip = new Matrix4();
-
-/** 這一幀的區域空間 view-projection，給遮蔽剔除用。 */
 const _viewProjection = new Matrix4();
-/** 遮蔽物的 8 個角，重複用。 */
-const _occluderCorners = new Float32Array(32);
-const _occluderMatrix = new Matrix4();
 const _inverse = new Matrix4();
 const _size = new Vector2();
 const _hlodMatrix = new Matrix4();
@@ -669,22 +650,10 @@ export class InstancedMesh extends BatchedMesh {
   /**
    * 遮蔽剔除。預設關 —— 開的條件見 `occlusion` 選項的說明。
    */
-  private occlusionBuffer: OcclusionBuffer | null = null;
-  /**
-   * 幾何的內接盒（區域空間），算一次。
-   *
-   * `null` 代表算不出來（破面、太薄、平面）—— 那時這份幾何**不能當遮蔽物**，
-   * 但它自己還是可以被別人擋住。
-   */
-  private innerBoxLocal: Float32Array | null = null;
-  private innerBoxComputed = false;
+  /** 遮蔽剔除。開了才建 —— 它自己管自己的狀態，見 `occlusion-cull.ts`。 */
+  private occlusion: OcclusionCuller | null = null;
   /** 收集階段記下每一筆是哪個走訪位置，第二階段要用它查包圍球。 */
   private collectedSlots = new Int32Array(0);
-  /** 這一幀被遮蔽剔除拿掉幾個。 */
-  private _occludedInstances = 0;
-  /** 連續幾幀幾乎沒剔到東西。見 `cullOccluded` 結尾那段警告。 */
-  private occlusionUseless = 0;
-  private warnedOcclusion = false;
   private _occlusionMs = 0;
   /** `options.dynamic`。`undefined` 代表沒宣告 —— 當靜態，但會觀察。 */
   private readonly declaredDynamic: boolean | undefined;
@@ -715,6 +684,8 @@ export class InstancedMesh extends BatchedMesh {
   private _bakeMs = 0;
   private _levelCounts: Int32Array;
   private _lodStats: LodStats | null = null;
+
+  // == 建構與 LOD 鏈 ==
 
   /**
    * @param source 一份 `BufferGeometry`，或一條 `{ lods, errors }` LOD 鏈。
@@ -796,7 +767,7 @@ export class InstancedMesh extends BatchedMesh {
     this.shadowCulling = options.shadowCulling ?? true;
     this.lodFadeBand = Math.max(0, options.lodFadeBand ?? 0);
     if (this.lodFadeBand > 0) this.installLodFade(material);
-    if (options.occlusion === true) this.occlusionBuffer = new OcclusionBuffer();
+    if (options.occlusion === true) this.occlusion = new OcclusionCuller();
     this.instancesPerCell = options.instancesPerCell ?? 64;
     this.declaredDynamic = options.dynamic;
     this.hlodEnabled = options.hlod !== false;
@@ -1081,8 +1052,8 @@ export class InstancedMesh extends BatchedMesh {
       skippedPlanes: this._skippedPlanes,
       cells: this.grid.cellCount,
       visibleCells: this.grid.visibleCells,
-      occluded: this._occludedInstances,
-      occluders: this.occlusionBuffer?.occludersDrawn ?? 0,
+      occluded: this.occlusion?.occluded ?? 0,
+      occluders: this.occlusion?.occludersDrawn ?? 0,
       levels: this._levelCounts,
       spatial: this.spatialActive,
       cpuMs: this._cpuMs,
@@ -1122,6 +1093,8 @@ export class InstancedMesh extends BatchedMesh {
    * 是非同步的。`lodFadeNodeReady` 讓測試等得到它 —— 不然「接上了」與
    * 「靜靜失敗了」在外面看起來一模一樣。
    */
+  // == 換階淡入 ==
+
   /**
    * WebGPU 上、開了淡入、而材質不是 node 材質 —— 那三件事同時成立的話，
    * 淡入**什麼都不會發生**。這裡把它講出來。
@@ -1305,6 +1278,8 @@ export class InstancedMesh extends BatchedMesh {
     this.invalidateInstances(instanceId, instanceId + 1);
     return this;
   }
+
+  // == 容量與矩陣 ==
 
   /**
    * 把容量長到至少 `needed`。已寫入的矩陣會保留。
@@ -1560,7 +1535,7 @@ export class InstancedMesh extends BatchedMesh {
     _cameraLocal.setFromMatrixPosition(camera.matrixWorld).applyMatrix4(_inverse);
     frustumFromCamera(this.frustum, camera, this.matrixWorld, _cameraLocal);
 
-    if (this.occlusionBuffer !== null) {
+    if (this.occlusion !== null) {
       // 包圍球是**區域空間**的，所以矩陣也要一路乘到區域空間。
       const perspective = camera as Camera & {
         projectionMatrix: Matrix4;
@@ -1570,9 +1545,8 @@ export class InstancedMesh extends BatchedMesh {
         .multiplyMatrices(perspective.projectionMatrix, perspective.matrixWorldInverse)
         .multiply(this.matrixWorld);
       // 半徑 1 的東西在距離 1 處佔幾個緩衝像素。透視投影的 m[5] 是 1/tan(fov/2)。
-      const radiusScale =
-        perspective.projectionMatrix.elements[5]! * 0.5 * this.occlusionBuffer.height;
-      this.occlusionBuffer.setViewProjection(_viewProjection.elements, radiusScale);
+      const radiusScale = perspective.projectionMatrix.elements[5]! * 0.5 * this.occlusion.height;
+      this.occlusion.setViewProjection(_viewProjection, radiusScale);
     }
 
     const gridStarted = performance.now();
@@ -1674,6 +1648,8 @@ export class InstancedMesh extends BatchedMesh {
     return this.usingBlocks ? this.identityOrder : this.grid.order;
   }
 
+  // == HLOD：遠景合併 ==
+
   /**
    * 區塊表作廢時，跟著它建的分組也一起丟。
    *
@@ -1708,6 +1684,8 @@ export class InstancedMesh extends BatchedMesh {
   private get spatialActive(): boolean {
     return this.usingBlocks || this.gridActive;
   }
+
+  // == 空間分割 ==
 
   /**
    * 需要時重建空間格。
@@ -2464,11 +2442,13 @@ export class InstancedMesh extends BatchedMesh {
 
   /** 收集階段每一筆都會寫進 `collectedSlots`，所以它要跟得上容量。 */
   private ensureCollectedSlots(): void {
-    if (this.occlusionBuffer === null) return;
+    if (this.occlusion === null) return;
     if (this.collectedSlots.length < this._capacity) {
       this.collectedSlots = new Int32Array(this._capacity);
     }
   }
+
+  // == 包圍球 ==
 
   private ensureSpheres(): void {
     if (this.usingBlocks) this.ensureIdentityOrder();
@@ -2583,6 +2563,8 @@ export class InstancedMesh extends BatchedMesh {
     }
   }
 
+  // == 收集：每幀真正跑的那一段 ==
+
   /**
    * 走訪、剔除、選階，把結果寫進 `BatchedMesh` 的繪製表。
    *
@@ -2615,7 +2597,7 @@ export class InstancedMesh extends BatchedMesh {
     // 相機看不到」。而看不到的東西照樣會投影 —— 拿它剔除陰影，影子就會
     // 憑空少一塊。這與下面「用光源的視錐而不是相機的」是同一個道理。
     const collectedSlots =
-      this.occlusionBuffer !== null && !this.drawingShadow ? this.collectedSlots : null;
+      this.occlusion !== null && !this.drawingShadow ? this.collectedSlots : null;
     const errors = this.lodErrors;
     const lodRanges = this.lodRanges;
     const levelCounts = this._levelCounts;
@@ -2819,9 +2801,19 @@ export class InstancedMesh extends BatchedMesh {
       }
     }
 
-    if (this.occlusionBuffer !== null && !this.drawingShadow) {
+    if (this.occlusion !== null && !this.drawingShadow) {
       const occlusionStarted = performance.now();
-      drawCount = this.cullOccluded(drawCount, starts, counts, indirect, spheres);
+      drawCount = this.occlusion!.cull(this, {
+        drawCount,
+        slots: this.collectedSlots,
+        spheres,
+        starts,
+        counts,
+        indirect,
+        cameraX: _cameraLocal.x,
+        cameraY: _cameraLocal.y,
+        cameraZ: _cameraLocal.z,
+      }).kept;
       this._occlusionMs = performance.now() - occlusionStarted;
     }
 
@@ -2873,147 +2865,6 @@ export class InstancedMesh extends BatchedMesh {
    * 螢幕上最大的那幾個 —— 也就是 `半徑 / 距離` 最大的。遮蔽能力幾乎全部
    * 來自那幾個，而畫遮蔽物是有成本的，所以只畫值得的。
    */
-  private cullOccluded(
-    drawCount: number,
-    starts: Int32Array,
-    counts: Int32Array,
-    indirect: Uint32Array,
-    spheres: Float32Array,
-  ): number {
-    const buffer = this.occlusionBuffer!;
-    buffer.clear();
-
-    const box = this.ensureInnerBox();
-    // 沒有內接盒就沒有遮蔽物可畫。這一份幾何仍然可以被別的東西擋住，
-    // 但這裡沒有別的東西 —— 所以直接返回，不做白工。
-    if (box === null || drawCount < MIN_OCCLUSION_INSTANCES) {
-      this._occludedInstances = 0;
-      return drawCount;
-    }
-
-    const camX = _cameraLocal.x;
-    const camY = _cameraLocal.y;
-    const camZ = _cameraLocal.z;
-
-    // ## 挑遮蔽物：門檻，不是「最大的 N 個」
-    //
-    // 第一版挑螢幕上最大的 48 個，而它在真實內容上**剔掉 0 個** —— 量出來
-    // 遮蔽物確實畫進去了 47 個、測了 13,589 次，就是一次都沒成功。
-    //
-    // 原因是這種內容的遮蔽是**集體**的：兩萬顆石頭從 520 單位外看，每一顆
-    // 都很小，沒有任何一顆單獨擋得住另一顆。擋住後面的是「前面那一大片」，
-    // 而那一大片是幾千顆一起組成的。
-    //
-    // 所以改成門檻：**只要夠大就畫**，畫到預算用完為止。挑「最大的 N 個」
-    // 那個直覺來自「幾棟大樓擋住一座城市」的場景，而它在密集散佈的內容上
-    // 完全不成立。
-    let maxScore = 0;
-    for (let i = 0; i < drawCount; i++) {
-      const slot = this.collectedSlots[i]!;
-      const s = slot * 4;
-      const radius = spheres[s + 3]!;
-      const dx = spheres[s]! - camX;
-      const dy = spheres[s + 1]! - camY;
-      const dz = spheres[s + 2]! - camZ;
-      const distanceSq = dx * dx + dy * dy + dz * dz;
-      if (distanceSq <= 1e-9) continue;
-      const score = (radius * radius) / distanceSq;
-      if (score > maxScore) maxScore = score;
-    }
-    // 最大的那個的一小部分。太高會漏掉集體遮蔽，太低會把時間花在畫不出
-    // 幾個像素的東西上。
-    const threshold = maxScore * OCCLUDER_SCORE_RATIO;
-
-    let drawn = 0;
-    for (let i = 0; i < drawCount && drawn < OCCLUDER_BUDGET; i++) {
-      const slot = this.collectedSlots[i]!;
-      const s = slot * 4;
-      const radius = spheres[s + 3]!;
-      const dx = spheres[s]! - camX;
-      const dy = spheres[s + 1]! - camY;
-      const dz = spheres[s + 2]! - camZ;
-      const distanceSq = dx * dx + dy * dy + dz * dz;
-      if (distanceSq <= 1e-9) continue;
-      if ((radius * radius) / distanceSq < threshold) continue;
-      // `indirect` 裡放的就是 instance 編號，不必再從走訪位置換算一次。
-      this.getMatrixAt(indirect[i]!, _occluderMatrix);
-      writeBoxCorners(box, _occluderMatrix, _viewProjection, _occluderCorners);
-      if (buffer.addOccluder(_occluderCorners)) drawn++;
-    }
-    buffer.finish();
-
-    // ## 把被擋住的從清單裡拿掉，就地壓縮
-    //
-    // 遮蔽物自己也會被測 —— 它們一定測不掉（自己擋不住自己，因為門檻是
-    // 自己的最遠點而它的最近點更近），所以不必特別跳過。
-    let kept = 0;
-    let occluded = 0;
-    for (let i = 0; i < drawCount; i++) {
-      const slot = this.collectedSlots[i]!;
-      const s = slot * 4;
-      if (buffer.isSphereOccluded(spheres[s]!, spheres[s + 1]!, spheres[s + 2]!, spheres[s + 3]!)) {
-        occluded++;
-        continue;
-      }
-      if (kept !== i) {
-        starts[kept] = starts[i]!;
-        counts[kept] = counts[i]!;
-        indirect[kept] = indirect[i]!;
-      }
-      kept++;
-    }
-    this._occludedInstances = occluded;
-
-    // ## 白花力氣的話要講出來
-    //
-    // 遮蔽剔除在「大遮蔽物」的內容上有效（牆、山、建築），但在**密集散佈
-    // 的小東西**上幾乎剔不到 —— 實測兩萬顆石頭的場景剔掉 0 個，而它每幀
-    // 要花好幾毫秒。原因是兩層保守疊在一起：遮蔽物只用內接盒（約佔物體
-    // 面積的一小部分），被測物用外接球（比輪廓大得多），兩個相乘之後
-    // 幾乎沒有東西通得過。
-    //
-    // 那不是 bug，是這個技巧與這種內容不合。但**開著卻沒有效果**是使用者
-    // 看不見的，他只會覺得「開了好像沒變快」—— 所以這裡把它說出來。
-    this.occlusionUseless = occluded * 200 < drawCount ? this.occlusionUseless + 1 : 0;
-    if (this.occlusionUseless === 120 && !this.warnedOcclusion) {
-      this.warnedOcclusion = true;
-      console.warn(
-        [
-          'WW.InstancedMesh: 遮蔽剔除開著，但連續 120 幀幾乎沒有剔到東西',
-          `（這一幀 ${drawCount} 個裡剔掉 ${occluded} 個），而它仍然要花 CPU。`,
-          '這個技巧在**大遮蔽物**的內容上有效（牆、山、建築）；密集散佈的小東西',
-          '幾乎剔不到 —— 遮蔽物只能用內接盒、被測物要用外接球，兩層保守疊起來',
-          '之後通不過。這種內容關掉它會比較快。',
-        ].join('\n'),
-      );
-    }
-    return kept;
-  }
-
-  /** 算一次內接盒。算不出來的話記住，不要每幀重試。 */
-  private ensureInnerBox(): Float32Array | null {
-    if (this.innerBoxComputed) return this.innerBoxLocal;
-    this.innerBoxComputed = true;
-    const geometry = this.sourceGeometry;
-    const position = geometry.getAttribute('position');
-    if (position === undefined) return null;
-    const index = geometry.getIndex();
-    const found = innerBox(
-      position.array as ArrayLike<number>,
-      index === null ? null : (index.array as ArrayLike<number>),
-    );
-    if (found === null) return null;
-    this.innerBoxLocal = new Float32Array([
-      found.minX,
-      found.minY,
-      found.minZ,
-      found.maxX,
-      found.maxY,
-      found.maxZ,
-    ]);
-    return this.innerBoxLocal;
-  }
-
   /**
    * 世界 1 單位在 1 單位距離處佔多少像素。
    *
@@ -3073,116 +2924,4 @@ export class InstancedMesh extends BatchedMesh {
         '空間分割剔除照常運作。要啟用 LOD，傳入 { lods: [細…粗], errors: [0, …] }。',
     );
   }
-}
-
-/**
- * 有骨骼權重就大聲說出來 —— **這個類別不會蒙皮**。
- *
- * ## 為什麼這是 warn 不是 info
- *
- * 它底層是 `BatchedMesh`，而 `BatchedMesh` 沒有蒙皮這回事：`skinIndex` 與
- * `skinWeight` 會被當成兩個沒人讀的 attribute 帶著走。於是畫面上是
- * **綁定姿勢的靜止模型**，動畫完全不發生。
- *
- * 沒有錯誤、沒有例外、幀時間還特別好看 —— 使用者看到的是「我的角色不會動」，
- * 而最不可能被懷疑的就是那一行 `THREE.SkinnedMesh` → `WW.InstancedMesh`。
- *
- * 原本唯一會講話的是 LOD 那條路（「不能自動產生 LOD（有骨骼權重）」），
- * 而那句話講的是**別的事**，會讓人以為只是少了 LOD。
- *
- * ## 為什麼不是丟例外
- *
- * 「用了更好，不用也能動」的另一面是**不要在使用者的既有程式裡丟例外**。
- * 他可能正在遷移、正在試、或那個網格根本不會播動畫。所以照畫，但把話講死。
- *
- * 這條軸的量測結果與 VAT 的計畫寫在 specs/roadmap.md。
- */
-function warnSkinned(geometries: readonly BufferGeometry[]): void {
-  const skinned = geometries.some(
-    (geometry) =>
-      geometry.getAttribute('skinIndex') !== undefined ||
-      geometry.getAttribute('skinWeight') !== undefined,
-  );
-  if (!skinned) return;
-  console.warn(
-    [
-      'WW.InstancedMesh: 這份幾何有骨骼權重，而這個類別**不會蒙皮** ——',
-      '它底層是 THREE.BatchedMesh，而 BatchedMesh 沒有蒙皮。畫面上會是',
-      '綁定姿勢的靜止模型，動畫不會發生，而且不會有任何錯誤。',
-      '會動的東西目前請繼續用 THREE.SkinnedMesh。',
-    ].join('\n'),
-  );
-}
-
-/**
- * 抽出 worker 需要的資料，並且**複製**每一個緩衝區。
- *
- * 複製是必要的：`postMessage` 的轉移會把來源緩衝區抽走，而那是**使用者的**
- * `BufferGeometry` —— 被抽走之後畫面直接空掉。複製一份幾百 KB 的幾何遠比
- * 簡化本身便宜。
- *
- * @returns 不能處理時回傳原因字串。
- */
-function toGeometryData(geometry: BufferGeometry): GeometryData | string {
-  if (geometry.morphAttributes !== undefined && Object.keys(geometry.morphAttributes).length > 0) {
-    return '有 morph target';
-  }
-
-  const attributes: Record<string, { array: Float32Array; itemSize: number }> = {};
-  for (const [name, attribute] of Object.entries(geometry.attributes)) {
-    if ((attribute as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute) {
-      return `attribute "${name}" 是交錯的`;
-    }
-    if (name === 'skinIndex' || name === 'skinWeight') return '有骨骼權重';
-    const array = attribute.array;
-    if (!(array instanceof Float32Array)) {
-      // 正規化整數 attribute 直接轉成 float 會改變語意，而那個錯誤是
-      // 顏色或法線靜靜地變掉 —— 寧可不做。
-      return `attribute "${name}" 不是 Float32Array`;
-    }
-    attributes[name] = { array: new Float32Array(array), itemSize: attribute.itemSize };
-  }
-
-  if (attributes['position'] === undefined) return '沒有 position attribute';
-
-  const index = geometry.getIndex();
-  return {
-    attributes,
-    indices: index === null ? null : Uint32Array.from(index.array),
-  };
-}
-
-function toBufferGeometry(level: GeneratedLevel): BufferGeometry {
-  const geometry = new ThreeBufferGeometry();
-  for (const [name, attribute] of Object.entries(level.attributes)) {
-    geometry.setAttribute(name, new BufferAttribute(attribute.array, attribute.itemSize));
-  }
-  geometry.setIndex(new BufferAttribute(level.indices, 1));
-  return geometry;
-}
-
-/**
- * `BatchedMesh` 要求同一批的幾何全部有索引或全部沒有。
- *
- * 混用的話 `addGeometry` 會丟例外，而使用者拿到的是一句看不懂的
- * 「Batched geometry attributes do not match」—— 所以這裡直接補齊。
- * 補索引只在建構時做一次，成本不進每幀路徑。
- *
- * @param forceIndex 自動 LOD 會產生**有索引**的階（簡化的前提就是索引），
- *   所以待補鏈的批次一定要是索引的，即使第 0 階原本不是。
- */
-function unifyIndexing(geometries: BufferGeometry[], forceIndex = false): BufferGeometry[] {
-  const anyIndexed = forceIndex || geometries.some((g) => g.getIndex() !== null);
-  if (!anyIndexed) return geometries;
-
-  return geometries.map((geometry) => {
-    if (geometry.getIndex() !== null) return geometry;
-    const vertices = geometry.getAttribute('position')!.count;
-    const array =
-      vertices > 65535 ? new Uint32Array(vertices) : (new Uint16Array(vertices) as Uint16Array);
-    for (let i = 0; i < vertices; i++) array[i] = i;
-    const clone = geometry.clone();
-    clone.setIndex(new BufferAttribute(array, 1));
-    return clone;
-  });
 }
