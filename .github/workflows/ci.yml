@@ -1,23 +1,32 @@
 name: CI
 
-# 平常在 `develop` 上做事；`main` 只收合併，而合併到 `main` 會觸發發布
-# （見 `release.yml`）。兩條都要跑 —— `main` 上跑是因為**發布前最後一次**
-# 驗證要在真的要發的那個 commit 上。
+# ## `main` 上不跑 —— 那會是第三次跑同一棵樹
+#
+# GitHub 的 `pull_request` 事件測的是**合併後的樹**（PR head 與 base 的
+# merge preview），所以 PR 上那一次已經驗過合併結果了。base 沒動的話，
+# 合併之後的 commit 與那棵樹完全一樣 —— 再跑一次沒有新資訊。
+#
+# 而合併到 `main` 會同時啟動 `release.yml`，那份從頭跑一遍完整驗證
+# （typecheck、lint、format、test、metadata、docs、publish-shape、
+# bundle、package-check）才發布。所以「發布前在真的那個 commit 上驗過」
+# 這件事是 release 自己保證的，不需要 CI 再陪跑一次。
+#
+# 先前兩個都掛在 `main` 上，於是一次合併會**同時**開兩個 job，各自
+# install、cook、typecheck、lint、test 一遍。
 on:
   push:
-    branches: [main, develop]
+    branches: [develop]
   pull_request:
     branches: [main, develop]
-  # ## 每週跑一次，即使沒有人改任何東西
+  # ## 沒有排程
   #
-  # 這個套件碰 `THREE.BatchedMesh` 的私有欄位（見 `three-internals.ts`：
-  # 官方沒有公開的替代路徑）。Three 改名或改結構的話，這裡會**靜靜地**
-  # **畫不出東西** —— 而 peer 範圍鎖在一個 minor，所以那件事只會在有人
-  # 升級 Three 時發生，而不是在有人改這個 repo 時。
+  # 曾經加過每週一跑一次，理由寫的是「Three 改內部的話這裡會靜靜地畫不出
+  # 東西，排程跑是偵測器」。**那個理由不成立**：CI 跑的是
+  # `pnpm install --frozen-lockfile`，相依全部鎖死 —— 同一份程式碼、同一份
+  # lockfile，每週跑出同一個結果。它看不到上游動了。
   #
-  # 排程跑配上 Dependabot 的 PR，就是「上游動了」這件事的偵測器。
-  schedule:
-    - cron: '0 3 * * 1'
+  # 真正會發現的是 Dependabot：新版落在範圍外時它開 PR，而**那個 PR 的 CI**
+  # 才是「這一版還能不能用」的答案。
   workflow_dispatch:
 
 # 這個 workflow 只讀。沒有這一段的話拿到的是 repo 的預設值，而新 repo

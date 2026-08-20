@@ -255,13 +255,13 @@ pnpm 每次發布都會**先試 OIDC**（Trusted Publishing），失敗才退回
 抓得到，唯一的驗證是那 25 道拿原生 Three 當對照組的關卡，而它們只跑過
 一個版本。
 
-代價是 Three 每出一個 minor 就要發一版。那是碰私有欄位的誠實價格，而
-「上游動了」有兩個獨立的偵測器：
+代價是 Three 每出一個 minor 就要發一版。那是碰私有欄位的誠實價格。
 
-- **Dependabot**（`.github/dependabot.yml`）：新版落在範圍外就開 PR
-- **每週排程**（`ci.yml` 的 `schedule`）：沒有人改東西也會跑一次
+「上游動了」由 **Dependabot** 偵測（`.github/dependabot.yml`）：新版落在
+範圍外時它開 PR，而**那個 PR 的 CI** 就是「這一版還能不能用」的答案。
 
-收到之後要做的事就一件：`pnpm verify:all`。
+> 曾經以為排程跑一次 CI 也算第二個偵測器。**不算** —— CI 跑的是
+> `--frozen-lockfile`，相依鎖死，每週跑出同一個結果。已經拿掉。
 
 ## Benchmark
 

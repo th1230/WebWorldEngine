@@ -7,18 +7,19 @@
  * 一個打錯的 script 名字，在這台機器上完全沒有徵兆 —— 要等到 push 之後
  * 看 Actions 頁面才知道。
  *
- * 而這個 repo 的 workflow 目前一次都沒跑過（沒有 git remote），所以那份
- * 「沒有徵兆」是滿的。
- *
  * ## 判準
  *
  * 只驗這裡驗得到的，不假裝驗得了 GitHub 的執行環境：
  *
  * | | 少了會怎樣 |
  * | --- | --- |
- * | YAML 解析得過 | push 之後 workflow 根本不會啟動，而 Actions 頁面上只有一行紅字 |
- * | 每個 `pnpm <x>` 都對得到 `package.json` 的 script | 跑到一半才失敗，前面的步驟白跑 |
- * | 發布前有跑過完整驗證 | 沒驗就發，而 npm 上的版本號拿不回來 |
+ * | YAML 解析得過 | push 之後 workflow 根本不會啟動，Actions 頁面上只有一行紅字 |
+ * | 每個 `pnpm <x>` 都對得到一個 script | 跑到一半才失敗，前面的步驟白跑 |
+ * | script 不指名沒進版控的路徑 | 開發機上有、runner 上沒有（真的踩過：`assets/source`） |
+ * | **職責不重疊**：CI 驗證、release 發布 | 兩邊都宣稱守著同一件事，其中一個會先漂走 |
+ * | **職責不缺漏**：CI 真的驗了每一項 | release 現在完全依賴它 |
+ * | 同一棵樹不重跑 | PR 測的就是合併後的樹；main 上再跑一次是零資訊 |
+ * | 沒有排程 | `--frozen-lockfile` 讓每週跑出同一個結果 |
  * | CI 有最小權限 | 一個只跑測試的 job 不該有寫入權 |
  *
  * **驗不到的**：runner 上有沒有那個瀏覽器、secret 設了沒、action 的版本存
@@ -118,18 +119,33 @@ check(
   missing.join('、') || undefined,
 );
 
-// ## 發布之前必須驗過
+// ## 職責分開：CI 驗證，release 發布
 //
-// release 是唯一一個**做不可逆的事**的 workflow。它跑的驗證少一項，那一項
-// 守的東西就會發到 npm 上，而版本號拿不回來。
+// 兩邊各自宣稱守著同一件事的話，其中一個一定會先漂走 —— 而職責重疊比職責
+// 缺漏更難查，因為兩邊看起來都在做事。
+//
+// 所以這裡守的是「release **不要**做驗證」，而不是「release 也要驗一遍」。
+// 驗證那一邊由 CI 守（下面）。
 const release = parsed.get('.github/workflows/release.yml');
 const releaseRuns = Object.values(release?.jobs ?? {})
   .flatMap((job) => job.steps ?? [])
   .map((step) => step.run ?? '')
   .join('\n');
-for (const must of ['pnpm typecheck', 'pnpm lint', 'pnpm test', 'pnpm publish-check']) {
-  check(releaseRuns.includes(must), `發布前有跑 ${must}`);
-}
+const VERIFYING = ['pnpm typecheck', 'pnpm lint', 'pnpm test', 'pnpm format:check'];
+const leaked = VERIFYING.filter((one) => releaseRuns.includes(one));
+check(leaked.length === 0, 'release 不重跑驗證（那是 CI 的事）', leaked.join('、') || undefined);
+// 但**建置**是它的：發出去的 dist 要在這裡產生，不能沿用別人跑的結果。
+check(releaseRuns.includes('pnpm build:pkg'), 'release 自己建 dist');
+
+// 反過來，CI 必須真的把該驗的都驗了 —— release 現在完全依賴它。
+const ciRuns = Object.values(parsed.get('.github/workflows/ci.yml')?.jobs ?? {})
+  .flatMap((job) => job.steps ?? [])
+  .map((step) => step.run ?? '')
+  .join('\n');
+const uncovered = [...VERIFYING, 'pnpm publish-check', 'pnpm bundle-check'].filter(
+  (one) => !ciRuns.includes(one),
+);
+check(uncovered.length === 0, 'CI 驗了每一項', uncovered.join('、') || undefined);
 check(
   /--tag/.test(releaseRuns),
   '發布有指定 dist-tag',
@@ -156,10 +172,19 @@ check(
 
 const ci = parsed.get('.github/workflows/ci.yml');
 const ciBranches = ci?.on?.push?.branches ?? [];
+
+// ## CI 不在 `main` 上重跑
+//
+// PR 那一次測的就是合併後的樹，而合併之後 `release.yml` 又會從頭驗一遍。
+// 掛在 `main` 上等於同一棵樹跑第三次，而且與 release 同時開兩個 job。
 check(
-  ciBranches.includes('develop') && ciBranches.includes('main'),
-  'CI 在 develop 與 main 上都跑',
-  `branches = ${JSON.stringify(ciBranches)}`,
+  ciBranches.includes('develop') && !ciBranches.includes('main'),
+  'CI 在 develop 上跑，不在 main 上重跑',
+  `push branches = ${JSON.stringify(ciBranches)}`,
+);
+check(
+  (ci?.on?.pull_request?.branches ?? []).includes('main'),
+  '往 main 的 PR 會跑 CI（那才是合併結果被驗到的地方）',
 );
 
 // ## 權限：CI 只讀，release 要寫（發完之後打 tag）
@@ -168,6 +193,12 @@ check(
   'CI 是最小權限',
   `contents = ${ci?.permissions?.contents ?? '（沒宣告，會拿到 repo 的預設值）'}`,
 );
-check(ci?.on?.schedule !== undefined, 'CI 有排程跑（上游動了要有人發現）');
+// ## 不該有排程
+//
+// 排程跑的是 `--frozen-lockfile`：相依全部鎖死，同一份程式碼每週跑出同一
+// 個結果。它偵測不到上游動了 —— 那是 Dependabot 的事。
+//
+// 這一條反過來守：加回去就是又付一次 runner 時間換零資訊。
+check(ci?.on?.schedule === undefined, 'CI 沒有排程（鎖死的相依每週跑出同一個結果）');
 
 finish('CI 設定關卡');
