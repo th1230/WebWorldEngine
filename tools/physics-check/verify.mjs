@@ -3,7 +3,7 @@
  *
  * ## 為什麼這一關不能用單元測試代替
  *
- * `computeBuoyancy` 與 `terrainHeightfield` 的單元測試驗的都是「這一刻算出
+ * `computeBuoyancy` 與 `buildHeightfield` 的單元測試驗的都是「這一刻算出
  * 來的數字對不對」，而這兩件事的錯法都**不在那個數字裡**：
  *
  * | 實際發生過的錯 | 每一幀的數字 | 症狀 |

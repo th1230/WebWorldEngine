@@ -11,6 +11,7 @@
     "three"
   ],
   "license": "MIT",
+  "author": "thomasYeh",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/thomasYeh/WebWorldEngine.git",

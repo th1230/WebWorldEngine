@@ -160,6 +160,31 @@ import 不報錯、只是每個使用者多下載一包。所以每一道關卡�
 名字裡那件事 —— 比對上游而 bug 在下游、用一個天生免疫的指標、測試場景
 分不出兩種成因。這一輪有五個上線中的 bug 是先**重寫量測**才找出來的。
 判準怎麼訂見 [`specs/doctrine.md`](specs/doctrine.md)。
+## 發布
+
+三個套件**齊步發布**，版本永遠相同：
+
+```bash
+pnpm version:set 0.2.0        # 三個 package.json 一起改
+#  寫 CHANGELOG.md
+git commit -am "release: v0.2.0"
+git tag v0.2.0 && git push --follow-tags
+```
+
+tag 推上去之後 `.github/workflows/release.yml` 會跑完整驗證（含
+`package-check`：打包 → 裝進乾淨專案 → 真的用一次）再發布。
+
+**齊步是刻意的。** `@webworld/format` 是另外兩個之間的格式契約，而契約
+裡最重要的東西不是型別，是**意思** —— 兩邊解析到不同版本的話型別全部符合，
+只是意思不一樣，症狀是「cook 過的資產比 runtime 產生的糊」而且沒有錯誤訊息。
+所以有時候會發一個「這個套件什麼都沒改」的版本，那個代價是刻意付的。
+
+`release.yml` 的第一步是**比對 tag 與 `package.json`**。不一致就停 ——
+發錯版本號這件事事後無法修正，npm 上的版本號拿不回來。
+
+> 這個 workflow 需要 repo 的 `NPM_TOKEN` secret。沒設的話最後一步會失敗，
+> 前面的驗證照跑 —— 不會誤發。
+
 ## Benchmark
 
 ```bash
@@ -191,6 +216,7 @@ pnpm bench:smoke     # 無頭 + SwiftShader，只驗證跑不跑得起來
 | [`specs/roadmap.md`](specs/roadmap.md) | 里程碑、通過條件與實測數字 |
 | [`specs/api.md`](specs/api.md) | 使用者實際會寫的程式碼 |
 | [`packages/three/README.md`](packages/three/README.md) | **對外的那一份** —— 套件裡有什麼、怎麼用 |
+| [`CHANGELOG.md`](CHANGELOG.md) | 每一版改了什麼，破壞性變更怎麼遷移 |
 | [`specs/benchmark.md`](specs/benchmark.md) | 場景與量測協定 |
 
 ## 範圍

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTerrain, terrainHeightfield } from './terrain.ts';
+import { buildTerrain, buildHeightfield } from './terrain.ts';
 
 /**
  * 地表的失效方式全部是**看得見但不報錯**的：接縫裂開、邊緣缺一條、
@@ -139,7 +139,7 @@ describe('給物理用的高度場', () => {
     // 這是它存在的理由：呼叫端自己取樣的話要猜原點、格距、列行順序，
     // 猜錯就是角色浮在空中或陷進地裡，而且不報錯。
     const size = 400;
-    const field = terrainHeightfield({ size, samples: 5, height });
+    const field = buildHeightfield({ size, samples: 5, height });
     const half = size / 2;
     const step = size / 4;
 
@@ -155,7 +155,7 @@ describe('給物理用的高度場', () => {
   it('排列是 column-major —— row-major 會讓地形沿對角線鏡射', () => {
     // 鏡射的症狀是山長在錯的地方，而畫面上的地表是對的。那種錯很難
     // 歸因到「排列順序」，所以這裡直接驗它。
-    const field = terrainHeightfield({ size: 100, samples: 3, height: (x) => x });
+    const field = buildHeightfield({ size: 100, samples: 3, height: (x) => x });
     // 同一 column 內 x 固定，所以連續三個值應該相同。
     expect(field.heights[0]).toBeCloseTo(field.heights[1]!, 5);
     expect(field.heights[1]).toBeCloseTo(field.heights[2]!, 5);
@@ -164,18 +164,18 @@ describe('給物理用的高度場', () => {
   });
 
   it('scale.y 是 1 —— 乘上去會把地形拉高一次', () => {
-    const field = terrainHeightfield({ size: 250, samples: 4, height });
+    const field = buildHeightfield({ size: 250, samples: 4, height });
     expect(field.scale).toEqual({ x: 250, y: 1, z: 250 });
   });
 
   it('samples 太小當場丟，不是產生一個沒有面的碰撞體', () => {
-    expect(() => terrainHeightfield({ size: 100, samples: 1, height })).toThrow(/samples/);
+    expect(() => buildHeightfield({ size: 100, samples: 1, height })).toThrow(/samples/);
   });
 
   it('碰撞的解析度可以與畫面不同，但範圍必須一樣', () => {
     // 碰撞通常可以粗一點 —— 那是記憶體與精度的取捨，屬於開發者。
-    const coarse = terrainHeightfield({ size: 400, samples: 3, height });
-    const fine = terrainHeightfield({ size: 400, samples: 5, height });
+    const coarse = buildHeightfield({ size: 400, samples: 3, height });
+    const fine = buildHeightfield({ size: 400, samples: 5, height });
     // 兩者的四個角必須完全一致，否則它們蓋的不是同一片地。
     expect(coarse.heights[0]).toBeCloseTo(fine.heights[0]!, 5);
     expect(coarse.heights[coarse.heights.length - 1]).toBeCloseTo(

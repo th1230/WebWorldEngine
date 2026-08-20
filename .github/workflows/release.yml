@@ -1,0 +1,71 @@
+name: Release
+
+# tag 推上來才跑。不會因為 push 到 main 就發布 —— 發布是一個決定，
+# 不是一個副作用。
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    name: Verify and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # npm 的 trusted publishing 要它；用 NPM_TOKEN 的話沒有影響。
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      # ## tag 與 package.json 必須一致
+      #
+      # 不對的話發出去的版本號與 tag 指的 commit 對不上，而那件事**事後
+      # 無法修正** —— npm 上的版本號拿不回來。所以擋在最前面。
+      - name: Tag 與版本一致
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          for pkg in format three cook; do
+            VERSION=$(node -p "require('./packages/$pkg/package.json').version")
+            if [ "$TAG" != "$VERSION" ]; then
+              echo "tag v$TAG 與 @webworld/$pkg 的 $VERSION 對不上"
+              exit 1
+            fi
+          done
+          echo "三個套件都是 $TAG"
+
+      - run: pnpm cook -- --verify
+
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm test
+      - run: pnpm metadata-check
+
+      - run: pnpm build:pkg
+
+      # 只用 WebGL 的人不該下載 WebGPU 那一半。
+      - run: pnpm bundle-check
+
+      # 打包 → 裝進乾淨專案 → 真的用一次。發布前最後一道，也是唯一一道
+      # 會走「使用者那一側」解析規則的。
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: node tools/package-check/verify.mjs
+
+      # 依相依順序發。format 先上去，另外兩個才解析得到它。
+      - name: Publish
+        run: |
+          for pkg in format three cook; do
+            pnpm --filter "@webworld/$pkg" publish --no-git-checks --access public
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

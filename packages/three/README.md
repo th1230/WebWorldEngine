@@ -79,7 +79,7 @@ scene.add(rocks);
 
 | | |
 | --- | --- |
-| [`buildTerrain` / `terrainHeightfield`](#地形) | 畫的那份與碰撞那份同一個高度函式 |
+| [`buildTerrain` / `buildHeightfield`](#地形) | 畫的那份與碰撞那份同一個高度函式 |
 | [`Water` / `WaterSurface` / `computeBuoyancy`](#水) | 一份波形，畫面、CPU、浮力三邊共用 |
 | [`PhysicsScheduler`](#物理調度) | 誰要進求解器 |
 
@@ -483,7 +483,7 @@ sky.update(renderer, sunDirection);   // 每幀。方向動得夠多才重烘
 
 ```js
 const terrain = WW.buildTerrain({ size: 4000, tiles: 8, segments: 64, height });
-const field = WW.terrainHeightfield({ size: 4000, samples: 129, height });
+const field = WW.buildHeightfield({ size: 4000, samples: 129, height });
 ```
 
 畫的那份與碰撞那份**取自同一個高度函式**。各寫一份的症狀是角色踩在看不見

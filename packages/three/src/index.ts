@@ -19,7 +19,7 @@ export { MultiMesh, type MultiMeshOptions } from './multi-mesh.ts';
 export { splitGeometry, splitWithLods, type SplitGeometryOptions } from './split.ts';
 export {
   buildTerrain,
-  terrainHeightfield,
+  buildHeightfield,
   type TerrainOptions,
   type TerrainTiles,
   type TerrainHeightfield,

@@ -18,6 +18,41 @@ pnpm example
 | <http://localhost:5174/?cooked=1> | 載入 cook 過的資產（先跑 `pnpm cook`） |
 | <http://localhost:5174/?stream=1> | 開串流：內容跟著相機載入卸載 |
 
+## 每個效果各有一個場景
+
+上面那一組是 `main.ts` —— 「換一個字」那件事。除此之外每一個效果各有
+一個獨立場景，用網址參數開：
+
+| 網址 | 看什麼 | 哪一道關卡吃它 |
+| --- | --- | --- |
+| `?contact=1` | 接觸陰影 | `pnpm contact-check` |
+| `?dfshadow=1` | 距離場陰影與體積霧 | `pnpm df-shadow-check` |
+| `?fog=1` | 體積霧的光柱與遮蔽 | `pnpm fog-check` |
+| `?vsm=4` | 虛擬陰影圖（數字是虛擬解析度相對圖集的倍數） | `pnpm vsm-check` |
+| `?reflect=1` | 追蹤反射：螢幕空間 → 距離場 | `pnpm reflect-check` |
+| `?reflprobe=1` | 再接上反射探針 | `pnpm reflprobe-check` |
+| `?gi=1` | 間接光探針與螢幕空間間接光 | `pnpm gi-check、ssgi-check` |
+| `?sky=1` | 大氣散射與日夜循環 | `pnpm sky-check、daynight-check` |
+| `?waterlook=1` | 水的外觀：吸收、折射、泡沫 | `pnpm water-look-check` |
+| `?physics=1&orbit=260` | 地形、碰撞、浮力 | `pnpm physics-check` |
+| `?vt=1` | 虛擬貼圖 | `pnpm vt-check` |
+| `?shadowlod=1` | 陰影 pass 自己剔除、自己選階 | `pnpm shadow-lod-check` |
+| `?lodfade=1` | 換階交叉淡入 | `pnpm lod-fade-check` |
+| `?trees=20000` | Impostor 對真幾何 | `pnpm impostor-check` |
+
+**這些場景是量測台，不是展示。** 它們的相機位置、物件擺法、參數全部是為了
+讓某一個判準量得準而選的 —— 例如深度法線圖在這裡一律用全解析度
+（`world.setDepthNormals({ scale: 1 })`），因為重取樣的誤差會混進每一個
+門檻裡。真實應用該用預設的半解析度。
+
+改動它們之前先看對應的關卡：那些數字是綁在一起的。
+
+### WebGPU 那一條
+
+同樣的場景在 `/webgpu.html` 上跑 `WebGPURenderer`，參數一樣。
+`pnpm cross-check` 就是把兩邊逐項比對 —— 同一個效果、兩個後端，必須算出
+同一組數字。
+
 ### 給 `pnpm visual-check` 用的四個
 
 這四個不是展示用的，是**畫面比對需要控制的變因**。列在這裡是因為改了

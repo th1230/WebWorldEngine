@@ -11,7 +11,7 @@ import * as THREE from 'three';
  * | | 單元測試驗得了 | 驗不了 |
  * | --- | --- | --- |
  * | `PhysicsScheduler` | 距離內的 id 會被啟用 | 剛體真的建出來、真的在算 |
- * | `terrainHeightfield` | 取樣值與高度函式相符 | 送進 Rapier 之後**箱子踩在畫出來的地面上** |
+ * | `buildHeightfield` | 取樣值與高度函式相符 | 送進 Rapier 之後**箱子踩在畫出來的地面上** |
  * | `computeBuoyancy` | 力的大小對 | 東西真的浮在**畫出來的**水面上 |
  *
  * 而那三個「驗不了」的失效方式全部是靜默的：箱子穿過地板、浮在半空、
@@ -59,7 +59,7 @@ export async function makePhysicsScene(): Promise<PhysicsScene> {
   //
   // **同一個 `terrainHeight`**。自己重新取樣的話要猜原點、格距、列行順序，
   // 而猜錯的症狀是箱子浮在空中或陷進地裡 —— 不報錯，走到那一塊才看得到。
-  const field = WW.terrainHeightfield({ size: SIZE, samples: 129, height: terrainHeight });
+  const field = WW.buildHeightfield({ size: SIZE, samples: 129, height: terrainHeight });
   world.createCollider(
     RAPIER.ColliderDesc.heightfield(field.rows - 1, field.columns - 1, field.heights, field.scale),
   );

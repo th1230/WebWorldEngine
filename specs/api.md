@@ -322,6 +322,53 @@ if (world.capabilities.tier < 2) world.stream({ ...options, radius: 400 });
 
 ---
 
+### 一幀的邊界只有使用者知道：`beginFrame()`
+
+這一條與第四節（上下文用「發現」的）有張力，所以要說清楚為什麼還是加了。
+
+螢幕空間的那幾個效果 —— 接觸陰影、距離場陰影、體積霧、追蹤反射、虛擬
+陰影圖、螢幕空間間接光 —— 共用同一張深度法線圖。共用的東西**一幀只該
+算一次**，而「一幀」是應用層的概念：套件掛在 `onBeforeRender` 上，看到的是
+一次次繪製，不是一幀。多相機、後處理、離屏預覽，每一個都會讓「繪製次數」
+與「幀數」對不上。
+
+**先前的做法是把那張圖交給呼叫端**：自己 new、自己每幀 update、自己傳給
+每一個效果。那有三個代價，而第三個最貴：
+
+1. 使用者要知道一個他不關心的東西存在
+2. 傳錯順序不會報錯（全部都是 TypedArray 與 number）
+3. **套件只能用猜的** —— 「這張圖新不新」原本是
+   `renderer.info.render.frame - stamp <= 8`，那個 8 是因為每個效果自己的
+   pass 也會讓幀號前進，所以無法要求相等。猜錯的方向是「靜靜地用舊資料」，
+   症狀是相機一動就有殘影而靜止時完全正常
+
+一行 `worldFor(scene).beginFrame()` 把那個猜測變成確定的事實。它**不接管
+繪製** —— 只推進一個計數器，什麼時候畫、畫什麼、後處理怎麼接全部還是
+呼叫端的事（第六節照樣成立）。
+
+漏了也不會壞：那時候退回「每個效果各畫一次」，畫面正確、只是浪費。而
+**那個浪費從外面看不出來**，所以套件會講一次 —— 第五節。
+
+### 每幀會變的東西進 options 物件，不排在參數後面
+
+所有效果都是 `render(renderer, scene, camera, options)`。
+
+排到第五、第六個之後的位置參數沒有人記得住，而這裡的參數型別剛好都
+互相相容 —— 傳錯順序不會報錯。實際的例子：
+
+```js
+// 舊的：第六個是 irradiance 還是 probes？看不出來
+reflections.render(renderer, camera, gbuffer, colour, field, probes);
+
+// 新的：看得出來，而且可以只給要的那幾個
+reflections.render(renderer, scene, camera, { color, field, irradiance });
+```
+
+同一個理由也套用在內部：`OcclusionCuller.cull` 吃的是 `OcclusionFrame`，
+九個位置參數裡有六個是 number 或 TypedArray。
+
+---
+
 ### 螢幕誤差的分母是「這次畫到哪裡」，不是畫布多大
 
 `renderer.getRenderTarget()` 有值就用它的高度。三種常見情況會讓兩者不同：

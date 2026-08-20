@@ -323,7 +323,7 @@ function tileGeometry(
  * 由 `scale` 縮放的。這裡直接產出那個形狀：
  *
  * ```js
- * const field = WW.terrainHeightfield({ size: 2400, samples: 256, height });
+ * const field = WW.buildHeightfield({ size: 2400, samples: 256, height });
  * const desc = RAPIER.ColliderDesc.heightfield(
  *   field.rows - 1, field.columns - 1, field.heights, field.scale,
  * );
@@ -357,10 +357,10 @@ export interface TerrainHeightfieldOptions {
   height: (x: number, z: number) => number;
 }
 
-export function terrainHeightfield(options: TerrainHeightfieldOptions): TerrainHeightfield {
+export function buildHeightfield(options: TerrainHeightfieldOptions): TerrainHeightfield {
   const { size, samples, height } = options;
   if (!Number.isInteger(samples) || samples < 2) {
-    throw new Error(`WW.terrainHeightfield: samples 要是 ≥ 2 的整數，收到 ${samples}。`);
+    throw new Error(`WW.buildHeightfield: samples 要是 ≥ 2 的整數，收到 ${samples}。`);
   }
 
   const heights = new Float32Array(samples * samples);

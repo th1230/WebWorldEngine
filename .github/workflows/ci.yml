@@ -33,12 +33,26 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
 
+      # 格式在本機是 `pnpm verify` 的一部分，CI 以前卻沒有跑 —— 於是
+      # 「本機過了」與「CI 過了」不是同一件事，而那種落差只會愈拉愈大。
+      - run: pnpm format:check
+
+      # npm 頁面上看得到的欄位。壞掉在這個 repo 裡沒有任何徵兆，
+      # 要等到發布之後從 npmjs.com 上看才發現。
+      - run: pnpm metadata-check
+
       # 產出必須真的建得起來；只做型別檢查抓不到 bundler 層的問題
       - run: pnpm build
 
       # 發布路徑要在 CI 走過一遍。工作區裡 `exports` 直指 src，所以
       # **只跑測試完全碰不到 dist** —— 打包壞掉要等到有人 npm install 才知道。
       - run: pnpm build:pkg
+
+      # 只用 WebGL 的人不該下載 WebGPU 那一半。套件裡十幾處寫著「所以這裡用
+      # 動態 import」，而在這道關卡之前**沒有任何東西守著那句話** —— 改成
+      # 靜態 import 的話 typecheck、lint、單元測試、所有畫面關卡全部照樣綠，
+      # 因為畫面完全正確，只是每個使用者多背一整包 TSL。
+      - run: pnpm bundle-check
 
       # package-check 的最後一段會把套件打包成一個網站並在瀏覽器裡跑，
       # 所以這個 job 也需要瀏覽器。
