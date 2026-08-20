@@ -166,7 +166,7 @@ export function makeWaterLookScene(): WaterLookScene {
     // WebGPU 那份是非同步建起來的，所以「建好了」與「換上去了」是兩件事。
     // 只在建好的那一刻換一次的話，時序上很容易錯過 —— 而錯過的症狀是
     // 「WebGPU 上水面完全沒畫出來」，看起來像移植失敗。換材質很便宜。
-    surface.setDebug(debug);
+    surface.debugMode = debug;
     // `materialFor` 在 WebGPU 上還沒建好時回 null —— 那時整個不要畫水，
     // 因為把 ShaderMaterial 交給 WebGPURenderer 會讓整個場景畫不出來。
     const material = surface.materialFor(renderer) as THREE.ShaderMaterial | null;

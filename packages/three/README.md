@@ -88,6 +88,7 @@ scene.add(rocks);
 | | |
 | --- | --- |
 | [`worldFor(scene).stats`](#資訊出口) | 這一幀到底發生了什麼 |
+| [`debugMode`](#查問題把中間值畫出來) | 效果沒生效時，把中間值畫出來看斷在哪一段 |
 | [兩個後端](#兩個後端) | WebGL2 與 WebGPU 的差別在哪裡 |
 | [品質契約](#品質契約) | LOD 保證的是什麼、不保證什麼 |
 
@@ -655,6 +656,25 @@ const material = await WW.loadMaterial(url, id, { MaterialClass: MeshStandardNod
 await WW.irradianceNodeReady(volume);
 await WW.skyNodeReady(sky);
 ```
+
+## 查問題：把中間值畫出來
+
+效果沒生效的時候，最難的是**不知道斷在哪一段**。所以幾個多段的效果都
+開了同一個口：
+
+```js
+contact.debugMode = 1;      // 接觸陰影
+reflections.debugMode = 3;  // 追蹤反射：0 正常、1 體積座標、2 反射方向、3 第 0 顆探針…
+vsm.debugMode = 1;          // 虛擬陰影圖
+surface.debugMode = 10;     // 水（10 是折射偏移）
+```
+
+`0` 一律是「正常畫」。其餘的號碼各效果自己定義，寫在各自的 node 檔裡 ——
+兩條後端的號碼**是一樣的**，所以 WebGL 上看到什麼，WebGPU 上就該看到什麼。
+這個口本來就是為了查跨後端的差異加的。
+
+> 水的那個是 setter 而不是普通欄位，因為 `materialFor()` 會把號碼烘進材質，
+> 必須立刻推給兩條路。其他三個在繪製當下才讀，欄位就夠了。
 
 ## 資訊出口
 

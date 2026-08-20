@@ -338,7 +338,7 @@ export function makeContactScene(): ContactScene {
       return [(data[0] ?? 0) / 255, (data[1] ?? 0) / 255, (data[2] ?? 0) / 255];
     },
     setDebug: (mode) => {
-      (shadows as unknown as { debugMode: number }).debugMode = mode;
+      shadows.debugMode = mode;
     },
     sampleAsync: async (renderer, point) => {
       const target = targetOf(shadows);

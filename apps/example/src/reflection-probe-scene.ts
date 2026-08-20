@@ -155,7 +155,7 @@ export function makeReflectionProbeScene(): ReflectionProbeScene {
 
   /** 一幀。`nodeReady` 也要用它。 */
   const draw = (renderer: THREE.WebGLRenderer, useProbes: boolean, debug = 0): void => {
-    (reflections as unknown as { debugMode: number }).debugMode = debug;
+    reflections.debugMode = debug;
     renderer.setRenderTarget(colorTarget);
     renderer.render(scene, camera);
     renderer.setRenderTarget(null);

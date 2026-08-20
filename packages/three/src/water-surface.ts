@@ -176,13 +176,24 @@ export class WaterSurface {
   }
 
   /**
-   * 把中間值畫出來。兩條路的號碼**一樣**。
+   * 把中間值畫出來。0 是正常，其餘見 `water-surface-node.ts`。兩條路的
+   * 號碼**一樣**。
    *
-   * 做成明確的一支而不是讓 `materialFor` 去讀 uniform：那樣的話呼叫順序就
-   * 變成隱含的相依，而實測踩過 —— `materialFor` 在設定之前被呼叫，於是
-   * WebGPU 那邊的除錯模式**慢一拍**，跨後端比中間值時比到不同的東西。
+   * ## 為什麼是 setter 而不是普通欄位
+   *
+   * 其他效果（接觸陰影、追蹤反射、虛擬陰影圖）的 `debugMode` 是普通欄位，
+   * 因為它們在**繪製當下**才讀它。這裡不行：`materialFor()` 會回傳材質，
+   * 而號碼必須在那之前就進去。
+   *
+   * 實測踩過 —— `materialFor` 在設定之前被呼叫，於是 WebGPU 那邊的除錯
+   * 模式**慢一拍**，跨後端比中間值時比到不同的東西。setter 立刻推給兩條
+   * 路，呼叫順序就不再是隱含的相依。
    */
-  setDebug(mode: number): void {
+  get debugMode(): number {
+    return this.material.uniforms.uDebug!.value as number;
+  }
+
+  set debugMode(mode: number) {
     this.material.uniforms.uDebug!.value = mode;
     this.node?.setDebug(mode);
   }
