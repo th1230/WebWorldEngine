@@ -12,11 +12,12 @@ import {
   Vector3,
   WebGLRenderTarget,
 } from 'three';
-import { Color } from 'three';
 import { PageTable, type VirtualTextureLayout } from '@webworld/format';
-import { Matrix4, ShaderMaterial } from 'three';
+import { AlwaysDepth, Matrix4, ShaderMaterial } from 'three';
 import { drawFullscreen, FULLSCREEN_VERTEX, VIEW_POSITION_GLSL } from './fullscreen.ts';
-import type { Camera, PerspectiveCamera, Scene, Texture, WebGLRenderer } from 'three';
+// 只有型別是靜態的 —— 那份 TSL 轉寫是動態載入的。
+import type { DepthPackNodeHandle, VirtualShadowMapNodeHandle } from './virtual-shadow-map-node.ts';
+import type { Camera, Material, PerspectiveCamera, Scene, Texture, WebGLRenderer } from 'three';
 import type { SceneDepthNormals } from './depth-normals.ts';
 
 /**
@@ -83,6 +84,14 @@ export class VirtualShadowMap {
   private readonly lightView = new Matrix4();
   private resolveTarget: WebGLRenderTarget | null = null;
   private resolveMaterial: ShaderMaterial | null = null;
+  /** WebGPU 那條路的 resolve 材質。惰性建立 —— 只用 WebGL 的人不該下載 `three/tsl`。 */
+  private node: VirtualShadowMapNodeHandle | null = null;
+  private nodePending: Promise<void> | null = null;
+  /** 圖集那一趟的深度材質，WebGPU 那份 —— `MeshDepthMaterial` 它不吃。 */
+  private depthNode: DepthPackNodeHandle | null = null;
+  private depthPending: Promise<void> | null = null;
+  /** 把一頁重設成「最遠」的那個 quad，WebGL 那份。 */
+  private resetMaterial: ShaderMaterial | null = null;
   private readonly projectionInverse = new Matrix4();
 
   constructor(options: VirtualShadowMapOptions) {
@@ -184,6 +193,22 @@ export class VirtualShadowMap {
    * @returns 這一次畫了幾頁。相機不動時應該是 0。
    */
   update(renderer: WebGLRenderer, scene: Scene): number {
+    // ## 這個檢查要在 `commit()` **之前**
+    //
+    // WebGPU 不吃 `MeshDepthMaterial`，走自己打包的那份，而那份是非同步
+    // 建起來的。還沒好就這一輪先不畫。
+    //
+    // 而 `commit()` 會**改頁表** —— 它把那些頁標成住著的，然後回報新增的
+    // 那些。在它後面才回頭說「這一輪不畫」的話，頁表相信那些頁已經在圖集
+    // 裡了，而它們永遠不會被畫：之後每次 `commit()` 都回報 0，於是 `settle`
+    // 立刻結束，圖集整張是空的。
+    //
+    // 實測就是這個症狀：主控台乾乾淨淨，解析那一段的頁表查詢、槽位、圖集
+    // 座標全部與 WebGL 相同（0.000%），只有取到的深度一律 0 —— 整個場景
+    // 都在陰影裡。
+    const depthMaterial = this.depthMaterialFor(renderer);
+    if (depthMaterial === null) return 0;
+
     const loads = this.table.commit(this.budget);
     // ## 釘住的那一頁要**自己補上**
     //
@@ -210,35 +235,66 @@ export class VirtualShadowMap {
     const previousTarget = renderer.getRenderTarget();
     const previousOverride = scene.overrideMaterial;
     const previousScissorTest = renderer.getScissorTest();
-    scene.overrideMaterial = this.depthMaterial;
+    scene.overrideMaterial = depthMaterial;
     renderer.setRenderTarget(this.atlas);
     renderer.setScissorTest(true);
-    // ## 頁要清成白的，不是黑的
-    //
-    // 深度是打包成顏色的，而黑色解回來是 **0**，也就是「無限近」。沒有
-    // 東西的地方因此變成「有東西擋在最前面」—— 整個畫面都在陰影裡。
-    //
-    // 實測踩過：遮罩 100% 全暗，而每一個中間值（畫了幾頁、頁表、大小）
-    // 看起來都對。Three 自己的 shadow map 也是清成白的，同一個理由。
-    renderer.getClearColor(_previousClear);
-    const previousAlpha = renderer.getClearAlpha();
-    renderer.setClearColor(0xffffff, 1);
+    this.atlas.scissorTest = true;
+    // 這一段自己重設每一頁，所以不要讓 render 順手清掉整張。
+    const previousAutoClear = renderer.autoClear;
+    renderer.autoClear = false;
 
     const pageSize = this.table.pageSize;
+    const flipY = (renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer === true;
     for (const load of loads) {
       this.aimAt(load.level, load.px, load.py);
       const x = load.slotX * pageSize;
       const y = load.slotY * pageSize;
+      // ## 視埠要**同時**設在 renderer 與 render target 上
+      //
+      // WebGL 讀的是 `renderer.setViewport`。而 `WebGPURenderer` 畫進
+      // render target 時讀的是 `renderTarget.viewport`／`.scissor` ——
+      // 那兩支 setter 只管 canvas。
+      //
+      // 漏掉後者的症狀是**每一頁都畫滿整張圖集**：最後一頁蓋掉全部，而
+      // 頁表、槽位、圖集座標全部照樣算對（實測兩邊 0.000%），只有取到的
+      // 深度是別頁的。
+      // 而 WebGPU 的 framebuffer y 原點在**上面**，WebGL 在下面 —— 同一個
+      // 槽位的列號因此是相反的。
+      //
+      // 量法（唯一沒有歧義的那個）：把圖集**直接讀回 CPU**（`readPixelsAsync`
+      // 已經把兩邊的列順序對齊過）。內容一個落在 v≈0.02、一個落在 v≈0.98，
+      // u 相同 —— 上下鏡像，不是別的。
+      //
+      // 從螢幕查過去的那條路問不出這件事：那上面還疊著頁表與取樣的翻轉約定，
+      // 而它們會互相抵銷成「就是黑的」。
+      const targetY = flipY ? this.atlas.height - y - pageSize : y;
       renderer.setViewport(x, y, pageSize, pageSize);
       renderer.setScissor(x, y, pageSize, pageSize);
-      // 只清這一格 —— 整張清會把別頁清掉，而那是「陰影閃爍」的典型原因。
-      renderer.clear(true, true, false);
+      this.atlas.viewport.set(x, targetY, pageSize, pageSize);
+      this.atlas.scissor.set(x, targetY, pageSize, pageSize);
+
+      // ## 重設這一頁：畫一個 quad，不是 `renderer.clear()`
+      //
+      // 頁要重設成**最遠**（顏色白、深度 1）。黑色解回來是 0 也就是
+      // 「無限近」—— 沒有東西的地方會變成「有東西擋在最前面」，整個畫面
+      // 都在陰影裡。實測踩過，而每一個中間值看起來都對。
+      //
+      // 而 `clear()` 只在 WebGL 上做得到「只清這一格」。`WebGPURenderer`
+      // 的 `clear()` 走的是 render pass 的 loadOp，那是**整張 attachment**
+      // 的，scissor 只管繪製 —— 逐頁清會把別頁一起清掉。
+      //
+      // 一個 quad 兩邊都受 scissor 管，所以兩邊同一條路。128×128 的一頁
+      // 多畫一次是可以忽略的。
+      drawFullscreen(renderer, this.resetMaterialFor(renderer) as ShaderMaterial);
       renderer.render(scene, this.camera);
       this.pagesDrawn++;
     }
 
-    renderer.setClearColor(_previousClear, previousAlpha);
+    renderer.autoClear = previousAutoClear;
     renderer.setScissorTest(previousScissorTest);
+    this.atlas.scissorTest = false;
+    this.atlas.viewport.set(0, 0, this.atlas.width, this.atlas.height);
+    this.atlas.scissor.set(0, 0, this.atlas.width, this.atlas.height);
     renderer.setViewport(0, 0, this.atlas.width, this.atlas.height);
     renderer.setScissor(0, 0, this.atlas.width, this.atlas.height);
     renderer.setRenderTarget(previousTarget);
@@ -259,16 +315,22 @@ export class VirtualShadowMap {
     if (depth === null || normal === null) return null;
     gbuffer.isFresh(renderer);
 
-    const material = this.ensureResolveMaterial();
     this.ensureResolveTarget(gbuffer.width, gbuffer.height);
 
     const perspective = camera as PerspectiveCamera;
+    this.projectionInverse.copy(perspective.projectionMatrix).invert();
+
+    // WebGPU 不吃 ShaderMaterial，走 node 那份。兩份的一致性由跨後端關卡守。
+    if ((renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer === true) {
+      return this.resolveNode(renderer, camera, depth, normal);
+    }
+
+    const material = this.ensureResolveMaterial();
     const u = material.uniforms;
     u.tDepth!.value = depth;
     u.tNormal!.value = normal;
     u.tShadow!.value = this.atlas.texture;
     u.tTable!.value = this.indirection;
-    this.projectionInverse.copy(perspective.projectionMatrix).invert();
     u.uProjectionInverse!.value = this.projectionInverse;
     u.uCameraMatrix!.value = camera.matrixWorld;
     u.uLightView!.value = this.lightView;
@@ -284,6 +346,91 @@ export class VirtualShadowMap {
     renderer.setRenderTarget(this.resolveTarget);
     renderer.clear(true, false, false);
     drawFullscreen(renderer, material);
+    renderer.setRenderTarget(previous);
+    return this.resolveTarget!.texture;
+  }
+
+  /** 重設一頁用的那個 quad 材質。 */
+  private resetMaterialFor(renderer: WebGLRenderer): unknown {
+    if ((renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer === true) {
+      // `depthMaterialFor` 先跑，所以走到這裡時 `depthNode` 一定在。
+      return this.depthNode!.resetMaterial;
+    }
+    this.resetMaterial ??= new ShaderMaterial({
+      vertexShader: RESET_VERTEX,
+      fragmentShader: RESET_FRAGMENT,
+      depthTest: true,
+      depthWrite: true,
+      depthFunc: AlwaysDepth,
+    });
+    return this.resetMaterial;
+  }
+
+  /**
+   * 圖集那一趟該用哪份深度材質。WebGPU 那份還沒建好時回 `null`。
+   */
+  private depthMaterialFor(renderer: WebGLRenderer): Material | null {
+    if ((renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer !== true) {
+      return this.depthMaterial;
+    }
+    if (this.depthNode === null) {
+      this.depthPending ??= import('./virtual-shadow-map-node.ts')
+        .then((m) => m.createDepthPackNodeMaterial())
+        .then((handle) => {
+          this.depthNode = handle;
+        })
+        .catch((error: unknown) => {
+          console.error('WW.VirtualShadowMap：深度材質建不起來，WebGPU 上圖集會是空的。', error);
+        });
+      return null;
+    }
+    // 與 `aimAt` 設的一樣：正交、近平面 0、遠平面就是整份的深度範圍。
+    this.depthNode.setRange(0, this.depth);
+    return this.depthNode.material as Material;
+  }
+
+  /**
+   * WebGPU 那條路。第一次呼叫啟動非同步建立並回傳 `null` —— 下一幀就好了。
+   *
+   * 與接觸陰影、距離場陰影同一個形狀。要等它的話用
+   * `virtualShadowMapNodeReady()`。
+   */
+  private resolveNode(
+    renderer: WebGLRenderer,
+    camera: Camera,
+    depth: Texture,
+    normal: Texture,
+  ): Texture | null {
+    if (this.node === null) {
+      this.nodePending ??= import('./virtual-shadow-map-node.ts')
+        .then((m) => m.createVirtualShadowMapNodeMaterial())
+        .then((handle) => {
+          this.node = handle;
+        })
+        .catch((error: unknown) => {
+          // **大聲說出來。** 靜靜失敗的症狀是「WebGPU 上這個效果完全沒有」，
+          // 而那看起來像場景沒設定好，不像材質建不起來。
+          console.error('WW.VirtualShadowMap：node 材質建不起來，WebGPU 上不會有陰影。', error);
+        });
+      return null;
+    }
+    this.node.setTextures(depth, normal, this.atlas.texture, this.indirection);
+    this.node.setMatrices(this.projectionInverse, camera.matrixWorld, this.lightView);
+    this.node.setLight(this.lightDirection);
+    this.node.setLayout({
+      extent: this.extent,
+      depthRange: this.depth,
+      pagesPerSide: this.table.pagesPerSide,
+      atlasPages: this.table.atlasPages,
+      pageSize: this.table.pageSize,
+    });
+    this.node.setDebug(this.debugMode);
+    this.node.setConvention(renderer);
+
+    const previous = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.resolveTarget);
+    renderer.clear(true, false, false);
+    drawFullscreen(renderer, this.node.material as never);
     renderer.setRenderTarget(previous);
     return this.resolveTarget!.texture;
   }
@@ -367,11 +514,11 @@ export class VirtualShadowMap {
     this.atlas.dispose();
     this.indirection.dispose();
     this.depthMaterial.dispose();
+    this.resetMaterial?.dispose();
   }
 }
 
 const _uvLocal = new Vector3();
-const _previousClear = new Color();
 const _fullCamera = new OrthographicCamera();
 const _right = new Vector3();
 const _up = new Vector3();
@@ -392,6 +539,19 @@ const _up = new Vector3();
  * texel 很小，所以偏移也該很小 —— 沿用一般 shadow map 的偏移會把接觸的地方
  * 整個推開，那正是這個東西要解掉的問題。
  */
+/** 重設一頁：clip 的 z 給 1 就是最遠，兩個約定都一樣。 */
+const RESET_VERTEX = /* glsl */ `
+void main() {
+  gl_Position = vec4( position.xy, 1.0, 1.0 );
+}
+`;
+
+const RESET_FRAGMENT = /* glsl */ `
+void main() {
+  gl_FragColor = vec4( 1.0 );
+}
+`;
+
 const RESOLVE_FRAGMENT = /* glsl */ `
 uniform sampler2D tDepth;
 uniform sampler2D tNormal;
@@ -411,9 +571,27 @@ varying vec2 vUv;
 
 ${VIEW_POSITION_GLSL}
 
-/** 與 Three 的 unpackRGBAToDepth 逐字相同。 */
+/**
+ * Three 的 unpackRGBAToDepth。
+ *
+ * 係數要**跟 packDepthToRGBA 是一對**，因為圖集裡那份資料就是它寫的：
+ *
+ *   UnpackFactors4 = vec4( (255/256) / vec3( 1.0, 256.0, 65536.0 ), 1.0 / 16777216.0 )
+ *
+ * 這裡原本寫的是 vec4( 1, 1/255, 1/65025, 1/16581375 )（把每個位元組當成
+ * 0…1 的分數去加權），而註解宣稱它與 Three 的相同 —— 不是。兩者差一個
+ * 256/255 的比例，也就是解出來的深度一律大 0.39%。
+ *
+ * 那不會報錯，只會讓陰影的接縫系統性地偏一點，而偏移項剛好蓋得住。
+ */
 float wwUnpackDepth( vec4 packed ) {
-  return dot( packed, vec4( 1.0, 1.0 / 255.0, 1.0 / 65025.0, 1.0 / 16581375.0 ) );
+  const vec4 factors = vec4(
+    255.0 / 256.0,
+    255.0 / 65536.0,
+    255.0 / 16777216.0,
+    1.0 / 16777216.0
+  );
+  return dot( packed, factors );
 }
 
 void main() {
@@ -476,6 +654,12 @@ void main() {
   float texelWorld = ( uExtent * span ) / ( uPagesPerSide * uPageSize );
   float bias = ( texelWorld * 2.0 ) / uDepthRange;
   float lit = depth - bias <= stored ? 1.0 : 0.0;
+  // 4：圖集裡**沒有解碼過**的那三個位元組。解出來的深度對不上時，第一個
+  // 要問的是「兩邊存進去的位元一不一樣」—— 編碼不同與畫錯位置長得一樣。
+  //
+  // 這一條要排在 uDebug > 2.5 **前面**：這串是依序 return 的，排在後面的話
+  // 4 會先被 > 2.5 接走。第一次就踩到了 —— 量到的「位元」其實是深度差。
+  if ( uDebug > 3.5 ) { gl_FragColor = vec4( texture2D( tShadow, atlasUv ).rgb, 1.0 ); return; }
   if ( uDebug > 2.5 ) { float d = ( stored - depth ) * 20.0 + 0.5; gl_FragColor = vec4( d, d, d, 1.0 ); return; }
   if ( uDebug > 1.5 ) { gl_FragColor = vec4( entry.xy, level / 32.0, 1.0 ); return; }
   if ( uDebug < -1.5 ) { gl_FragColor = vec4( atlasUv, 0.0, 1.0 ); return; }

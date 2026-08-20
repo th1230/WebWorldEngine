@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as WW from '@webworld/three';
+import { readPixelsAsync } from './readback.ts';
 
 /**
  * 虛擬陰影圖的證明場景：一條**斜的**陰影邊界。
@@ -34,6 +35,35 @@ export interface VsmScene {
   info: () => { virtualSize: number; atlasSize: number; maxTextureSize: number; pagesDrawn: number };
   /** 遮罩裡有多少比例是暗的 —— 找不到邊界時要先知道遮罩長什麼樣。 */
   maskStats: (renderer: THREE.WebGLRenderer) => { dark: number; mean: number; centre: number[] };
+  /**
+   * 一塊區域的平均顏色，非同步 —— 兩個後端都走得通。
+   *
+   * 遮罩是一張隨位置變化的圖，而兩個後端把同一個場景柵格化到差不到一個
+   * 像素的地方（見 `cross-backend.mjs` 水那一項）。所以量的是**一塊的
+   * 平均**，不是某一點的值。
+   */
+  sampleWindowAsync: (
+    renderer: unknown,
+    u: number,
+    v: number,
+    width: number,
+    height?: number,
+  ) => Promise<number[]>;
+  /**
+   * 直接讀**圖集本身**的一塊，非同步。
+   *
+   * 上面每一項量的都是「從螢幕的某一點查過去」，而那條路上有頁表、有翻轉、
+   * 有取樣約定。圖集裡到底有沒有東西、在哪一格，只有直接讀它答得出來 ——
+   * 而 `readPixelsAsync` 已經把兩個後端的列順序對齊過了。
+   */
+  atlasWindowAsync: (
+    renderer: unknown,
+    u: number,
+    v: number,
+    size: number,
+  ) => Promise<number[]>;
+  /** 等 WebGPU 那條路建好。 */
+  nodeReady: (renderer: unknown) => Promise<void>;
   /** 遮罩的粗略縮圖（16×9 的平均），拿來看它到底長什麼樣。 */
   maskMap: (renderer: THREE.WebGLRenderer) => number[];
 }
@@ -97,10 +127,13 @@ export function makeVsmScene(pagesPerSide: number): VsmScene {
   const gbuffer = new WW.SceneDepthNormals({ scale: 1 });
   let mask: THREE.Texture | null = null;
 
-  return {
-    root,
-    camera,
-    settle: (renderer) => {
+  /**
+   * 要求相機看得到的那一塊，然後畫到沒東西可畫為止。
+   *
+   * 抽成具名的是因為 `nodeReady` 要叫它 —— WebGPU 上第一輪什麼都
+   * 沒畫進圖集（材質還在非同步建立），所以得再跑一次。
+   */
+  const doSettle = (renderer: THREE.WebGLRenderer): number => {
       // ## 只要相機看得到的那一小塊
       //
       // 圖集只有 576 個槽位，而最細那一階有 pagesPerSide² 頁 —— 整片要下來
@@ -136,12 +169,20 @@ export function makeVsmScene(pagesPerSide: number): VsmScene {
         if (n === 0) break;
         request();
       }
-      return drawn;
-    },    resolve: (renderer, debug = 0) => {
-      shadowMap.debugMode = debug;
-      gbuffer.update(renderer, scene, camera);
-      mask = shadowMap.resolve(renderer, camera, gbuffer);
-    },
+    return drawn;
+  };
+
+  const doResolve = (renderer: THREE.WebGLRenderer, debug = 0): void => {
+    shadowMap.debugMode = debug;
+    gbuffer.update(renderer, scene, camera);
+    mask = shadowMap.resolve(renderer, camera, gbuffer);
+  };
+
+  return {
+    root,
+    camera,
+    settle: doSettle,
+    resolve: doResolve,
     edgeColumns: (renderer) => {
       void mask;
       const target = (shadowMap as unknown as { resolveTarget: THREE.WebGLRenderTarget }).resolveTarget;
@@ -173,6 +214,56 @@ export function makeVsmScene(pagesPerSide: number): VsmScene {
         columns.push(found);
       }
       return columns;
+    },
+    sampleWindowAsync: async (renderer, u, v, width, height = width) => {
+      const target = (shadowMap as unknown as { resolveTarget: THREE.WebGLRenderTarget })
+        .resolveTarget;
+      const x = Math.min(
+        target.width - width,
+        Math.max(0, Math.round(u * target.width) - (width >> 1)),
+      );
+      const y = Math.min(
+        target.height - height,
+        Math.max(0, Math.round(v * target.height) - (height >> 1)),
+      );
+      const data = await readPixelsAsync(renderer, target, x, y, width, height, (n) =>
+        new Uint8Array(n),
+      );
+      const sum = [0, 0, 0];
+      for (let i = 0; i < width * height; i++) {
+        for (let c = 0; c < 3; c++) sum[c]! += data[i * 4 + c] ?? 0;
+      }
+      // 除以 255：兩個後端的門檻才有同一個尺度。
+      return sum.map((value) => value / (width * height) / 255);
+    },
+    atlasWindowAsync: async (renderer, u, v, size) => {
+      const atlas = (shadowMap as unknown as { atlas: THREE.WebGLRenderTarget }).atlas;
+      const x = Math.min(atlas.width - size, Math.max(0, Math.round(u * atlas.width) - (size >> 1)));
+      const y = Math.min(atlas.height - size, Math.max(0, Math.round(v * atlas.height) - (size >> 1)));
+      const data = await readPixelsAsync(renderer, atlas, x, y, size, size, (n) =>
+        new Uint8Array(n),
+      );
+      const sum = [0, 0, 0];
+      for (let i = 0; i < size * size; i++) {
+        for (let c = 0; c < 3; c++) sum[c]! += data[i * 4 + c] ?? 0;
+      }
+      return sum.map((value) => value / (size * size) / 255);
+    },
+    nodeReady: async (renderer) => {
+      // ## 這個效果有**兩個**動態 import
+      //
+      // 圖集那一趟（深度打包）與螢幕那一趟（解析）各一份，而它們是被不同的
+      // 呼叫踢起來的：`settle` 踢前者，`resolve` 踢後者。只等其中
+      // 一個的話症狀是「圖集是空的，但解析跑得好好的」—— 而那看起來像光源
+      // 方向設錯了，不像有一份材質沒建起來。
+      //
+      // 而且 `settle` 要**再跑一次**：第一輪在 WebGPU 上什麼都沒畫進圖集。
+      const r = renderer as THREE.WebGLRenderer;
+      for (let i = 0; i < 40; i++) {
+        doSettle(r);
+        doResolve(r, 0);
+        await new Promise((resolve) => setTimeout(resolve, 8));
+      }
     },
     maskStats: (renderer) => {
       const target = (shadowMap as unknown as { resolveTarget: THREE.WebGLRenderTarget }).resolveTarget;

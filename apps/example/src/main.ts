@@ -1891,6 +1891,15 @@ Object.assign(window, {
             edgeColumns: (): number[] => vsmScene.edgeColumns(renderer),
             maskStats: (): unknown => vsmScene.maskStats(renderer),
             maskMap: (): number[] => vsmScene.maskMap(renderer),
+            // 跨後端比對要走同一支。WebGPU 沒有同步的讀回。
+            sampleWindowAsync: (
+              u: number,
+              v: number,
+              width: number,
+              height?: number,
+            ): Promise<number[]> => vsmScene.sampleWindowAsync(renderer, u, v, width, height),
+            atlasWindowAsync: (u: number, v: number, size: number): Promise<number[]> =>
+              vsmScene.atlasWindowAsync(renderer, u, v, size),
             info: (): unknown => ({
               ...vsmScene.info(),
               maxTextureSize: renderer.capabilities.maxTextureSize,

@@ -12,6 +12,7 @@ import {
   type ReflectionProbeScene,
 } from './reflection-probe-scene.ts';
 import { makeWaterLookScene, type WaterLookScene } from './water-look-scene.ts';
+import { makeVsmScene, type VsmScene } from './vsm-scene.ts';
 
 /**
  * `WW.AnimatedInstancedMesh` 在 **WebGPU** 上的驗證頁。
@@ -70,6 +71,8 @@ const FOG = params.get('fog') === '1';
 const REFL_PROBE = params.get('reflprobe') === '1';
 /** `?waterlook=1` 換成水的外觀場景。 */
 const WATER_LOOK = params.get('waterlook') === '1';
+/** `?vsm=N` 換成虛擬陰影圖場景，N 是虛擬邊長的倍數。 */
+const VSM = params.has('vsm') ? Math.max(1, Number(params.get('vsm'))) : 0;
 
 const renderer = new WebGPURenderer({ canvas, antialias: true });
 renderer.setSize(innerWidth, innerHeight, false);
@@ -99,6 +102,15 @@ if (GI) {
   // 前幾幀還沒有間接光，而量測會剛好落在那幾幀裡。
   await WW.irradianceNodeReady();
 
+}
+
+let vsmScene: VsmScene | null = null;
+if (VSM > 0) {
+  scene.remove(...scene.children.filter((o) => (o as { isLight?: boolean }).isLight === true));
+  vsmScene = makeVsmScene(VSM);
+  // 這個場景有自己的私有 scene —— 不要把 root 加進來。
+  vsmScene.settle(renderer as never);
+  await vsmScene.nodeReady(renderer);
 }
 
 let waterLookScene: WaterLookScene | null = null;
@@ -188,7 +200,8 @@ if (
   dfShadowScene === null &&
   fogScene === null &&
   reflectionProbeScene === null &&
-  waterLookScene === null
+  waterLookScene === null &&
+  vsmScene === null
 ) {
   scene.add(mesh);
 }
@@ -216,6 +229,22 @@ renderer.setAnimationLoop(() => {
 
 Object.assign(window, {
   __wwgpu: {
+    vsm:
+      vsmScene === null
+        ? null
+        : {
+            settle: (): number => vsmScene.settle(renderer as never),
+            resolve: (debug?: number): void => vsmScene.resolve(renderer as never, debug),
+            sampleWindowAsync: (
+              u: number,
+              v: number,
+              width: number,
+              height?: number,
+            ): Promise<number[]> => vsmScene.sampleWindowAsync(renderer, u, v, width, height),
+            info: (): unknown => vsmScene.info(),
+            atlasWindowAsync: (u: number, v: number, size: number): Promise<number[]> =>
+              vsmScene.atlasWindowAsync(renderer, u, v, size),
+          },
     waterLook:
       waterLookScene === null
         ? null
