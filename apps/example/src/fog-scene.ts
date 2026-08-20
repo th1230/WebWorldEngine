@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as WW from '@webworld/three';
+import { readPixelsAsync } from './readback.ts';
 
 /**
  * 體積霧的證明場景：一面有缺口的牆，太陽在後面。
@@ -25,6 +26,14 @@ export interface FogScene {
   camera: THREE.PerspectiveCamera;
   settle: () => number;
   render: (renderer: THREE.WebGLRenderer, useField: boolean) => void;
+  /**
+   * 同一件事，非同步 —— WebGPU 沒有同步的讀回。
+   *
+   * 讀一小塊的平均：霧是一步一步積出來的，單點會被抖動的相位帶走。
+   */
+  sampleWindowAsync: (renderer: unknown, u: number, v: number, size: number) => Promise<number[]>;
+  /** 等 WebGPU 那條路建好。 */
+  nodeReady: (renderer: unknown) => Promise<void>;
   /** 讀某個螢幕比例位置的霧：RGB 是散射光，A 是透光率。 */
   sampleAt: (renderer: THREE.WebGLRenderer, u: number, v: number) => [number, number, number, number];
   /**
@@ -109,6 +118,13 @@ export function makeFogScene(): FogScene {
   const half = new Uint16Array(4);
   const fieldCentre = new THREE.Vector3(0, 30, 0);
 
+  const white = new THREE.Color(0xffffff);
+  /** 一幀。`nodeReady` 也要用它。 */
+  const drawOnce = (renderer: THREE.WebGLRenderer, useField: boolean): void => {
+    gbuffer.update(renderer, scene, camera);
+    fog.render(renderer, camera, gbuffer, lightDirection, white, useField ? field : null);
+  };
+
   return {
     root,
     camera,
@@ -120,16 +136,33 @@ export function makeFogScene(): FogScene {
       }
       return rounds;
     },
-    render: (renderer, useField) => {
-      gbuffer.update(renderer, scene, camera);
-      fog.render(
+    render: drawOnce,
+    sampleWindowAsync: async (renderer, u, v, size) => {
+      const target = (fog as unknown as { target: THREE.WebGLRenderTarget }).target;
+      const half = size >> 1;
+      const x = Math.min(target.width - size, Math.max(0, Math.round(u * target.width) - half));
+      const y = Math.min(target.height - size, Math.max(0, Math.round(v * target.height) - half));
+      const data = await readPixelsAsync(
         renderer,
-        camera,
-        gbuffer,
-        lightDirection,
-        new THREE.Color(0xffffff),
-        useField ? field : null,
+        target,
+        x,
+        y,
+        size,
+        size,
+        (n) => new Uint16Array(n),
       );
+      const sum = [0, 0, 0, 0];
+      for (let i = 0; i < size * size; i++) {
+        for (let c = 0; c < 4; c++) sum[c]! += THREE.DataUtils.fromHalfFloat(data[i * 4 + c] ?? 0);
+      }
+      return sum.map((v2) => v2 / (size * size));
+    },
+    nodeReady: async (renderer) => {
+      // node 材質是動態 import 進來的 —— 要等**真的時間**，microtask 不夠。
+      for (let i = 0; i < 60; i++) {
+        drawOnce(renderer as THREE.WebGLRenderer, true);
+        await new Promise((resolve) => setTimeout(resolve, 8));
+      }
     },
     sampleAt: (renderer, u, v) => {
       const target = (fog as unknown as { target: THREE.WebGLRenderTarget }).target;

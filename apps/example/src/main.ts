@@ -6,19 +6,16 @@ import { makePhysicsScene, type PhysicsScene } from './physics-scene.ts';
 import { makeGiScene, type GiScene } from './gi-scene.ts';
 import { makeBigMesh, type BigMeshScene } from './big-mesh.ts';
 import { makeTextureHeavy, type TextureHeavyScene } from './texture-heavy.ts';
-import { makeVirtualTextureScene, type VirtualTextureScene } from './virtual-texture-scene.ts';
-import { makeContactScene, type ContactScene } from './contact-scene.ts';
-import { makeDfShadowScene, type DfShadowScene } from './df-shadow-scene.ts';
-import { makeReflectionScene, type ReflectionScene } from './reflection-scene.ts';
-import { makeSkyScene, type SkyScene } from './sky-scene.ts';
-import { makeFogScene, type FogScene } from './fog-scene.ts';
-import { makeVsmScene, type VsmScene } from './vsm-scene.ts';
-import { makeShadowLodScene, type ShadowLodScene } from './shadow-lod-scene.ts';
-import {
-  makeReflectionProbeScene,
-  type ReflectionProbeScene,
-} from './reflection-probe-scene.ts';
-import { makeWaterLookScene, type WaterLookScene } from './water-look-scene.ts';
+import type { VirtualTextureScene } from './virtual-texture-scene.ts';
+import type { ContactScene } from './contact-scene.ts';
+import type { DfShadowScene } from './df-shadow-scene.ts';
+import type { ReflectionScene } from './reflection-scene.ts';
+import type { SkyScene } from './sky-scene.ts';
+import type { FogScene } from './fog-scene.ts';
+import type { VsmScene } from './vsm-scene.ts';
+import type { ShadowLodScene } from './shadow-lod-scene.ts';
+import type { ReflectionProbeScene } from './reflection-probe-scene.ts';
+import type { WaterLookScene } from './water-look-scene.ts';
 import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
 import { measureOccluded, occludedIds } from './occlusion-probe.ts';
 import { makeTerrain, makeTerrainSystem } from './terrain.ts';
@@ -492,33 +489,40 @@ const textureHeavy: TextureHeavyScene | null =
  * 從畫面上讀一個像素就能反推取樣到的是誰。
  */
 /** `?contact=1` 一個箱子貼在地上，證明接觸陰影出現在接縫而不是整片。 */
-const contactScene: ContactScene | null = params.get('contact') === '1' ? makeContactScene() : null;
+// ## 示範場景是「用到才載」
+//
+// 這一頁一次只跑一個場景（由查詢參數決定），而十幾個全部打包進主 bundle
+// 是白花的下載量 —— 實測 `main-*.js` 有 141.7 kB，而站台的總下載預算是
+// 1024 kB，加了 WebGPU 那條路之後就頂到了。
+//
+// 調高預算是最容易的做法，也是最糟的：一個一撞到就往上調的預算不是預算。
+const contactScene: ContactScene | null = params.get('contact') === '1' ? (await import('./contact-scene.ts')).makeContactScene() : null;
 /** `?dfshadow=1` 大箱子在空地上，證明遠處的陰影是距離場追出來的。 */
-const dfShadowScene: DfShadowScene | null = params.get('dfshadow') === '1' ? makeDfShadowScene() : null;
+const dfShadowScene: DfShadowScene | null = params.get('dfshadow') === '1' ? (await import('./df-shadow-scene.ts')).makeDfShadowScene() : null;
 /** `?reflect=1` 一面鏡子照到畫面外的紅箱子 —— 螢幕空間做不到的那一段。 */
-const reflectionScene: ReflectionScene | null = params.get('reflect') === '1' ? makeReflectionScene() : null;
+const reflectionScene: ReflectionScene | null = params.get('reflect') === '1' ? (await import('./reflection-scene.ts')).makeReflectionScene() : null;
 /** `?sky=1` 大氣散射的天空，順便證明它會餵給探針。 */
-const skyScene: SkyScene | null = params.get('sky') === '1' ? makeSkyScene() : null;
+const skyScene: SkyScene | null = params.get('sky') === '1' ? (await import('./sky-scene.ts')).makeSkyScene() : null;
 if (skyScene !== null) rocks.visible = false;
 /** `?fog=1` 一面有缺口的牆，太陽在後面 —— 光柱要被擋住。 */
-const fogScene: FogScene | null = params.get('fog') === '1' ? makeFogScene() : null;
+const fogScene: FogScene | null = params.get('fog') === '1' ? (await import('./fog-scene.ts')).makeFogScene() : null;
 if (fogScene !== null) rocks.visible = false;
 /** `?vsm=N` 虛擬陰影圖，N 是最細階一邊幾頁（A/B 用）。 */
 /** `?waterlook=1` 水的外觀。 */
 const waterLookScene: WaterLookScene | null = params.has('waterlook')
-  ? makeWaterLookScene()
+  ? (await import('./water-look-scene.ts')).makeWaterLookScene()
   : null;
 if (waterLookScene !== null) rocks.visible = false;
 
 /** `?reflprobe=1` 反射探針。 */
 const reflectionProbeScene: ReflectionProbeScene | null = params.has('reflprobe')
-  ? makeReflectionProbeScene()
+  ? (await import('./reflection-probe-scene.ts')).makeReflectionProbeScene()
   : null;
 if (reflectionProbeScene !== null) rocks.visible = false;
 
 /** `?shadowlod=offscreen|field` 陰影 pass 自己的剔除與選階。 */
 const shadowLodScene: ShadowLodScene | null = params.has('shadowlod')
-  ? makeShadowLodScene({
+  ? (await import('./shadow-lod-scene.ts')).makeShadowLodScene({
       mode: (params.get('shadowlod') ?? 'offscreen') as 'offscreen' | 'field' | 'occluded',
       shadowCulling: params.get('shadowcull') !== '0',
       ...(params.has('shadowerr')
@@ -529,14 +533,14 @@ const shadowLodScene: ShadowLodScene | null = params.has('shadowlod')
 if (shadowLodScene !== null) rocks.visible = false;
 
 const vsmScene: VsmScene | null = params.has('vsm')
-  ? makeVsmScene(Math.max(1, Number(params.get('vsm'))))
+  ? (await import('./vsm-scene.ts')).makeVsmScene(Math.max(1, Number(params.get('vsm'))))
   : null;
 if (vsmScene !== null) rocks.visible = false;
 if (reflectionScene !== null) rocks.visible = false;
 if (dfShadowScene !== null) rocks.visible = false;
 if (contactScene !== null) rocks.visible = false;
 
-const vtScene: VirtualTextureScene | null = params.get('vt') === '1' ? makeVirtualTextureScene() : null;
+const vtScene: VirtualTextureScene | null = params.get('vt') === '1' ? (await import('./virtual-texture-scene.ts')).makeVirtualTextureScene() : null;
 /** 正交相機，讓那張平面剛好鋪滿畫布：UV (0,0) 在左下、(1,1) 在右上。 */
 /** `?rewrite=P&rewriteCount=M`：**大約 P% 的幀**（交錯，不是定期）重寫 M 個矩陣。 */
 const rewriteProbe = {
@@ -1887,6 +1891,10 @@ Object.assign(window, {
         ? null
         : {
             settle: (): number => fogScene.settle(),
+            // 跨後端比對要走同一支。WebGPU 沒有同步的讀回。
+            sampleWindowAsync: (u: number, v: number, size: number): Promise<number[]> =>
+              fogScene.sampleWindowAsync(renderer, u, v, size),
+            spots: (): unknown => fogScene.spots,
             render: (useField: boolean): void => fogScene.render(renderer, useField),
             variance: (which: "throughGap" | "behindWall" | "sky"): number =>
               fogScene.localVariance(renderer, fogScene.spots[which][0], fogScene.spots[which][1]),

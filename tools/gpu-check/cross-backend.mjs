@@ -112,6 +112,27 @@ const EFFECTS = [
     },
   },
   {
+    name: '體積霧',
+    key: 'fog',
+    glUrl: '/?fog=1&verify=1',
+    gpuUrl: '/webgpu.html?fog=1',
+    labels: ['穿過缺口 R', '穿過缺口 A', '被牆擋住 R', '被牆擋住 A', '天空 R', '天空 A'],
+    floor: 1e-4,
+    measure: async (api) => {
+      // 距離場是分幀建的 —— 不 settle 的話遮蔽全部不生效，而那不會報錯。
+      api.settle();
+      api.render(true);
+      const spots = api.spots();
+      const out = [];
+      for (const which of ['throughGap', 'behindWall', 'sky']) {
+        // 讀一小塊的平均：霧有抖動，單點量到的是抖動的相位。
+        const c = await api.sampleWindowAsync(spots[which][0], spots[which][1], 8);
+        out.push(c[0], c[3]);
+      }
+      return out;
+    },
+  },
+  {
     name: '距離場陰影',
     key: 'dfShadow',
     glUrl: '/?dfshadow=1&verify=1',
@@ -187,6 +208,12 @@ const base = `http://localhost:${server.address().port}`;
  * 6」（實測 1.63%）。**訂得下的門檻，就藏得住東西。**
  */
 const difference = (a, b, floor) => {
+  // ## NaN 要當成**最壞**，不是當成 0
+  //
+  // `Math.abs(a - NaN)` 是 NaN，而 `NaN > maxDiff` 是 false —— 所以不特別處理
+  // 的話，一邊算出 NaN 會讓關卡**安靜地通過**。實測踩到：體積霧的 RGB 在
+  // WebGPU 上全是 NaN，而關卡報「最大差 0.000%」。
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return Infinity;
   const absolute = Math.abs(a - b);
   if (absolute < floor) return 0;
   return absolute / Math.max(Math.abs(a), 1e-6);
@@ -261,7 +288,9 @@ try {
     }
     // 實測一致度是 0.00%（逐位元相同），所以 0.5% 仍然是很寬的門檻。
     // 訂寬一點是為了別台機器的驅動差異，不是為了容忍實作不同。
-    check(maxDiff < (effect.tolerance ?? 0.005), `兩邊一致 —— 最大差 ${(maxDiff * 100).toFixed(3)}%${maxDiff > 0 ? `（在 ${where}）` : ''}`);
+    check(
+      Number.isFinite(maxDiff) && maxDiff < (effect.tolerance ?? 0.005),
+      `兩邊一致 —— 最大差 ${Number.isFinite(maxDiff) ? (maxDiff * 100).toFixed(3) + '%' : '其中一邊算出 NaN'}${maxDiff > 0 ? `（在 ${where}）` : ''}`);
 
     if (effect.pair !== undefined) {
       // 正面驗那個對調確實存在：不對調的話差很多。
