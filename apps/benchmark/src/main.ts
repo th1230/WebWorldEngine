@@ -171,7 +171,11 @@ async function main(): Promise<void> {
     const buildMeta = (s: BenchmarkScene): ReportMeta => ({
       engineVersion: ENGINE_VERSION,
       scene: definition.id,
-      params: { warmupFrames: s.overrideWarmupFrames ?? warmupFrames, measureFrames, ...s.reportParams },
+      params: {
+        warmupFrames: s.overrideWarmupFrames ?? warmupFrames,
+        measureFrames,
+        ...s.reportParams,
+      },
       machineId,
       cpuReferenceMs,
       memoryReferenceMs,
@@ -214,7 +218,8 @@ async function main(): Promise<void> {
       state,
     );
   } catch (error) {
-    const detail = error instanceof Error ? `${error.message}\n\n${error.stack ?? ''}` : String(error);
+    const detail =
+      error instanceof Error ? `${error.message}\n\n${error.stack ?? ''}` : String(error);
     state.phase = 'failed';
     state.error = detail;
     setBoot(`啟動失敗\n\n${detail}`);

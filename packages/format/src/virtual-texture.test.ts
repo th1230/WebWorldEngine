@@ -21,7 +21,11 @@ describe('虛擬貼圖的頁表', () => {
   it('一開始每一格都指到最粗那一階 —— 糊，但畫得出來', () => {
     // 沒有這條保證的話，還沒載到任何東西的那一瞬間著色器會查到垃圾。
     const table = new PageTable({ pagesPerSide: 8, atlasPages: 4 });
-    for (const [px, py] of [[0, 0], [3, 5], [7, 7]] as const) {
+    for (const [px, py] of [
+      [0, 0],
+      [3, 5],
+      [7, 7],
+    ] as const) {
       const at = table.lookup(px, py);
       expect(at.level).toBe(table.levels - 1);
       expect(at.slotX).toBe(0);

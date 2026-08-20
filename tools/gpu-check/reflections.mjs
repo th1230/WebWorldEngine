@@ -22,10 +22,21 @@ assertDistFresh(root);
 const DIST = join(root, 'apps/example/dist');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
   const file = join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
+            extname(file)
+          ] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -38,13 +49,19 @@ const check = (ok, message) => {
   if (!ok) failed++;
 };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
   page.on('pageerror', (e) => errors.push(String(e)));
   page.setDefaultNavigationTimeout(240000);
   await page.goto(`${base}/?reflect=1&verify=1`, { waitUntil: 'load' });
@@ -57,7 +74,11 @@ try {
     const baked = await api.settle();
 
     api.render(true);
-    const withField = { mirror: api.sample('mirror'), low: api.sample('mirrorLow'), green: api.sample('mirrorGreen') };
+    const withField = {
+      mirror: api.sample('mirror'),
+      low: api.sample('mirrorLow'),
+      green: api.sample('mirrorGreen'),
+    };
     const stats = api.stats();
     api.render(false);
     const withoutField = { mirror: api.sample('mirror'), low: api.sample('mirrorLow') };
@@ -73,7 +94,9 @@ try {
   console.log(`  鏡子（沒距離場）  ${show(out.withoutField.mirror)}`);
   console.log(`  鏡子下方（有）    ${show(out.withField.low)}\n`);
 
-  console.log(`  整張：打到的比例 ${(out.stats.hit * 100).toFixed(2)}%，平均 ${f(out.stats.r)}, ${f(out.stats.g)}, ${f(out.stats.b)}`);
+  console.log(
+    `  整張：打到的比例 ${(out.stats.hit * 100).toFixed(2)}%，平均 ${f(out.stats.r)}, ${f(out.stats.g)}, ${f(out.stats.b)}`,
+  );
   const on = out.withField.mirror;
   const off = out.withoutField.mirror;
 
@@ -84,14 +107,15 @@ try {
   check(Number.isFinite(on[0]) && Number.isFinite(off[0]), `取樣點都在畫面上`);
   check(on[3] > 0.5, `有距離場時追到東西了 —— alpha ${f(on[3])}`);
   check(off[3] < 0.5, `沒距離場時什麼都追不到 —— alpha ${f(off[3])}（螢幕空間看不到畫面外）`);
-  check(on[0] > on[2] * 1.5, `反射到的顏色偏紅 —— R ${f(on[0])} vs B ${f(on[2])}（紅只可能來自那個箱子）`);
   check(
-    on[0] > off[0] * 1.5,
-    `同一個像素，開了第二層之後紅了 —— ${f(off[0])} → ${f(on[0])}`,
+    on[0] > on[2] * 1.5,
+    `反射到的顏色偏紅 —— R ${f(on[0])} vs B ${f(on[2])}（紅只可能來自那個箱子）`,
   );
+  check(on[0] > off[0] * 1.5, `同一個像素，開了第二層之後紅了 —— ${f(off[0])} → ${f(on[0])}`);
   check(out.greenOnScreen === true, `綠箱子確實**在**畫面上 —— 螢幕空間那一層的前提`);
   check(
-    out.withField.green[1] > out.withField.green[0] * 1.5 && out.withField.green[1] > out.withField.green[2] * 1.5,
+    out.withField.green[1] > out.withField.green[0] * 1.5 &&
+      out.withField.green[1] > out.withField.green[2] * 1.5,
     `螢幕空間那一層照得到畫面上的綠箱子 —— G ${f(out.withField.green[1])}（R ${f(out.withField.green[0])}、B ${f(out.withField.green[2])}）`,
   );
   // 整張的比例：抓得到「整片都打到」或「整片都沒打到」那一類粗的壞掉。
@@ -101,7 +125,10 @@ try {
     out.stats.hit > 0.2 && out.stats.hit < 0.6,
     `打到的比例合理 —— ${(out.stats.hit * 100).toFixed(2)}%（正確約 35.7%）`,
   );
-  check(errors.length === 0, `沒有主控台錯誤${errors.length > 0 ? '：' + errors[0].slice(0, 140) : ''}`);
+  check(
+    errors.length === 0,
+    `沒有主控台錯誤${errors.length > 0 ? '：' + errors[0].slice(0, 140) : ''}`,
+  );
 } catch (e) {
   console.log('失敗：' + String(e).split(String.fromCharCode(10))[0].slice(0, 240));
   failed++;

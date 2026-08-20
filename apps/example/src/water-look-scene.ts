@@ -213,8 +213,14 @@ export function makeWaterLookScene(): WaterLookScene {
         target.height - height,
         Math.max(0, Math.round(v * target.height) - (height >> 1)),
       );
-      const data = await readPixelsAsync(renderer, target, x, y, width, height, (n) =>
-        new Float32Array(n),
+      const data = await readPixelsAsync(
+        renderer,
+        target,
+        x,
+        y,
+        width,
+        height,
+        (n) => new Float32Array(n),
       );
       const sum = [0, 0, 0];
       for (let i = 0; i < width * height; i++) {

@@ -28,20 +28,39 @@ assertDistFresh(root);
 const DIST = join(root, 'apps/example/dist');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
   const file = join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
+            extname(file)
+          ] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
 await listenSafe(server);
 
 /** 與場景裡那一份**必須一致** —— 對不上的話這個關卡驗的是自己，不是引擎。 */
-const pageColor = (level, px, py) => [40 + level * 20, 30 + ((px * 37 + 20) % 200), 30 + ((py * 61 + 40) % 200)];
+const pageColor = (level, px, py) => [
+  40 + level * 20,
+  30 + ((px * 37 + 20) % 200),
+  30 + ((py * 61 + 40) % 200),
+];
 
 console.log('虛擬貼圖：假裝出來的比硬體上限大，而且取樣到對的那一頁\n');
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 let failed = 0;
 const check = (ok, message) => {
@@ -52,7 +71,9 @@ const check = (ok, message) => {
 try {
   const page = await browser.newPage({ viewport: { width: 512, height: 512 } });
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
   page.on('pageerror', (e) => errors.push(String(e)));
   page.setDefaultNavigationTimeout(120000);
   await page.goto(`${base}/?vt=1&verify=1`, { waitUntil: 'load' });
@@ -65,7 +86,9 @@ try {
     maxTextureSize: window.__ww.vt.maxTextureSize,
   }));
 
-  console.log(`  假裝 ${info.virtualSize}×${info.virtualSize}，實際配置 ${info.atlasSize}×${info.atlasSize}，${info.levels} 階`);
+  console.log(
+    `  假裝 ${info.virtualSize}×${info.virtualSize}，實際配置 ${info.atlasSize}×${info.atlasSize}，${info.levels} 階`,
+  );
   console.log(`  這台機器的 maxTextureSize：${info.maxTextureSize}\n`);
 
   check(
@@ -86,7 +109,9 @@ try {
   const coarse = pageColor(info.levels - 1, 0, 0);
   const before = await pixelAt(0.5, 0.5);
   check(
-    Math.abs(before[0] - coarse[0]) < 12 && Math.abs(before[1] - coarse[1]) < 12 && Math.abs(before[2] - coarse[2]) < 12,
+    Math.abs(before[0] - coarse[0]) < 12 &&
+      Math.abs(before[1] - coarse[1]) < 12 &&
+      Math.abs(before[2] - coarse[2]) < 12,
     `還沒載任何細頁時整張是最粗那階（糊，但不是垃圾）—— 讀到 ${before}，該是 ${coarse}`,
   );
 
@@ -99,18 +124,25 @@ try {
   check(level >= 0, `找得到一邊 8 頁的那一階 —— 第 ${level} 階`);
 
   const target = [3, 5];
-  await page.evaluate(([l, px, py]) => {
-    window.__ww.vt.request(l, px, py);
-    window.__ww.vt.update(8);
-  }, [level, target[0], target[1]]);
+  await page.evaluate(
+    ([l, px, py]) => {
+      window.__ww.vt.request(l, px, py);
+      window.__ww.vt.update(8);
+    },
+    [level, target[0], target[1]],
+  );
   await page.waitForFunction(() => window.__ww.vt.pagesLoaded > 0, undefined, { timeout: 30000 });
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await page.evaluate(
+    () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+  );
 
   const want = pageColor(level, target[0], target[1]);
   // 那一頁的中心：(px + 0.5) / 8
   const inside = await pixelAt((target[0] + 0.25) / 8, (target[1] + 0.25) / 8);
   check(
-    Math.abs(inside[0] - want[0]) < 12 && Math.abs(inside[1] - want[1]) < 12 && Math.abs(inside[2] - want[2]) < 12,
+    Math.abs(inside[0] - want[0]) < 12 &&
+      Math.abs(inside[1] - want[1]) < 12 &&
+      Math.abs(inside[2] - want[2]) < 12,
     `要進來的那一頁畫在對的位置 —— 讀到 ${inside}，該是 ${want}`,
   );
 
@@ -119,7 +151,9 @@ try {
   // 右上象限的記號是對調的，取在那裡讀到的是對調過的顏色，而那不是錯。
   const outside = await pixelAt(1.5 / 8, 1.5 / 8);
   check(
-    Math.abs(outside[0] - coarse[0]) < 12 && Math.abs(outside[1] - coarse[1]) < 12 && Math.abs(outside[2] - coarse[2]) < 12,
+    Math.abs(outside[0] - coarse[0]) < 12 &&
+      Math.abs(outside[1] - coarse[1]) < 12 &&
+      Math.abs(outside[2] - coarse[2]) < 12,
     `沒要的地方還是回退到粗階 —— 讀到 ${outside}，該是 ${coarse}`,
   );
   check(
@@ -129,15 +163,22 @@ try {
 
   // ── 四、換一頁，畫面跟著換 ────────────────────────────────
   const second = [6, 2];
-  await page.evaluate(([l, px, py]) => {
-    window.__ww.vt.request(l, px, py);
-    window.__ww.vt.update(8);
-  }, [level, second[0], second[1]]);
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await page.evaluate(
+    ([l, px, py]) => {
+      window.__ww.vt.request(l, px, py);
+      window.__ww.vt.update(8);
+    },
+    [level, second[0], second[1]],
+  );
+  await page.evaluate(
+    () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+  );
   const want2 = pageColor(level, second[0], second[1]);
   const at2 = await pixelAt((second[0] + 0.25) / 8, (second[1] + 0.25) / 8);
   check(
-    Math.abs(at2[0] - want2[0]) < 12 && Math.abs(at2[1] - want2[1]) < 12 && Math.abs(at2[2] - want2[2]) < 12,
+    Math.abs(at2[0] - want2[0]) < 12 &&
+      Math.abs(at2[1] - want2[1]) < 12 &&
+      Math.abs(at2[2] - want2[2]) < 12,
     `第二頁也對得上（頁表換了之後真的生效）—— 讀到 ${at2}，該是 ${want2}`,
   );
 
@@ -157,7 +198,10 @@ try {
   );
   check(want[1] !== want[2], `記號分得出來 —— G ${want[1]} 與 B ${want[2]} 本來就不同`);
 
-  check(errors.length === 0, `沒有主控台錯誤${errors.length > 0 ? '：' + errors[0].slice(0, 120) : ''}`);
+  check(
+    errors.length === 0,
+    `沒有主控台錯誤${errors.length > 0 ? '：' + errors[0].slice(0, 120) : ''}`,
+  );
   await page.close();
 } catch (e) {
   console.log('失敗：' + String(e).split('\n')[0].slice(0, 200));

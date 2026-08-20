@@ -156,7 +156,11 @@ export async function createSkyNodeMaterial(options: {
     If(atmosphere.y.greaterThan(0), () => {
       // 打到地面的話只積分到地面為止 —— 不切的話地平線下會亮得莫名其妙。
       const ground = raySphere(origin, direction, float(EARTH_RADIUS)).toVar();
-      const far = select(ground.x.greaterThan(0), min(atmosphere.y, ground.x), atmosphere.y).toVar();
+      const far = select(
+        ground.x.greaterThan(0),
+        min(atmosphere.y, ground.x),
+        atmosphere.y,
+      ).toVar();
 
       const stepSize = far.div(PRIMARY_STEPS).toVar();
       const rayleighSum = vec3(0, 0, 0).toVar();

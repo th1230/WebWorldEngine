@@ -59,10 +59,7 @@ describe('sphericalLodErrors', () => {
   it('有索引的幾何也算得出來', () => {
     // IcosahedronGeometry 是非索引的，SphereGeometry 有索引 —— 兩條路徑
     // 都要走過，否則其中一條會在第一次真的用到時才爆。
-    const errors = sphericalLodErrors([
-      new SphereGeometry(1, 32, 24),
-      new SphereGeometry(1, 8, 6),
-    ]);
+    const errors = sphericalLodErrors([new SphereGeometry(1, 32, 24), new SphereGeometry(1, 8, 6)]);
 
     expect(errors[0]).toBe(0);
     expect(errors[1]).toBeGreaterThan(0);

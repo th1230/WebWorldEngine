@@ -23,10 +23,26 @@ const DIST = join(root, 'apps/example/dist');
 const COOKED = join(root, 'apps/benchmark/public');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
-  const file = path.startsWith('/cooked') ? join(COOKED, path) : join(DIST, path === '/' ? 'index.html' : path);
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
+  const file = path.startsWith('/cooked')
+    ? join(COOKED, path)
+    : join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.json': 'application/json',
+            '.wasm': 'application/wasm',
+          }[extname(file)] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -49,7 +65,11 @@ const SCENES = [
 ];
 
 console.log('幀被誰綁住：CPU 那一段搬得走的話，最多省多少\n');
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 
 const results = [];
@@ -115,7 +135,9 @@ try {
     const needed = Math.round(out.frame / (perInstance / 1e6));
     console.log(`  ${label}`);
     console.log(`    幀 ${out.frame} ms  GPU ${out.gpu} ms  剔除的 CPU ${out.cpu} ms`);
-    console.log(`    ${out.instances.toLocaleString()} 個活著，每個 ${perInstance.toFixed(1)} ns —— CPU 要追上幀時間得有 ${needed.toLocaleString()} 個`);
+    console.log(
+      `    ${out.instances.toLocaleString()} 個活著，每個 ${perInstance.toFixed(1)} ns —— CPU 要追上幀時間得有 ${needed.toLocaleString()} 個`,
+    );
     console.log(`    **GPU 驅動繪製的上限：${ceiling.toFixed(1)}% 的幀時間**\n`);
     results.push({ label, ...out, ceiling, perInstance, needed });
   }
@@ -130,7 +152,10 @@ server.close();
 //
 // 先前寫的是「哪天幀時間開始等於 CPU 時間，這條界就會抬起來」。上面後三個
 // 場景就是往那個方向推的結果 —— 印出來的是**推到底之後最高的那個上限**。
-const best = results.reduce((a, b) => (b.ceiling > a.ceiling ? b : a), results[0] ?? { ceiling: 0, label: '（沒跑到）' });
+const best = results.reduce(
+  (a, b) => (b.ceiling > a.ceiling ? b : a),
+  results[0] ?? { ceiling: 0, label: '（沒跑到）' },
+);
 if (results.length > 0) {
   console.log(`推到底：最高的上限是 ${best.ceiling.toFixed(1)}%（${best.label}）`);
   console.log(

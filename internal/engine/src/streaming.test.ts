@@ -453,9 +453,7 @@ describe('WorldStreamer 的代理層', () => {
 
   it('rejects a proxy radius inside the unload radius', async () => {
     const source = tieredSource();
-    expect(
-      () => new WorldStreamer(source, { ...TIERED, proxyRadius: 200 }),
-    ).toThrow(/proxyRadius/);
+    expect(() => new WorldStreamer(source, { ...TIERED, proxyRadius: 200 })).toThrow(/proxyRadius/);
   });
 });
 

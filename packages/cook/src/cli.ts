@@ -100,7 +100,10 @@ async function main(): Promise<number> {
     }
   }
   if (sourceFiles.length > 0) {
-    const parts = [glbCount > 0 ? `${glbCount} 個 .glb` : '', gltfCount > 0 ? `${gltfCount} 個 .gltf` : '']
+    const parts = [
+      glbCount > 0 ? `${glbCount} 個 .glb` : '',
+      gltfCount > 0 ? `${gltfCount} 個 .gltf` : '',
+    ]
       .filter(Boolean)
       .join('、');
     console.log(`來源資產：${parts}（${sourceDir}）`);
@@ -205,7 +208,7 @@ main()
     process.exitCode = code;
   })
   .catch((error: unknown) => {
-    console.error(error instanceof Error ? error.stack ?? error.message : error);
+    console.error(error instanceof Error ? (error.stack ?? error.message) : error);
     process.exitCode = 1;
   });
 

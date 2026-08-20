@@ -98,7 +98,12 @@ function place(
   }
 }
 
-function orbit(camera: PerspectiveCamera, frameIndex: number, spread: number, frames: number): void {
+function orbit(
+  camera: PerspectiveCamera,
+  frameIndex: number,
+  spread: number,
+  frames: number,
+): void {
   applyOrbitPath(camera, frameIndex, {
     radius: spread * 0.45,
     height: spread * 0.03,
@@ -181,8 +186,8 @@ function materialProblems(material: MeshStandardMaterial): string[] {
  * 而那是開發者的決定（四問的第一問）。這裡只回答「你付了多少錢」。
  */
 function stripMaterial(source: MeshStandardMaterial, level: string): Material {
-  if (level === "full") return source;
-  if (level === "albedo") {
+  if (level === 'full') return source;
+  if (level === 'albedo') {
     const m = source.clone();
     m.normalMap = null;
     m.roughnessMap = null;
@@ -190,14 +195,14 @@ function stripMaterial(source: MeshStandardMaterial, level: string): Material {
     m.aoMap = null;
     return m;
   }
-  if (level === "flat") {
+  if (level === 'flat') {
     const m = new StandardMaterial();
     m.color.copy(source.color);
     m.roughness = source.roughness;
     m.metalness = source.metalness;
     return m;
   }
-  if (level === "basic") return new MeshBasicMaterial({ color: source.color });
+  if (level === 'basic') return new MeshBasicMaterial({ color: source.color });
   throw new Error(`不認得的 material 參數：${level}（full / albedo / flat / basic）`);
 }
 

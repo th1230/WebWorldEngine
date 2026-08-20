@@ -48,12 +48,13 @@ export function createIrradianceSampler(tsl: Tsl, three: Tsl): IrradianceNodeSam
     const c3 = textures[3]!.sample(uvw).xyz;
 
     // 常數與 GLSL 那份、與 Three 的 shGetIrradianceAt 逐字相同。
-    const directional = c1
-      .mul(normal.y)
-      .add(c2.mul(normal.z))
-      .add(c3.mul(normal.x))
-      .mul(1.023328);
-    return c0.mul(0.886227).add(directional).max(vec3(0, 0, 0)).mul(uIntensity).mul(mask);
+    const directional = c1.mul(normal.y).add(c2.mul(normal.z)).add(c3.mul(normal.x)).mul(1.023328);
+    return c0
+      .mul(0.886227)
+      .add(directional)
+      .max(vec3(0, 0, 0))
+      .mul(uIntensity)
+      .mul(mask);
   };
 
   const update = (volume: IrradianceVolume): void => {

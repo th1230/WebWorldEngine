@@ -96,7 +96,10 @@ export function packMesh(lods: readonly LodResult[], collision: RawMesh | null):
   view.setUint32(8, lods.length, true);
   view.setUint32(12, VERTEX_STRIDE_BYTES, true);
 
-  bytes.set(new Uint8Array(base.mesh.vertices.buffer, base.mesh.vertices.byteOffset, vertexBytes), vertexOffset);
+  bytes.set(
+    new Uint8Array(base.mesh.vertices.buffer, base.mesh.vertices.byteOffset, vertexBytes),
+    vertexOffset,
+  );
 
   for (const [level, lod] of lods.entries()) {
     writeIndices(view, lodEntries[level]!.indices.offset, lod.mesh.indices, indexWidth);

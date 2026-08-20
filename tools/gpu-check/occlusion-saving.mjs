@@ -23,10 +23,26 @@ const DIST = join(root, 'apps/example/dist');
 const COOKED = join(root, 'apps/benchmark/public');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
-  const file = path.startsWith('/cooked') ? join(COOKED, path) : join(DIST, path === '/' ? 'index.html' : path);
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
+  const file = path.startsWith('/cooked')
+    ? join(COOKED, path)
+    : join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.json': 'application/json',
+            '.wasm': 'application/wasm',
+          }[extname(file)] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -38,7 +54,11 @@ const SCENES = [
 ];
 
 console.log('完美遮蔽剔除的上限（GPU 時間）\n');
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.setDefaultTimeout(180000);
 page.setDefaultNavigationTimeout(180000);
@@ -49,14 +69,24 @@ try {
     await page.waitForFunction(() => window.__ww?.totalFrames > 60, undefined, { timeout: 180000 });
     const split = await page.evaluate(() => window.__ww.classifyHidden());
     console.log(`  ${label}`);
-    console.log(`    送出去 ${split.submitted.toLocaleString("en-US")}：看得見 ${split.visible.toLocaleString("en-US")}  太小 ${split.subPixel.toLocaleString("en-US")}  **被擋住 ${split.occluded.toLocaleString("en-US")}**`);
+    console.log(
+      `    送出去 ${split.submitted.toLocaleString('en-US')}：看得見 ${split.visible.toLocaleString('en-US')}  太小 ${split.subPixel.toLocaleString('en-US')}  **被擋住 ${split.occluded.toLocaleString('en-US')}**`,
+    );
     const proof = await page.evaluate(() => window.__ww.verifyOcclusionOracle());
-    console.log(`    藏掉之後畫面差異：${proof.changed.toLocaleString("en-US")} / ${proof.pixels.toLocaleString("en-US")} 像素（${proof.changedPct}%），最大通道差 ${proof.worstChannelDelta}`);
+    console.log(
+      `    藏掉之後畫面差異：${proof.changed.toLocaleString('en-US')} / ${proof.pixels.toLocaleString('en-US')} 像素（${proof.changedPct}%），最大通道差 ${proof.worstChannelDelta}`,
+    );
     const all = await page.evaluate(async () => window.__ww.measureOcclusionSaving(3, false));
     const out = await page.evaluate(async () => window.__ww.measureOcclusionSaving(3, true));
-    console.log(`    完美可見性預言機（含太小的）：${all.baseMs} → ${all.oracleMs} ms，省 ${all.savedPct}%`);
-    console.log(`    交錯三輪 [base, oracle]：${out.rounds.map((r) => `[${r[0]}, ${r[1]}]`).join('  ')}`);
-    console.log(`    基準 ${out.baseMs} ms → 完美剔除 ${out.oracleMs} ms  **省 ${out.savedPct}%**\n`);
+    console.log(
+      `    完美可見性預言機（含太小的）：${all.baseMs} → ${all.oracleMs} ms，省 ${all.savedPct}%`,
+    );
+    console.log(
+      `    交錯三輪 [base, oracle]：${out.rounds.map((r) => `[${r[0]}, ${r[1]}]`).join('  ')}`,
+    );
+    console.log(
+      `    基準 ${out.baseMs} ms → 完美剔除 ${out.oracleMs} ms  **省 ${out.savedPct}%**\n`,
+    );
   }
 } catch (e) {
   console.log('失敗：' + String(e).split('\n')[0].slice(0, 160));

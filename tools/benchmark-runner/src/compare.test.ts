@@ -176,7 +176,11 @@ describe('compareReports', () => {
   });
 
   it('warns about a scene with no baseline instead of silently skipping it', () => {
-    const result = compareReports([report({ scene: 'instancing' })], [report({ scene: 'batching' })], options);
+    const result = compareReports(
+      [report({ scene: 'instancing' })],
+      [report({ scene: 'batching' })],
+      options,
+    );
     expect(result.warnings.join()).toContain('batching');
     expect(result.warnings.join()).toContain('instancing');
   });
@@ -201,7 +205,11 @@ describe('compareReports', () => {
   it('does not turn sub-millisecond noise into a regression', () => {
     // 實際遇過的假警報：0.425ms → 0.822ms 被算成「退步 93%」。
     // Chrome 把 performance.now() 量化到 0.1ms，這區間的百分比毫無意義。
-    const result = compareReports([report({ gpuP95: 0.425 })], [report({ gpuP95: 0.822 })], options);
+    const result = compareReports(
+      [report({ gpuP95: 0.425 })],
+      [report({ gpuP95: 0.822 })],
+      options,
+    );
     const gpuRow = result.rows.find((r) => r.metric === 'gpuRenderMs.p95');
     expect(gpuRow?.status).toBe('ok');
     expect(result.passed).toBe(true);
@@ -250,10 +258,8 @@ describe('compareReports with a different machine state', () => {
   it('refuses to compare when the CPU reference moved a lot', () => {
     // 列出一串假退步讓人逐一追查，比明確說「不可比較」糟糕得多
     const result = compareReports(
-      [report({ cpuReferenceMs: 100,
-    frameP95: 16 })],
-      [report({ cpuReferenceMs: 185,
-    frameP95: 30 })],
+      [report({ cpuReferenceMs: 100, frameP95: 16 })],
+      [report({ cpuReferenceMs: 185, frameP95: 30 })],
       options,
     );
     expect(result.passed).toBe(true);
@@ -264,10 +270,8 @@ describe('compareReports with a different machine state', () => {
   it('still compares when the CPU reference is close', () => {
     // 容許一般的量測抖動，否則這個檢查會讓比對永遠不發生
     const result = compareReports(
-      [report({ cpuReferenceMs: 100,
-    frameP95: 16 })],
-      [report({ cpuReferenceMs: 105,
-    frameP95: 40 })],
+      [report({ cpuReferenceMs: 100, frameP95: 16 })],
+      [report({ cpuReferenceMs: 105, frameP95: 40 })],
       options,
     );
     expect(result.regressions.length).toBeGreaterThan(0);
@@ -277,10 +281,8 @@ describe('compareReports with a different machine state', () => {
     // 基準是在降檔狀態下產生的，之後在正常狀態比對 —— 一樣不可比較，
     // 而且這個方向更危險：它會讓真實的退步看起來像改善。
     const result = compareReports(
-      [report({ cpuReferenceMs: 185,
-    frameP95: 30 })],
-      [report({ cpuReferenceMs: 100,
-    frameP95: 16 })],
+      [report({ cpuReferenceMs: 185, frameP95: 30 })],
+      [report({ cpuReferenceMs: 100, frameP95: 16 })],
       options,
     );
     expect(result.warnings.join()).toContain('機器狀態');

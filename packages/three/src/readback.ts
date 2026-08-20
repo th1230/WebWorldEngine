@@ -143,9 +143,11 @@ function unpad(
   // 單列的讀回沒有第二列，兩個問題都不會發生。
   if (height <= 1) return raw as unknown as ArrayLike<number>;
   const source = raw as unknown as { subarray: (a: number, b: number) => ArrayLike<number> };
-  const out = new (raw.constructor as unknown as new (n: number) => {
-    set: (v: ArrayLike<number>, at: number) => void;
-  })(width * height * 4) as unknown as { set: (v: ArrayLike<number>, at: number) => void };
+  const out = new (
+    raw.constructor as unknown as new (n: number) => {
+      set: (v: ArrayLike<number>, at: number) => void;
+    }
+  )(width * height * 4) as unknown as { set: (v: ArrayLike<number>, at: number) => void };
   for (let row = 0; row < height; row++) {
     // 順便把列順序倒過來 —— 見下面「而且列的順序是反的」。
     const to = matchWebGLRows ? height - 1 - row : row;

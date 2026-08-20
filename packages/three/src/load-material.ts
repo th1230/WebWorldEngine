@@ -1,9 +1,5 @@
-import type { AssetManifest, TextureEntry } from "@webworld/format";
-import {
-  decodeTexture,
-  validateTexture,
-  type DecodedTexture,
-} from "@ww/assets-runtime";
+import type { AssetManifest, TextureEntry } from '@webworld/format';
+import { decodeTexture, validateTexture, type DecodedTexture } from '@ww/assets-runtime';
 import {
   CompressedTexture,
   LinearMipmapLinearFilter,
@@ -16,13 +12,8 @@ import {
   RepeatWrapping,
   SRGBColorSpace,
   type Texture,
-} from "three";
-import {
-  loadManifest,
-  onClearAssetCache,
-  pick,
-  resolveAssetUrl,
-} from "./manifest.ts";
+} from 'three';
+import { loadManifest, onClearAssetCache, pick, resolveAssetUrl } from './manifest.ts';
 
 /**
  * 載入 cook 過的貼圖與材質。
@@ -80,25 +71,25 @@ let bcSupport: boolean | null = null;
 
 function supportsBlockCompression(): boolean {
   if (bcSupport !== null) return bcSupport;
-  if (typeof document === "undefined") return (bcSupport = true);
-  const gl = document.createElement("canvas").getContext("webgl2");
+  if (typeof document === 'undefined') return (bcSupport = true);
+  const gl = document.createElement('canvas').getContext('webgl2');
   if (gl === null) return (bcSupport = true);
   bcSupport =
-    gl.getExtension("WEBGL_compressed_texture_s3tc") !== null &&
-    gl.getExtension("EXT_texture_compression_rgtc") !== null &&
-    gl.getExtension("EXT_texture_compression_bptc") !== null;
+    gl.getExtension('WEBGL_compressed_texture_s3tc') !== null &&
+    gl.getExtension('EXT_texture_compression_rgtc') !== null &&
+    gl.getExtension('EXT_texture_compression_bptc') !== null;
   return bcSupport;
 }
 
 /** Vulkan 那一側的格式 → Three 的常數。 */
 const THREE_FORMAT = {
-  "bc1-rgb": RGB_S3TC_DXT1_Format,
-  "bc1-rgb-srgb": RGB_S3TC_DXT1_Format,
-  "bc4-r": RED_RGTC1_Format,
-  "bc5-rg": RED_GREEN_RGTC2_Format,
-  "bc7-rgba": RGBA_BPTC_Format,
-  "bc7-rgba-srgb": RGBA_BPTC_Format,
-} as const satisfies Record<DecodedTexture["format"], number>;
+  'bc1-rgb': RGB_S3TC_DXT1_Format,
+  'bc1-rgb-srgb': RGB_S3TC_DXT1_Format,
+  'bc4-r': RED_RGTC1_Format,
+  'bc5-rg': RED_GREEN_RGTC2_Format,
+  'bc7-rgba': RGBA_BPTC_Format,
+  'bc7-rgba-srgb': RGBA_BPTC_Format,
+} as const satisfies Record<DecodedTexture['format'], number>;
 
 const textures = new Map<string, Promise<CompressedTexture>>();
 const materials = new Map<string, Promise<MeshStandardMaterial>>();
@@ -124,8 +115,7 @@ onClearAssetCache(() => {
   // 測試都過（實測 688 條全過但 exit code 非零）。
   //
   // 而且載失敗的東西本來就沒有 GPU 資源要放。
-  for (const pending of textures.values())
-    void pending.then((texture) => texture.dispose(), noop);
+  for (const pending of textures.values()) void pending.then((texture) => texture.dispose(), noop);
   for (const pending of materials.values())
     void pending.then((material) => material.dispose(), noop);
   textures.clear();
@@ -189,13 +179,10 @@ export function releaseMaterial(manifestUrl: string, id: string): boolean {
  * 所以不要對回傳值呼叫 `dispose()`，除非確定沒有別的東西在用它。要整批放掉
  * 用 `clearAssetCache()`。
  */
-export async function loadTexture(
-  manifestUrl: string,
-  textureId: string,
-): Promise<Texture> {
+export async function loadTexture(manifestUrl: string, textureId: string): Promise<Texture> {
   const base = resolveAssetUrl(manifestUrl);
   const manifest = await loadManifest(base);
-  const entry = pick(manifest.textures, textureId, "貼圖", manifestUrl);
+  const entry = pick(manifest.textures, textureId, '貼圖', manifestUrl);
 
   const url = resolveAssetUrl(entry.file, base);
   const cached = textures.get(url);
@@ -244,10 +231,7 @@ export async function loadTexture(
  */
 export interface LoadMaterialOptions {
   /** 預設 `MeshStandardMaterial`。WebGPU 上給 `MeshStandardNodeMaterial`。 */
-  MaterialClass?: new (params?: {
-    roughness?: number;
-    metalness?: number;
-  }) => MeshStandardMaterial;
+  MaterialClass?: new (params?: { roughness?: number; metalness?: number }) => MeshStandardMaterial;
 }
 
 export async function loadMaterial(
@@ -259,7 +243,7 @@ export async function loadMaterial(
   const manifest = await loadManifest(base);
 
   const materialId = resolveMaterialId(manifest, id, manifestUrl);
-  const entry = pick(manifest.materials, materialId, "材質", manifestUrl);
+  const entry = pick(manifest.materials, materialId, '材質', manifestUrl);
 
   // ## 快取的鍵要帶上材質類別
   //
@@ -272,15 +256,9 @@ export async function loadMaterial(
 
   const pending = (async (): Promise<MeshStandardMaterial> => {
     const [map, normalMap, ormMap] = await Promise.all([
-      entry.baseColorTexture === null
-        ? null
-        : loadTexture(manifestUrl, entry.baseColorTexture),
-      entry.normalTexture === null
-        ? null
-        : loadTexture(manifestUrl, entry.normalTexture),
-      entry.roughnessAoTexture === null
-        ? null
-        : loadTexture(manifestUrl, entry.roughnessAoTexture),
+      entry.baseColorTexture === null ? null : loadTexture(manifestUrl, entry.baseColorTexture),
+      entry.normalTexture === null ? null : loadTexture(manifestUrl, entry.normalTexture),
+      entry.roughnessAoTexture === null ? null : loadTexture(manifestUrl, entry.roughnessAoTexture),
     ]);
 
     const material = new MaterialClass({
@@ -289,11 +267,7 @@ export async function loadMaterial(
     });
     // baseColor 是**線性**的（glTF 這樣定義）。走 `new Color(r, g, b)` 會被
     // 當成 sRGB 再轉一次，顏色整體偏暗，而且暗得很像「燈光沒調好」。
-    material.color.setRGB(
-      entry.baseColor[0],
-      entry.baseColor[1],
-      entry.baseColor[2],
-    );
+    material.color.setRGB(entry.baseColor[0], entry.baseColor[1], entry.baseColor[2]);
     // baseColor 的 alpha 目前只在完全不透明時才是有效的 —— cook 丟棄
     // alphaMode，透明度沒有被匯入（見 gltf-import.ts 的 ImportWarning）。
     if (map !== null) material.map = map;
@@ -313,11 +287,7 @@ export async function loadMaterial(
 }
 
 /** 網格 id → 它的材質 id；本來就是材質 id 的話原樣回傳。 */
-function resolveMaterialId(
-  manifest: AssetManifest,
-  id: string,
-  manifestUrl: string,
-): string {
+function resolveMaterialId(manifest: AssetManifest, id: string, manifestUrl: string): string {
   if (manifest.materials?.[id] !== undefined) return id;
 
   const mesh = manifest.meshes?.[id];
@@ -328,7 +298,7 @@ function resolveMaterialId(
     // 起來像正常結果 —— 說出來，讓呼叫端自己決定要用什麼。
     throw new Error(
       `WW.loadMaterial: ${manifestUrl} 裡的 "${id}" 沒有材質。\n` +
-        "（來源檔沒有指定材質，或它是程序化資產）",
+        '（來源檔沒有指定材質，或它是程序化資產）',
     );
   }
   return mesh.material;
@@ -343,32 +313,27 @@ async function fetchTexture(
   if (!response.ok) {
     throw new Error(`WW.loadTexture: 抓不到 ${url}（HTTP ${response.status}）`);
   }
-  const decoded = decodeTexture(
-    new Uint8Array(await response.arrayBuffer()),
-    entry,
-  );
+  const decoded = decodeTexture(new Uint8Array(await response.arrayBuffer()), entry);
 
   // 解碼成功不等於資料是對的。尺寸與 mip 數對不上時，畫面會出現一張
   // 「看起來只是比較模糊」的貼圖 —— 那種錯誤不會有人回報。
   const problems = validateTexture(decoded, textureId);
   if (problems.length > 0) {
-    throw new Error(
-      `WW.loadTexture: ${textureId} 的資料不一致\n  ${problems.join("\n  ")}`,
-    );
+    throw new Error(`WW.loadTexture: ${textureId} 的資料不一致\n  ${problems.join('\n  ')}`);
   }
 
   if (!supportsBlockCompression()) {
     throw new Error(
       [
-        "WW.loadTexture: 這台裝置看起來不支援 BC 壓縮貼圖（" +
+        'WW.loadTexture: 這台裝置看起來不支援 BC 壓縮貼圖（' +
           textureId +
-          " 是 " +
+          ' 是 ' +
           decoded.format +
-          "）。",
-        "cook 目前只產 BC 系列，那是宣告過的範圍：桌機。行動裝置要的 ETC2/ASTC 還沒有產生。",
-        "在那之前，這些裝置上請走未壓縮的貼圖路徑（自己 load 一張 PNG 給 material）——",
-        "其餘的 LOD、剔除、串流完全不受影響。",
-      ].join("\n"),
+          '）。',
+        'cook 目前只產 BC 系列，那是宣告過的範圍：桌機。行動裝置要的 ETC2/ASTC 還沒有產生。',
+        '在那之前，這些裝置上請走未壓縮的貼圖路徑（自己 load 一張 PNG 給 material）——',
+        '其餘的 LOD、剔除、串流完全不受影響。',
+      ].join('\n'),
     );
   }
 

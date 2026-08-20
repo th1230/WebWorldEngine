@@ -81,12 +81,7 @@ export class InstanceBlocks {
    * `baseRadius` 是單一 instance 未縮放時的包圍球半徑（已含球心偏移），
    * 與 `InstanceGrid.rebuild` 的同一個參數同義。
    */
-  write(
-    matrices: Float32Array,
-    start: number,
-    length: number,
-    baseRadius: number,
-  ): void {
+  write(matrices: Float32Array, start: number, length: number, baseRadius: number): void {
     if (length <= 0) return;
     // 覆蓋在別的區塊上，或落在中間，都不是串流的形狀 —— 那時作廢。
     const at = this._count;

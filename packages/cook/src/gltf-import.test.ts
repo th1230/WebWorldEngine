@@ -90,7 +90,9 @@ describe('importGltf', () => {
   });
 
   it('carries each primitive material separately', async () => {
-    const primitives = (await importGltf(await build({ primitives: 3, materials: true }), 'test.glb')).primitives;
+    const primitives = (
+      await importGltf(await build({ primitives: 3, materials: true }), 'test.glb')
+    ).primitives;
     expect(primitives.map((p) => p.material?.name)).toEqual(['mat0', 'mat1', 'mat2']);
     expect(primitives[1]!.material!.roughness).toBeCloseTo(0.5, 5);
     expect(primitives[2]!.material!.baseColor[0]).toBeCloseTo(0.2, 5);
@@ -99,10 +101,9 @@ describe('importGltf', () => {
   it('applies the node world matrix', async () => {
     // 忽略節點變換的症狀是「模型位置/大小/朝向完全不對」，而且沒有錯誤。
     // Blender 匯出幾乎一定帶節點變換。
-    const primitives = (await importGltf(
-      await build({ scale: [10, 10, 10], translation: [5, 0, 0] }),
-      'test.glb',
-    )).primitives;
+    const primitives = (
+      await importGltf(await build({ scale: [10, 10, 10], translation: [5, 0, 0] }), 'test.glb')
+    ).primitives;
     // 頂點 1 是 (1,0,0)：×10 之後 +5 → (15,0,0)
     expect(primitives[0]!.mesh.vertices[VERTEX_FLOATS]).toBeCloseTo(15, 4);
   });
@@ -399,9 +400,7 @@ describe('importGltf 的檔案相容性', () => {
     doc.createNode('n').setMesh(doc.createMesh('m').addPrimitive(primitive));
     doc.createScene('s');
 
-    const bytes = await new NodeIO()
-      .registerExtensions([KHRMaterialsUnlit])
-      .writeBinary(doc);
+    const bytes = await new NodeIO().registerExtensions([KHRMaterialsUnlit]).writeBinary(doc);
 
     // 沒註冊擴充的 IO 讀不了 —— 這一行證明上面那個檔案真的需要擴充，
     // 否則下面的斷言只是在驗一個普通檔案。

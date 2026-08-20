@@ -27,7 +27,10 @@ import type { FacePixels } from './cube-sh.ts';
  */
 
 /** 方向 → 圖塊內的 uv，兩者都在 0…1。方向不必先正規化。 */
-export function octEncode(direction: Vector3, target: { u: number; v: number }): { u: number; v: number } {
+export function octEncode(
+  direction: Vector3,
+  target: { u: number; v: number },
+): { u: number; v: number } {
   const norm = Math.abs(direction.x) + Math.abs(direction.y) + Math.abs(direction.z);
   const inverse = norm > 0 ? 1 / norm : 0;
   let x = direction.x * inverse;

@@ -34,14 +34,19 @@ const server = createServer((req, res) => {
     res.writeHead(204).end();
     return;
   }
-  const file = path.startsWith('/cooked') ? join(COOKED, path) : join(DIST, path === '/' ? 'index.html' : path);
+  const file = path.startsWith('/cooked')
+    ? join(COOKED, path)
+    : join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
     (b) => {
       res.writeHead(200, {
         'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
+          {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.json': 'application/json',
+            '.wasm': 'application/wasm',
+          }[extname(file)] ?? 'application/octet-stream',
       });
       res.end(b);
     },
@@ -66,7 +71,9 @@ const check = (ok, label, detail) => {
 };
 
 try {
-  await page.goto(`http://localhost:${server.address().port}/?physics=1&orbit=260`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${server.address().port}/?physics=1&orbit=260`, {
+    waitUntil: 'load',
+  });
   await page.waitForFunction(() => window.__ww?.totalFrames > 90, undefined, { timeout: 120000 });
 
   const out = await page.evaluate(async () => {
@@ -82,7 +89,10 @@ try {
   });
 
   const s = out.last;
-  console.log('  逐段：', out.seen.map((x) => `啟用${x.active}/醒${x.awake}/睡${x.settled}/浮${x.floating}`).join('  '));
+  console.log(
+    '  逐段：',
+    out.seen.map((x) => `啟用${x.active}/醒${x.awake}/睡${x.settled}/浮${x.floating}`).join('  '),
+  );
   console.log(`  最後：${JSON.stringify(s)}`);
   console.log(`  ${out.calls} 次繪製，${out.tri.toLocaleString('en-US')} 三角形`);
 

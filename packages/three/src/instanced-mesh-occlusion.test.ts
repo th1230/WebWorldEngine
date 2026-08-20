@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BoxGeometry, Matrix4, MeshStandardMaterial, PerspectiveCamera, Scene, Vector3 } from 'three';
+import {
+  BoxGeometry,
+  Matrix4,
+  MeshStandardMaterial,
+  PerspectiveCamera,
+  Scene,
+  Vector3,
+} from 'three';
 import { InstancedMesh } from './instanced-mesh.ts';
 
 /**
@@ -91,7 +98,10 @@ describe('遮蔽剔除接到 InstancedMesh 上', () => {
     for (let i = 0; i < count; i++) {
       const angle = i * 2.399;
       const radius = 40 + i * 0.6;
-      mesh.setMatrixAt(i, m.makeTranslation(Math.cos(angle) * radius, Math.sin(angle) * radius, -300));
+      mesh.setMatrixAt(
+        i,
+        m.makeTranslation(Math.cos(angle) * radius, Math.sin(angle) * radius, -300),
+      );
     }
     const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 9000);
     camera.position.set(0, 0, 0);
@@ -143,7 +153,10 @@ describe('遮蔽剔除接到 InstancedMesh 上', () => {
     for (let i = 0; i < count; i++) {
       const angle = i * 2.399;
       const radius = 10 + i * 0.13;
-      mesh.setMatrixAt(i, m.makeTranslation(Math.cos(angle) * radius, Math.sin(angle) * radius, -300));
+      mesh.setMatrixAt(
+        i,
+        m.makeTranslation(Math.cos(angle) * radius, Math.sin(angle) * radius, -300),
+      );
     }
     const camera = new PerspectiveCamera(60, 16 / 9, 0.1, 9000);
     camera.position.set(0, 0, 0);

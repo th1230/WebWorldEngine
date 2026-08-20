@@ -61,7 +61,10 @@ export class AssetDecoder {
   }
 
   async decodeTexture(entry: TextureEntry, buffer: ArrayBuffer): Promise<DecodedTexture> {
-    const response = await this.send({ kind: 'texture', id: this.allocId(), buffer, entry }, buffer);
+    const response = await this.send(
+      { kind: 'texture', id: this.allocId(), buffer, entry },
+      buffer,
+    );
     if (response.kind !== 'texture') throw new Error('worker 回傳了非預期的型別');
 
     return {

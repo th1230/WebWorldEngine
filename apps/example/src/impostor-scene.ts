@@ -114,7 +114,6 @@ export function makeImpostorScene(
     positions.push([(rand() - 0.5) * spread, (rand() - 0.5) * spread]);
   }
 
-
   // ## 自己的相機與 target
   //
   // 兩個後端要量同一塊畫面，而畫布大小不見得一樣。畫進固定尺寸的 target
@@ -131,11 +130,7 @@ export function makeImpostorScene(
     // 第一版擺在 1210 之外，四百棵樹加起來只覆蓋畫面的 2%，而那個量對
     // 「看板有沒有朝向相機」幾乎沒有反應。
     const distance = spread * 0.55 + 60;
-    camera.position.set(
-      Math.sin(azimuth) * distance,
-      42,
-      Math.cos(azimuth) * distance,
-    );
+    camera.position.set(Math.sin(azimuth) * distance, 42, Math.cos(azimuth) * distance);
     camera.lookAt(0, 18, 0);
     camera.updateMatrixWorld(true);
     const previous = gl.getRenderTarget();
@@ -151,9 +146,7 @@ export function makeImpostorScene(
     width: number,
     height: number,
   ): Promise<Uint8Array> =>
-    (await readPixelsAsync(r, target, x, y, width, height, (n) =>
-      new Uint8Array(n),
-    )) as Uint8Array;
+    (await readPixelsAsync(r, target, x, y, width, height, (n) => new Uint8Array(n))) as Uint8Array;
 
   let bakedAtlas: WW.BakedImpostor | null = null;
 
@@ -166,7 +159,10 @@ export function makeImpostorScene(
       width: number,
       height = width,
     ): Promise<number[]> => {
-      const x = Math.min(target.width - width, Math.max(0, Math.round(u * target.width) - (width >> 1)));
+      const x = Math.min(
+        target.width - width,
+        Math.max(0, Math.round(u * target.width) - (width >> 1)),
+      );
       const y = Math.min(
         target.height - height,
         Math.max(0, Math.round(v * target.height) - (height >> 1)),
@@ -259,7 +255,9 @@ export function makeImpostorScene(
     }
     batch.instanceMatrix.needsUpdate = true;
     root.add(batch);
-    triangles += ((mesh.geometry.getIndex()?.count ?? mesh.geometry.getAttribute('position').count) / 3) * count;
+    triangles +=
+      ((mesh.geometry.getIndex()?.count ?? mesh.geometry.getAttribute('position').count) / 3) *
+      count;
   });
 
   return { root, count, impostor: false, triangles, ...api };

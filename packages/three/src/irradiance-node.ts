@@ -117,7 +117,12 @@ export async function applyIrradianceNode(
   // 三個地方寫同一組數字是刻意的：它們是同一份慣例的三個出口，改一個就要
   // 三個一起改，而數字不一樣的症狀是「兩條路亮度不同」。
   const directional = c1.mul(n.y).add(c2.mul(n.z)).add(c3.mul(n.x)).mul(1.023328);
-  const result = c0.mul(0.886227).add(directional).max(vec3(0, 0, 0)).mul(intensity).mul(mask);
+  const result = c0
+    .mul(0.886227)
+    .add(directional)
+    .max(vec3(0, 0, 0))
+    .mul(intensity)
+    .mul(mask);
 
   const previous = material.setupMaterialLightings?.bind(material);
   material.setupMaterialLightings = (builder: unknown): unknown[] => {

@@ -333,7 +333,9 @@ async function measureFill(device: GPUDevice): Promise<SubMeasurement | null> {
 function submitFill(device: GPUDevice, pipeline: GPURenderPipeline, view: GPUTextureView): void {
   const encoder = device.createCommandEncoder();
   const pass = encoder.beginRenderPass({
-    colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 } }],
+    colorAttachments: [
+      { view, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 } },
+    ],
   });
   pass.setPipeline(pipeline);
   pass.draw(3);

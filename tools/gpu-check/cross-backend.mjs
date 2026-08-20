@@ -30,10 +30,21 @@ assertDistFresh(root);
 const DIST = join(root, 'apps/example/dist');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
   const file = join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
+            extname(file)
+          ] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -67,7 +78,26 @@ const EFFECTS = [
     key: 'sky',
     glUrl: '/?sky=1&verify=1',
     gpuUrl: '/webgpu.html?sky=1',
-    labels: ['+X R', '+X G', '+X B', '−X R', '−X G', '−X B', '+Y R', '+Y G', '+Y B', '−Y R', '−Y G', '−Y B', '+Z R', '+Z G', '+Z B', '−Z R', '−Z G', '−Z B'],
+    labels: [
+      '+X R',
+      '+X G',
+      '+X B',
+      '−X R',
+      '−X G',
+      '−X B',
+      '+Y R',
+      '+Y G',
+      '+Y B',
+      '−Y R',
+      '−Y G',
+      '−Y B',
+      '+Z R',
+      '+Z G',
+      '+Z B',
+      '−Z R',
+      '−Z G',
+      '−Z B',
+    ],
     /**
      * cube 的 X 面在兩個後端是對調的。
      *
@@ -119,12 +149,24 @@ const EFFECTS = [
     glUrl: '/?vtlook=1&verify=1',
     gpuUrl: '/webgpu.html?vtlook=1',
     labels: [
-      '粗 左下 R', '粗 左下 G', '粗 左下 B',
-      '粗 中間 R', '粗 中間 G', '粗 中間 B',
-      '粗 右上 R', '粗 右上 G', '粗 右上 B',
-      '細 頁內左下 R', '細 頁內左下 G', '細 頁內左下 B',
-      '細 頁內右上 R', '細 頁內右上 G', '細 頁內右上 B',
-      '細 隔壁頁 R', '細 隔壁頁 G', '細 隔壁頁 B',
+      '粗 左下 R',
+      '粗 左下 G',
+      '粗 左下 B',
+      '粗 中間 R',
+      '粗 中間 G',
+      '粗 中間 B',
+      '粗 右上 R',
+      '粗 右上 G',
+      '粗 右上 B',
+      '細 頁內左下 R',
+      '細 頁內左下 G',
+      '細 頁內左下 B',
+      '細 頁內右上 R',
+      '細 頁內右上 G',
+      '細 頁內右上 B',
+      '細 隔壁頁 R',
+      '細 隔壁頁 G',
+      '細 隔壁頁 B',
     ],
     floor: 1 / 255,
     /**
@@ -210,18 +252,54 @@ const EFFECTS = [
     glUrl: '/?impostorlook=1&verify=1',
     gpuUrl: '/webgpu.html?impostorlook=1',
     labels: [
-      'a0 覆蓋', 'a0 R', 'a0 G', 'a0 B',
-      'a45 覆蓋', 'a45 R', 'a45 G', 'a45 B',
-      'a90 覆蓋', 'a90 R', 'a90 G', 'a90 B',
-      'a135 覆蓋', 'a135 R', 'a135 G', 'a135 B',
-      'a180 覆蓋', 'a180 R', 'a180 G', 'a180 B',
-      'a225 覆蓋', 'a225 R', 'a225 G', 'a225 B',
-      'a270 覆蓋', 'a270 R', 'a270 G', 'a270 B',
-      'a315 覆蓋', 'a315 R', 'a315 G', 'a315 B',
-      '格0 alpha', '格1 alpha', '格2 alpha', '格3 alpha',
-      '格4 alpha', '格5 alpha', '格6 alpha', '格7 alpha',
-      '格8 alpha', '格9 alpha', '格10 alpha', '格11 alpha',
-      '格12 alpha', '格13 alpha', '格14 alpha', '格15 alpha',
+      'a0 覆蓋',
+      'a0 R',
+      'a0 G',
+      'a0 B',
+      'a45 覆蓋',
+      'a45 R',
+      'a45 G',
+      'a45 B',
+      'a90 覆蓋',
+      'a90 R',
+      'a90 G',
+      'a90 B',
+      'a135 覆蓋',
+      'a135 R',
+      'a135 G',
+      'a135 B',
+      'a180 覆蓋',
+      'a180 R',
+      'a180 G',
+      'a180 B',
+      'a225 覆蓋',
+      'a225 R',
+      'a225 G',
+      'a225 B',
+      'a270 覆蓋',
+      'a270 R',
+      'a270 G',
+      'a270 B',
+      'a315 覆蓋',
+      'a315 R',
+      'a315 G',
+      'a315 B',
+      '格0 alpha',
+      '格1 alpha',
+      '格2 alpha',
+      '格3 alpha',
+      '格4 alpha',
+      '格5 alpha',
+      '格6 alpha',
+      '格7 alpha',
+      '格8 alpha',
+      '格9 alpha',
+      '格10 alpha',
+      '格11 alpha',
+      '格12 alpha',
+      '格13 alpha',
+      '格14 alpha',
+      '格15 alpha',
     ],
     floor: 1 / 255,
     /**
@@ -291,14 +369,54 @@ const EFFECTS = [
         ],
       ];
     },
-
   },
   {
     name: '換階淡入',
     key: 'lodFade',
     glUrl: '/?lodfade=1&verify=1',
     gpuUrl: '/webgpu.html?lodfade=1',
-    labels: ['d120 過渡數', 'd160 過渡數', 'd200 過渡數', 'd240 過渡數', 'd280 過渡數', 'd320 過渡數', 'd360 過渡數', 'd400 過渡數', 'd120 覆蓋', 'd120 R', 'd120 G', 'd120 B', 'd160 覆蓋', 'd160 R', 'd160 G', 'd160 B', 'd200 覆蓋', 'd200 R', 'd200 G', 'd200 B', 'd240 覆蓋', 'd240 R', 'd240 G', 'd240 B', 'd280 覆蓋', 'd280 R', 'd280 G', 'd280 B', 'd320 覆蓋', 'd320 R', 'd320 G', 'd320 B', 'd360 覆蓋', 'd360 R', 'd360 G', 'd360 B', 'd400 覆蓋', 'd400 R', 'd400 G', 'd400 B'],
+    labels: [
+      'd120 過渡數',
+      'd160 過渡數',
+      'd200 過渡數',
+      'd240 過渡數',
+      'd280 過渡數',
+      'd320 過渡數',
+      'd360 過渡數',
+      'd400 過渡數',
+      'd120 覆蓋',
+      'd120 R',
+      'd120 G',
+      'd120 B',
+      'd160 覆蓋',
+      'd160 R',
+      'd160 G',
+      'd160 B',
+      'd200 覆蓋',
+      'd200 R',
+      'd200 G',
+      'd200 B',
+      'd240 覆蓋',
+      'd240 R',
+      'd240 G',
+      'd240 B',
+      'd280 覆蓋',
+      'd280 R',
+      'd280 G',
+      'd280 B',
+      'd320 覆蓋',
+      'd320 R',
+      'd320 G',
+      'd320 B',
+      'd360 覆蓋',
+      'd360 R',
+      'd360 G',
+      'd360 B',
+      'd400 覆蓋',
+      'd400 R',
+      'd400 G',
+      'd400 B',
+    ],
     floor: 1e-4,
     tolerance: 0.02,
     measure: async (api) => {
@@ -355,24 +473,69 @@ const EFFECTS = [
     glUrl: '/?vsm=8&verify=1',
     gpuUrl: '/webgpu.html?vsm=8',
     labels: [
-      '遮罩 v20 u20', '遮罩 v20 u35', '遮罩 v20 u50', '遮罩 v20 u65', '遮罩 v20 u80',
-      '遮罩 v35 u20', '遮罩 v35 u35', '遮罩 v35 u50', '遮罩 v35 u65', '遮罩 v35 u80',
-      '遮罩 v50 u20', '遮罩 v50 u35', '遮罩 v50 u50', '遮罩 v50 u65', '遮罩 v50 u80',
-      '遮罩 v65 u20', '遮罩 v65 u35', '遮罩 v65 u50', '遮罩 v65 u65', '遮罩 v65 u80',
-      '遮罩 v80 u20', '遮罩 v80 u35', '遮罩 v80 u50', '遮罩 v80 u65', '遮罩 v80 u80',
-      '亮處 光源 U', '亮處 光源 V', '亮處 光源深度',
-      '影中 光源 U', '影中 光源 V', '影中 光源深度',
-      '亮處 頁 X', '亮處 頁 Y', '亮處 階',
-      '影中 頁 X', '影中 頁 Y', '影中 階',
-      '亮處 圖集 U', '亮處 圖集 V', '影中 圖集 U', '影中 圖集 V',
-      '亮處 存的深度', '影中 存的深度',
-      '亮處 深度差', '影中 深度差',
-      '亮處 位元 R', '亮處 位元 G', '亮處 位元 B',
-      '影中 位元 R', '影中 位元 G', '影中 位元 B',
-      '圖集 s0 R', '圖集 s0 G', '圖集 s0 B',
-      '圖集 s1 R', '圖集 s1 G', '圖集 s1 B',
-      '圖集 s2 R', '圖集 s2 G', '圖集 s2 B',
-      '圖集 空 R', '圖集 空 G', '圖集 空 B',
+      '遮罩 v20 u20',
+      '遮罩 v20 u35',
+      '遮罩 v20 u50',
+      '遮罩 v20 u65',
+      '遮罩 v20 u80',
+      '遮罩 v35 u20',
+      '遮罩 v35 u35',
+      '遮罩 v35 u50',
+      '遮罩 v35 u65',
+      '遮罩 v35 u80',
+      '遮罩 v50 u20',
+      '遮罩 v50 u35',
+      '遮罩 v50 u50',
+      '遮罩 v50 u65',
+      '遮罩 v50 u80',
+      '遮罩 v65 u20',
+      '遮罩 v65 u35',
+      '遮罩 v65 u50',
+      '遮罩 v65 u65',
+      '遮罩 v65 u80',
+      '遮罩 v80 u20',
+      '遮罩 v80 u35',
+      '遮罩 v80 u50',
+      '遮罩 v80 u65',
+      '遮罩 v80 u80',
+      '亮處 光源 U',
+      '亮處 光源 V',
+      '亮處 光源深度',
+      '影中 光源 U',
+      '影中 光源 V',
+      '影中 光源深度',
+      '亮處 頁 X',
+      '亮處 頁 Y',
+      '亮處 階',
+      '影中 頁 X',
+      '影中 頁 Y',
+      '影中 階',
+      '亮處 圖集 U',
+      '亮處 圖集 V',
+      '影中 圖集 U',
+      '影中 圖集 V',
+      '亮處 存的深度',
+      '影中 存的深度',
+      '亮處 深度差',
+      '影中 深度差',
+      '亮處 位元 R',
+      '亮處 位元 G',
+      '亮處 位元 B',
+      '影中 位元 R',
+      '影中 位元 G',
+      '影中 位元 B',
+      '圖集 s0 R',
+      '圖集 s0 G',
+      '圖集 s0 B',
+      '圖集 s1 R',
+      '圖集 s1 G',
+      '圖集 s1 B',
+      '圖集 s2 R',
+      '圖集 s2 G',
+      '圖集 s2 B',
+      '圖集 空 R',
+      '圖集 空 G',
+      '圖集 空 B',
     ],
     /**
      * 遮罩是**逐像素的 0 或 1**，所以它是位置的階梯函數 —— 半個像素的柵格化
@@ -467,10 +630,7 @@ const EFFECTS = [
         get('圖集 s0 R') > 0.01 && get('圖集 s0 R') < 0.99,
         `圖集裡真的有畫東西 —— 第一格的 R ${get('圖集 s0 R').toFixed(4)}`,
       ],
-      [
-        get('圖集 空 R') === 0,
-        `沒有頁落到的地方是空的 —— ${get('圖集 空 R').toFixed(4)}`,
-      ],
+      [get('圖集 空 R') === 0, `沒有頁落到的地方是空的 —— ${get('圖集 空 R').toFixed(4)}`],
     ],
   },
   {
@@ -479,20 +639,58 @@ const EFFECTS = [
     glUrl: '/?waterlook=1&verify=1',
     gpuUrl: '/webgpu.html?waterlook=1',
     labels: [
-      '淺 travelled', '中 travelled', '掠 travelled',
-      '淺 水面深度', '中 水面深度', '掠 水面深度',
-      '淺 水底深度', '中 水底深度', '掠 水底深度',
-      '淺 R', '淺 G', '淺 B', '中 R', '中 G', '中 B', '掠 R', '掠 G', '掠 B',
-      '淺 折射 R', '淺 折射 G', '淺 折射 B',
-      '中 折射 R', '中 折射 G', '中 折射 B',
-      '掠 折射 R', '掠 折射 G', '掠 折射 B',
-      '淺 位移 U', '淺 位移 V', '中 位移 U', '中 位移 V', '掠 位移 U', '掠 位移 V',
-      '淺 法線 X', '淺 法線 Y', '淺 法線 Z',
-      '中 法線 X', '中 法線 Y', '中 法線 Z',
-      '掠 法線 X', '掠 法線 Y', '掠 法線 Z',
-      '淺 對 CPU', '中 對 CPU', '掠 對 CPU',
-      '泡沫 v.13', '泡沫 v.17', '泡沫 v.21', '泡沫 v.25',
-      '淺 折射反應', '中 折射反應', '掠 折射反應',
+      '淺 travelled',
+      '中 travelled',
+      '掠 travelled',
+      '淺 水面深度',
+      '中 水面深度',
+      '掠 水面深度',
+      '淺 水底深度',
+      '中 水底深度',
+      '掠 水底深度',
+      '淺 R',
+      '淺 G',
+      '淺 B',
+      '中 R',
+      '中 G',
+      '中 B',
+      '掠 R',
+      '掠 G',
+      '掠 B',
+      '淺 折射 R',
+      '淺 折射 G',
+      '淺 折射 B',
+      '中 折射 R',
+      '中 折射 G',
+      '中 折射 B',
+      '掠 折射 R',
+      '掠 折射 G',
+      '掠 折射 B',
+      '淺 位移 U',
+      '淺 位移 V',
+      '中 位移 U',
+      '中 位移 V',
+      '掠 位移 U',
+      '掠 位移 V',
+      '淺 法線 X',
+      '淺 法線 Y',
+      '淺 法線 Z',
+      '中 法線 X',
+      '中 法線 Y',
+      '中 法線 Z',
+      '掠 法線 X',
+      '掠 法線 Y',
+      '掠 法線 Z',
+      '淺 對 CPU',
+      '中 對 CPU',
+      '掠 對 CPU',
+      '泡沫 v.13',
+      '泡沫 v.17',
+      '泡沫 v.21',
+      '泡沫 v.25',
+      '淺 折射反應',
+      '中 折射反應',
+      '掠 折射反應',
     ],
     /**
      * 「對 CPU」的地板就是那條主張自己的門檻（0.05 公尺）：小於它的殘差兩邊
@@ -663,7 +861,9 @@ const EFFECTS = [
       for (let i = 0; i < ROWS.length; i++) {
         const after = await strip(ROWS[i]);
         out.push(
-          Math.max(...after.map((x, c) => Math.abs(x - before[i][c]) / Math.max(before[i][c], 1e-6))),
+          Math.max(
+            ...after.map((x, c) => Math.abs(x - before[i][c]) / Math.max(before[i][c], 1e-6)),
+          ),
         );
       }
       api.setRefraction(0.05);
@@ -675,7 +875,17 @@ const EFFECTS = [
     key: 'reflProbe',
     glUrl: '/?reflprobe=1&verify=1',
     gpuUrl: '/webgpu.html?reflprobe=1',
-    labels: ['偏 +x R', '偏 +x G', '偏 +x B', '偏 −x R', '偏 −x G', '偏 −x B', '偏 −z R', '偏 −z G', '偏 −z B'],
+    labels: [
+      '偏 +x R',
+      '偏 +x G',
+      '偏 +x B',
+      '偏 −x R',
+      '偏 −x G',
+      '偏 −x B',
+      '偏 −z R',
+      '偏 −z G',
+      '偏 −z B',
+    ],
     floor: 1e-4,
     measure: async (api) => {
       await api.settle();
@@ -683,7 +893,11 @@ const EFFECTS = [
       const out = [];
       // 三個方向：+x 紅牆、−x 藍牆、−z 黃牆。最後一個的反射方向 z 為負，
       // 走的是八面體的折疊分支 —— 那一段只有它驗得到。
-      for (const [x, z] of [[30, 0], [-30, 0], [0, -25]]) {
+      for (const [x, z] of [
+        [30, 0],
+        [-30, 0],
+        [0, -25],
+      ]) {
         out.push(...(await api.sampleWindowAsync(x, z, 9)));
       }
       return out;
@@ -740,9 +954,15 @@ const EFFECTS = [
     glUrl: '/?gi=1&giOff=1&verify=1',
     gpuUrl: '/webgpu.html?gi=1&giOff=1',
     labels: [
-      '畫面 中 R', '畫面 中 G', '畫面 中 B',
-      '畫面 右 R', '畫面 右 G', '畫面 右 B',
-      '畫面 下 R', '畫面 下 G', '畫面 下 B',
+      '畫面 中 R',
+      '畫面 中 G',
+      '畫面 中 B',
+      '畫面 右 R',
+      '畫面 右 G',
+      '畫面 右 B',
+      '畫面 下 R',
+      '畫面 下 G',
+      '畫面 下 B',
     ],
     floor: 1 / 255,
     /**
@@ -783,10 +1003,7 @@ const EFFECTS = [
     },
     /** 直接光要真的有東西 —— 全黑的話上面那個比對是在比兩片黑。 */
     absolute: (get) => [
-      [
-        get('畫面 中 R') > 0.05,
-        `直接光真的畫出東西 —— 中間那塊 R ${get('畫面 中 R').toFixed(3)}`,
-      ],
+      [get('畫面 中 R') > 0.05, `直接光真的畫出東西 —— 中間那塊 R ${get('畫面 中 R').toFixed(3)}`],
     ],
   },
   {
@@ -794,7 +1011,27 @@ const EFFECTS = [
     key: 'gi',
     glUrl: '/?gi=1&verify=1',
     gpuUrl: '/webgpu.html?gi=1',
-    labels: ['朝 −x−z', '朝 +x+z', '朝上', '朝下', '畫面 中 R', '畫面 中 G', '畫面 中 B', '畫面 右 R', '畫面 右 G', '畫面 右 B', '畫面 下 R', '畫面 下 G', '畫面 下 B', '開著', '關掉', '再開', '搬之前 藍', '搬之後 藍', '藍漲了'],
+    labels: [
+      '朝 −x−z',
+      '朝 +x+z',
+      '朝上',
+      '朝下',
+      '畫面 中 R',
+      '畫面 中 G',
+      '畫面 中 B',
+      '畫面 右 R',
+      '畫面 右 G',
+      '畫面 右 B',
+      '畫面 下 R',
+      '畫面 下 G',
+      '畫面 下 B',
+      '開著',
+      '關掉',
+      '再開',
+      '搬之前 藍',
+      '搬之後 藍',
+      '藍漲了',
+    ],
     floor: 0.005,
     /**
      * ## 這一項的容差比別的鬆，而那是有理由的
@@ -838,10 +1075,7 @@ const EFFECTS = [
         get('關掉') < get('開著') * 0.95 && Math.abs(get('再開') - get('開著')) < 0.005,
         `強度改得動 —— ${get('開著').toFixed(4)} → ${get('關掉').toFixed(4)} → ${get('再開').toFixed(4)}`,
       ],
-      [
-        get('藍漲了') > 0.01,
-        `搬過去之後附近的探針記到了 —— 藍漲 ${get('藍漲了').toFixed(4)}`,
-      ],
+      [get('藍漲了') > 0.01, `搬過去之後附近的探針記到了 —— 藍漲 ${get('藍漲了').toFixed(4)}`],
     ],
     tolerance: {
       '朝 +x+z': 0.2, // 量到 14.1%
@@ -860,10 +1094,22 @@ const EFFECTS = [
         rounds++;
       }
       const points = [
-        [[-5, 14, -5], [-0.707, 0, -0.707]],
-        [[-5, 14, -5], [0.707, 0, 0.707]],
-        [[-5, 14, -5], [0, 1, 0]],
-        [[-5, 14, -5], [0, -1, 0]],
+        [
+          [-5, 14, -5],
+          [-0.707, 0, -0.707],
+        ],
+        [
+          [-5, 14, -5],
+          [0.707, 0, 0.707],
+        ],
+        [
+          [-5, 14, -5],
+          [0, 1, 0],
+        ],
+        [
+          [-5, 14, -5],
+          [0, -1, 0],
+        ],
       ];
       // 只看紅通道 —— 那個場景裡紅牆是唯一的間接光來源，訊號全在那裡。
       const out = points.map(([p, n]) => api.sampleCpu(p, n)[0]);
@@ -914,7 +1160,11 @@ const EFFECTS = [
   },
 ];
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 
 /**
@@ -977,7 +1227,9 @@ const difference = (a, b, floor) => {
 const readEffect = async (url, handleName, key, measure) => {
   const page = await browser.newPage({ viewport: { width: 900, height: 600 } });
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
   page.on('pageerror', (e) => errors.push(String(e)));
   page.setDefaultNavigationTimeout(240000);
   await page.goto(url, { waitUntil: 'load' });
@@ -1027,10 +1279,14 @@ try {
     //
     // 兩邊一起全 0 的話下面每一條比對都會過 —— 那是這一類關卡最容易有的假綠。
     const smallestFloor = Math.min(
-      ...gl.values.map((_, i) => perQuantity(effect.floor, i, effect.labels?.[i] ?? String(i), 1e-4)),
+      ...gl.values.map((_, i) =>
+        perQuantity(effect.floor, i, effect.labels?.[i] ?? String(i), 1e-4),
+      ),
     );
     const spread = (v) => Math.max(...v) - Math.min(...v);
-    console.log(`  值域：WebGL ${spread(gl.values).toFixed(4)}、WebGPU ${spread(gpu.values).toFixed(4)}`);
+    console.log(
+      `  值域：WebGL ${spread(gl.values).toFixed(4)}、WebGPU ${spread(gpu.values).toFixed(4)}`,
+    );
     check(
       spread(gl.values) > smallestFloor * 10 && spread(gpu.values) > smallestFloor * 10,
       '兩邊量到的東西都有變化（不是兩邊一起是常數）',

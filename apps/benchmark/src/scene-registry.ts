@@ -5,7 +5,11 @@ import {
   shaderCompileScene,
   textureLoadScene,
 } from './scenes/shader-scenes.ts';
-import { cpuCeilingScene, gpuDrawCallCeilingScene, gpuTriangleCeilingScene } from './scenes/ceiling-scenes.ts';
+import {
+  cpuCeilingScene,
+  gpuDrawCallCeilingScene,
+  gpuTriangleCeilingScene,
+} from './scenes/ceiling-scenes.ts';
 import { textureConformanceScene } from './scenes/texture-conformance.ts';
 import { occlusionScene } from './scenes/occlusion-scene.ts';
 import { streamingScene } from './scenes/streaming-scene.ts';

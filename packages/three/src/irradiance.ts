@@ -219,9 +219,7 @@ export class IrradianceVolume {
     // node 那條路讀的是這張貼圖 —— uniform 那邊它收不到。
     (this.intensityTexture.image.data as Float32Array)[0] = value;
     this.intensityTexture.needsUpdate = true;
-
   }
-
 
   /**
    * 探針貼圖。node 材質那條路要直接拿去做 `texture3D`。
@@ -493,7 +491,7 @@ export class IrradianceVolume {
    *
    * @returns 探針編號，沒有要烘的就回 −1。
    */
-nextToBake(exclude?: ReadonlySet<number>): number {
+  nextToBake(exclude?: ReadonlySet<number>): number {
     // ## `exclude` 是「這一輪已經挑走的」
     //
     // 少了它，一輪就只烘得動**一顆**：烘焙是先發射再一次等完的，所以挑的
@@ -569,8 +567,7 @@ nextToBake(exclude?: ReadonlySet<number>): number {
     for (let dz = 0; dz < 2; dz++) {
       for (let dy = 0; dy < 2; dy++) {
         for (let dx = 0; dx < 2; dx++) {
-          const w =
-            (dx === 0 ? 1 - fx : fx) * (dy === 0 ? 1 - fy : fy) * (dz === 0 ? 1 - fz : fz);
+          const w = (dx === 0 ? 1 - fx : fx) * (dy === 0 ? 1 - fy : fy) * (dz === 0 ? 1 - fz : fz);
           if (w === 0) continue;
           const index = x0 + dx + (y0 + dy) * nx + (z0 + dz) * nx * ny;
           const base = index * COEFFICIENTS * 3;
@@ -708,9 +705,11 @@ async function bakeCache(
   const isWebGL = (renderer as { isWebGLRenderer?: boolean }).isWebGLRenderer === true;
   const target = isWebGL
     ? new WebGLCubeRenderTarget(faceSize)
-    : new ((await import('three/webgpu')) as unknown as {
-        CubeRenderTarget: new (size: number) => WebGLCubeRenderTarget;
-      }).CubeRenderTarget(faceSize);
+    : new (
+        (await import('three/webgpu')) as unknown as {
+          CubeRenderTarget: new (size: number) => WebGLCubeRenderTarget;
+        }
+      ).CubeRenderTarget(faceSize);
   // 事後設得動，兩個後端都是 —— 驗過：改成建構時傳入，關卡一條都不會紅。
   target.texture.type = HalfFloatType;
   const camera = new CubeCamera(options.near ?? 0.1, options.far ?? 1000, target);
@@ -790,9 +789,11 @@ export async function bakeIrradiance(
         faces.push(buffer);
         // **不 await。** 這一行同步把 readPixels 排進命令流，剩下的是等 fence。
         waits.push(
-          (renderer as unknown as {
-            readRenderTargetPixelsAsync: (...args: unknown[]) => Promise<unknown>;
-          }).readRenderTargetPixelsAsync(target, 0, 0, faceSize, faceSize, buffer, face),
+          (
+            renderer as unknown as {
+              readRenderTargetPixelsAsync: (...args: unknown[]) => Promise<unknown>;
+            }
+          ).readRenderTargetPixelsAsync(target, 0, 0, faceSize, faceSize, buffer, face),
         );
       } else {
         // ## WebGPU 的讀回有三個坑，全部交給 `readPixelsAsync`
@@ -843,14 +844,16 @@ export async function bakeIrradiance(
   //
   // 兩件事本來就沒有關係：翻轉看座標系，解碼看像素怎麼存。
   const decode =
-    target.texture.type === HalfFloatType ? DataUtils.fromHalfFloat : (value: number): number => value;
+    target.texture.type === HalfFloatType
+      ? DataUtils.fromHalfFloat
+      : (value: number): number => value;
   const reflection = options.reflection;
   if (reflection !== undefined && reflection.volume !== volume) {
     // 兩份格子不一樣的話，反射會寫到別顆探針的位置上 —— 而症狀是「反射裡
     // 的世界偏了一格」，不是錯誤。所以這裡直接擋掉。
     throw new Error(
-      "WW.bakeIrradiance: reflection 的探針體積與傳進來的不是同一個。" +
-        "反射探針刻意共用輻照度探針的格子，見 ReflectionProbes。",
+      'WW.bakeIrradiance: reflection 的探針體積與傳進來的不是同一個。' +
+        '反射探針刻意共用輻照度探針的格子，見 ReflectionProbes。',
     );
   }
   for (const entry of pending) {
@@ -866,7 +869,6 @@ export async function bakeIrradiance(
   reflection?.upload();
   return done;
 }
-
 
 /**
  * 把 `root` 底下每個材質接上這個體積的間接光。
@@ -979,10 +981,7 @@ function inject(
     // 而探針體積是定義在世界裡的，用視空間查表的話**鏡頭一動間接光就跟著
     // 飄** —— 那是最典型的「看起來像在閃」的錯。
     shader.vertexShader = shader.vertexShader
-      .replace(
-        '#include <common>',
-        '#include <common>\nvarying vec3 wwWorldPos;',
-      )
+      .replace('#include <common>', '#include <common>\nvarying vec3 wwWorldPos;')
       .replace(
         '#include <worldpos_vertex>',
         // `worldpos_vertex` 只有在需要的時候才會定義 `worldPosition`，所以

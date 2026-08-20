@@ -198,7 +198,12 @@ const MODES = [
   // 預設預算下這份程序化內容只配得到 60 個槽位、443 組要合併，於是每一幀
   // 被合併的是不同的那幾格 —— 兩種畫法都在契約內，但畫面因此每一幀都不同。
   // 實測：同一頁、同一個角度連續量五次是 959 / 959 / 2967 / 2129 / 959。
-  { name: '靜態（一次擺完）', query: '?count=20000&hlodBudgetMB=512&verify=1', missing: 0.3, ratio: 5 },
+  {
+    name: '靜態（一次擺完）',
+    query: '?count=20000&hlodBudgetMB=512&verify=1',
+    missing: 0.3,
+    ratio: 5,
+  },
   // 串流走的是另一份程式碼：區塊表、增量分組、卸載時的編號平移。
   { name: '串流（區塊表）', query: '?stream=1&hlodBudgetMB=512&verify=1', missing: 0.3, ratio: 6 },
   // **這一組才驗得動畫質。** 上面兩組是兩萬個又遠又小的物件，螢幕上每個
@@ -207,9 +212,19 @@ const MODES = [
   //
   // 這一組把物件放大 20 倍、數量降到 600、相機拉近，於是換一階會動到
   // 成千上萬個像素。
-  { name: '近景（螢幕上很大）', query: '?count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512&verify=1', missing: 0.3, ratio: 5 },
+  {
+    name: '近景（螢幕上很大）',
+    query: '?count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512&verify=1',
+    missing: 0.3,
+    ratio: 5,
+  },
   // 同樣的形狀，但走串流那條路 —— 區塊表的剔除錯誤只在這條路上出現。
-  { name: '近景串流', query: '?stream=1&size=20&orbit=90&hlodBudgetMB=512&verify=1', missing: 0.6, ratio: 2 },
+  {
+    name: '近景串流',
+    query: '?stream=1&size=20&orbit=90&hlodBudgetMB=512&verify=1',
+    missing: 0.6,
+    ratio: 2,
+  },
   // ## 有貼圖的那條路
   //
   // 在這之前沒有任何 gate 走過（example 預設是純色材質），所以 normal/ORM
@@ -218,10 +233,20 @@ const MODES = [
   // 一走就量到 19.7%，而那**不是引擎的缺陷，是參考影像用錯幾何** ——
   // `?cooked=1` 時強化版吃 cook 過的鏈，而參考當時用的是模組頂層那份程序化
   // 幾何，等於在比兩個不同的形狀。修好之後近景是 0%，遠景 3.3%。
-  { name: '有貼圖・遠景', query: '?cooked=1&count=20000&hlodBudgetMB=512&verify=1', missing: 5, ratio: 2 },
+  {
+    name: '有貼圖・遠景',
+    query: '?cooked=1&count=20000&hlodBudgetMB=512&verify=1',
+    missing: 5,
+    ratio: 2,
+  },
   // 近景挑的是細階，所以與原生**完全一致**（0%）。這一組因此是最嚴的一個
   // gate：任何讓有貼圖的內容偏掉的改動都會在這裡紅。
-  { name: '有貼圖・近景', query: '?cooked=1&count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512&verify=1', missing: 0.3, ratio: 4 },
+  {
+    name: '有貼圖・近景',
+    query: '?cooked=1&count=600&size=20&spread=400&orbit=90&hlodBudgetMB=512&verify=1',
+    missing: 0.3,
+    ratio: 4,
+  },
   // 門檻 1 = 一個 fragment 要跨過整張貼圖才會停 → **永遠都取樣**，也就是
   // 注入必須完全沒有作用。數字要跟上面那組一樣（0%）。
 ];
@@ -278,7 +303,7 @@ function judge(mode, result) {
   }
   // **少畫的那個方向要嚴得多。** 多畫幾個像素通常是輪廓位移；少畫代表
   // 東西真的不見了，而那是這個引擎最危險的失效方式。
-  if (typeof result.missingPercent !== "number" || Number.isNaN(result.missingPercent)) {
+  if (typeof result.missingPercent !== 'number' || Number.isNaN(result.missingPercent)) {
     return `${mode.name}：拿不到反向比對結果`;
   }
   if (result.missingPercent > mode.missing) {

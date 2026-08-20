@@ -334,7 +334,10 @@ describe('InstancedMesh — 剔除的正確性', () => {
     const mesh = new InstancedMesh(geometry, material(), 400);
     const m = new Matrix4();
     for (let i = 0; i < 400; i++) {
-      mesh.setMatrixAt(i, m.makeTranslation((i % 20) * 3 - 28.5, 1000, Math.floor(i / 20) * 3 - 28.5));
+      mesh.setMatrixAt(
+        i,
+        m.makeTranslation((i % 20) * 3 - 28.5, 1000, Math.floor(i / 20) * 3 - 28.5),
+      );
     }
     const camera = makeCamera();
     camera.position.set(0, 1010, 40);
@@ -446,9 +449,14 @@ describe('InstancedMesh — LOD 依螢幕誤差選階', () => {
   it('errorPixels 是硬上限：被選中的階投影誤差不超過它', () => {
     const errorPixels = 2;
     const errors = [0, 0.05, 0.4];
-    const mesh = new InstancedMesh({ lods: [unitBox(), unitBox(), unitBox()], errors }, material(), 60, {
-      errorPixels,
-    });
+    const mesh = new InstancedMesh(
+      { lods: [unitBox(), unitBox(), unitBox()], errors },
+      material(),
+      60,
+      {
+        errorPixels,
+      },
+    );
     const m = new Matrix4();
     for (let i = 0; i < 60; i++) mesh.setMatrixAt(i, m.makeTranslation(0, 0, -(i + 1) * 20));
 
@@ -456,7 +464,7 @@ describe('InstancedMesh — LOD 依螢幕誤差選階', () => {
     draw(mesh, camera);
 
     // 用獨立算式重新驗證每一階的選擇
-    const ppu = VIEWPORT_HEIGHT / (2 * Math.tan(((60 * Math.PI) / 180) / 2));
+    const ppu = VIEWPORT_HEIGHT / (2 * Math.tan((60 * Math.PI) / 180 / 2));
     const counted = mesh.stats.levels;
     let checked = 0;
     for (let level = 1; level < errors.length; level++) {
@@ -544,8 +552,9 @@ describe('InstancedMesh — LOD 依螢幕誤差選階', () => {
       );
       mesh.setMatrixAt(0, new Matrix4().makeTranslation(0, 0, -distance));
       draw(mesh, makeCamera());
-      const uniforms = (mesh as unknown as { fadeUniforms: { wwFadeAmount: { value: Float32Array } } })
-        .fadeUniforms;
+      const uniforms = (
+        mesh as unknown as { fadeUniforms: { wwFadeAmount: { value: Float32Array } } }
+      ).fadeUniforms;
       return mesh.fadingInstances > 0 ? uniforms.wwFadeAmount.value[0]! : -1;
     };
 
@@ -691,7 +700,11 @@ describe('InstancedMesh — 資產不再是門檻（W2）', () => {
     // 正規化的整數 attribute 轉成 float 會改變語意 —— 寧可不做，並且說出來
     geometry.setAttribute(
       'color',
-      new Uint8BufferAttribute(new Uint8Array(geometry.getAttribute('position').count * 3), 3, true),
+      new Uint8BufferAttribute(
+        new Uint8Array(geometry.getAttribute('position').count * 3),
+        3,
+        true,
+      ),
     );
 
     const mesh = new InstancedMesh(geometry, material(), 4);
@@ -754,7 +767,11 @@ describe('InstancedMesh — 串流的區塊就是現成的空間分割', () => {
     mesh.count = cells * 25;
   };
 
-  const check = (mesh: InstancedMesh, camera: PerspectiveCamera, geometry: BufferGeometry): void => {
+  const check = (
+    mesh: InstancedMesh,
+    camera: PerspectiveCamera,
+    geometry: BufferGeometry,
+  ): void => {
     draw(mesh, camera);
     const drawn = new Set(Array.from(mesh.drawnInstances));
     const lost = [...referenceVisible(mesh, camera, geometry)].filter((id) => !drawn.has(id));
@@ -799,7 +816,11 @@ describe('InstancedMesh — 串流的區塊就是現成的空間分割', () => {
     for (let c = 0; c < 36; c++) {
       const block = new Float32Array(25 * 16);
       for (let i = 0; i < 25; i++) {
-        m.makeTranslation(((c % 6) - 3) * 40 + (i % 5) * 4, 0, (Math.floor(c / 6) - 3) * 40 + Math.floor(i / 5) * 4);
+        m.makeTranslation(
+          ((c % 6) - 3) * 40 + (i % 5) * 4,
+          0,
+          (Math.floor(c / 6) - 3) * 40 + Math.floor(i / 5) * 4,
+        );
         m.scale(size);
         m.toArray(block, i * 16);
       }
@@ -885,7 +906,11 @@ describe('InstancedMesh — 包圍球快取的增量更新', () => {
    * 而且是拿一份完全獨立的實作（Three.js 自己的 Frustum + Sphere，走世界
    * 座標）去比。
    */
-  const check = (mesh: InstancedMesh, camera: PerspectiveCamera, geometry: BufferGeometry): void => {
+  const check = (
+    mesh: InstancedMesh,
+    camera: PerspectiveCamera,
+    geometry: BufferGeometry,
+  ): void => {
     draw(mesh, camera);
     const drawn = new Set(Array.from(mesh.drawnInstances));
     const lost = [...referenceVisible(mesh, camera, geometry)].filter((id) => !drawn.has(id));
@@ -911,7 +936,10 @@ describe('InstancedMesh — 包圍球快取的增量更新', () => {
     for (let round = 0; round < 40; round++) {
       const kind = round % 4;
       if (kind === 0) {
-        mesh.setMatrixAt(Math.floor(rnd() * 900), m.makeTranslation(rnd() * 60 - 30, 0, -rnd() * 60));
+        mesh.setMatrixAt(
+          Math.floor(rnd() * 900),
+          m.makeTranslation(rnd() * 60 - 30, 0, -rnd() * 60),
+        );
       } else if (kind === 1) {
         const start = Math.floor(rnd() * 800);
         for (let i = 0; i < 12; i++) {
@@ -937,7 +965,8 @@ describe('InstancedMesh — 包圍球快取的增量更新', () => {
     const mesh = new InstancedMesh(geometry, material(), 400, { dynamic: true, autoLod: false });
     const m = new Matrix4();
     for (let i = 0; i < 200; i++) mesh.setMatrixAt(i, m.makeTranslation((i % 20) * 3 - 30, 0, 400));
-    for (let i = 200; i < 400; i++) mesh.setMatrixAt(i, m.makeTranslation((i % 20) * 3 - 30, 0, -400));
+    for (let i = 200; i < 400; i++)
+      mesh.setMatrixAt(i, m.makeTranslation((i % 20) * 3 - 30, 0, -400));
 
     const camera = makeCamera();
     camera.position.set(0, 0, 0);
@@ -1139,8 +1168,8 @@ describe('InstancedMesh — 靜態是宣告出來的，不是猜出來的', () =
     //
     // 那則警告與這一條要驗的事情完全無關，而它會讓這一條偶爾紅。
     // 認訊息比認次數精確 —— 這不是把線放鬆，是把問題問對。
-    const dynamicWarnings = warn.mock.calls.filter((call) =>
-      String(call[0]).includes('空間分割') || String(call[0]).includes('dynamic'),
+    const dynamicWarnings = warn.mock.calls.filter(
+      (call) => String(call[0]).includes('空間分割') || String(call[0]).includes('dynamic'),
     );
     expect(dynamicWarnings).toEqual([]);
     warn.mockRestore();
@@ -1239,7 +1268,9 @@ describe('LOD 鏈的前置條件', () => {
   });
 
   it('數量必須相同', () => {
-    expect(() => resolveLodChain({ lods: [unitBox(), unitBox()], errors: [0] })).toThrow(/數量必須相同/);
+    expect(() => resolveLodChain({ lods: [unitBox(), unitBox()], errors: [0] })).toThrow(
+      /數量必須相同/,
+    );
   });
 
   it('單一幾何不需要 errors', () => {
@@ -1357,7 +1388,8 @@ describe('InstancedMesh — 同一頁上兩個引擎實例', () => {
       load: (cx, cz, place) => {
         loadsB++;
         // 刻意放在很遠的地方 —— 兩邊的內容不該混在一起。
-        for (let i = 0; i < 10; i++) place(rocksB, m.makeTranslation(cx * 100 + i, 0, cz * 100 + 9000));
+        for (let i = 0; i < 10; i++)
+          place(rocksB, m.makeTranslation(cx * 100 + i, 0, cz * 100 + 9000));
       },
     });
 
@@ -1367,7 +1399,14 @@ describe('InstancedMesh — 同一頁上兩個引擎實例', () => {
     camera.updateMatrixWorld(true);
     // 兩個 scene 各自被 render 一次 —— 串流掛在 scene.onBeforeRender 上。
     for (const scene of [sceneA, sceneB]) {
-      scene.onBeforeRender(null as never, scene, camera, null as never, null as never, null as never);
+      scene.onBeforeRender(
+        null as never,
+        scene,
+        camera,
+        null as never,
+        null as never,
+        null as never,
+      );
     }
 
     expect(loadsA).toBeGreaterThan(0);

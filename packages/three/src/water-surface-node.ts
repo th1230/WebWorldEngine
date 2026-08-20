@@ -130,9 +130,7 @@ export async function createWaterSurfaceNodeMaterial(
    * −90 度，套兩次就是轉 180 度，水面翻到相機後面去，而畫面上看起來只是
    * 「水沒有畫出來」。
    */
-  const positionNode = Fn(() =>
-    modelWorldMatrixInverse.mul(vec4(surface().position, 1)).xyz,
-  )();
+  const positionNode = Fn(() => modelWorldMatrixInverse.mul(vec4(surface().position, 1)).xyz)();
 
   /**
    * 深度緩衝的值 → 視空間的距離（正值）。
@@ -189,9 +187,7 @@ export async function createWaterSurfaceNodeMaterial(
     const offset = normal.xz.mul(uRefraction).div(surfaceDistance.mul(0.05).add(1)).toVar();
     const refractedUv = clamp(screenUvRaw.add(offset), 0, 1).toVar();
 
-    const refractedDistance = linearDepth(
-      tSceneDepth.sample(refractedUv),
-    ).toVar();
+    const refractedDistance = linearDepth(tSceneDepth.sample(refractedUv)).toVar();
     // 推到「水面前面的東西」上就不推。
     If(refractedDistance.lessThan(surfaceDistance), () => {
       refractedUv.assign(screenUvRaw);
@@ -224,7 +220,9 @@ export async function createWaterSurfaceNodeMaterial(
     const color = mix(refracted, reflected, fresnel).toVar();
 
     // 岸邊的泡沫：判準是水很淺。
-    const foam = float(1).sub(smoothstep(0, uFoamDepth, travelled)).toVar();
+    const foam = float(1)
+      .sub(smoothstep(0, uFoamDepth, travelled))
+      .toVar();
     const crest = float(0).toVar();
     If(uCrestFoam.greaterThan(0), () => {
       crest.assign(smoothstep(uCrestFoam, uCrestFoam.mul(1.6), position.y.sub(uWaterLevel)));
@@ -240,15 +238,33 @@ export async function createWaterSurfaceNodeMaterial(
     // 中間值印成畫面。號碼與 GLSL 那份**一樣** —— 不一樣的話跨後端比中間值
     // 時會比到不同的東西，而那比不比更糟。
     const out = vec3(color).toVar();
-    If(uDebug.equal(1), () => { out.assign(position); });
-    If(uDebug.equal(2), () => { out.assign(vec3(travelled)); });
-    If(uDebug.equal(3), () => { out.assign(vec3(foam)); });
-    If(uDebug.equal(4), () => { out.assign(vec3(fresnel)); });
-    If(uDebug.equal(5), () => { out.assign(normal.mul(0.5).add(0.5)); });
-    If(uDebug.equal(6), () => { out.assign(refracted); });
-    If(uDebug.equal(7), () => { out.assign(reflected); });
-    If(uDebug.equal(8), () => { out.assign(vec3(surfaceDistance)); });
-    If(uDebug.equal(9), () => { out.assign(vec3(refractedDistance)); });
+    If(uDebug.equal(1), () => {
+      out.assign(position);
+    });
+    If(uDebug.equal(2), () => {
+      out.assign(vec3(travelled));
+    });
+    If(uDebug.equal(3), () => {
+      out.assign(vec3(foam));
+    });
+    If(uDebug.equal(4), () => {
+      out.assign(vec3(fresnel));
+    });
+    If(uDebug.equal(5), () => {
+      out.assign(normal.mul(0.5).add(0.5));
+    });
+    If(uDebug.equal(6), () => {
+      out.assign(refracted);
+    });
+    If(uDebug.equal(7), () => {
+      out.assign(reflected);
+    });
+    If(uDebug.equal(8), () => {
+      out.assign(vec3(surfaceDistance));
+    });
+    If(uDebug.equal(9), () => {
+      out.assign(vec3(refractedDistance));
+    });
     If(uDebug.equal(10), () => {
       const uvOffset = refractedUv.sub(screenUvRaw);
       out.assign(vec3(uvOffset.x, uvOffset.y, 0));

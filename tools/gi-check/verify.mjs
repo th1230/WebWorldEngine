@@ -52,14 +52,19 @@ const server = createServer((req, res) => {
     res.writeHead(204).end();
     return;
   }
-  const file = path.startsWith('/cooked') ? join(COOKED, path) : join(DIST, path === '/' ? 'index.html' : path);
+  const file = path.startsWith('/cooked')
+    ? join(COOKED, path)
+    : join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
     (b) => {
       res.writeHead(200, {
         'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
+          {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.json': 'application/json',
+            '.wasm': 'application/wasm',
+          }[extname(file)] ?? 'application/octet-stream',
       });
       res.end(b);
     },
@@ -145,7 +150,9 @@ function judge(label, out, off) {
   const on = out.on;
   const { stats } = out;
   console.log(`\n── ${label}`);
-  console.log(`  探針 ${stats.baked}/${stats.probes}，接了 ${stats.materials} 個材質，烘了 ${out.rounds} 輪`);
+  console.log(
+    `  探針 ${stats.baked}/${stats.probes}，接了 ${stats.materials} 個材質，烘了 ${out.rounds} 輪`,
+  );
   console.log(`  CPU 求值（同一點同一法線）：${out.cpu.map((v) => v.toFixed(3)).join(', ')}`);
   console.log(`  關：R ${f(off.r)}  G ${f(off.g)}  B ${f(off.b)}`);
   console.log(`  開：R ${f(on.r)}  G ${f(on.g)}  B ${f(on.b)}`);
@@ -172,7 +179,11 @@ function judge(label, out, off) {
 
   // 烘出來的係數本身也要是紅的。這一條分得出「烘對了但著色錯」與「烘就錯了」。
   const [cr, cg] = out.cpu;
-  check(cr > cg * 5, '烘出來的係數本身就是紅的', `CPU R/G = ${(cr / Math.max(cg, 1e-9)).toFixed(1)}`);
+  check(
+    cr > cg * 5,
+    '烘出來的係數本身就是紅的',
+    `CPU R/G = ${(cr / Math.max(cg, 1e-9)).toFixed(1)}`,
+  );
   return gap;
 }
 
@@ -240,7 +251,7 @@ try {
   const dynamic = await runDynamic(`${base}/?gi=1`, '__ww');
   console.log('\n── 會動的東西（重烘附近的探針）');
   console.log(`  搬過去標了 ${dynamic.marked} 顆過期，重烘了 ${dynamic.rebaked} 顆`);
-  const g = (v) => v.map((n) => n.toFixed(4)).join(", ");
+  const g = (v) => v.map((n) => n.toFixed(4)).join(', ');
   console.log(`  箱子那一面的輻照度（探針算的）搬之前：${g(dynamic.before)}`);
   console.log(`                搬之後：${g(dynamic.after)}`);
 
@@ -278,13 +289,13 @@ try {
   //
   // 修好之後兩邊差 0.9%（124.8 對 123.7）。剩下的是烘的時候各自把場景拍成
   // cubemap 的差異，光柵化規則本來就不同。
-  check(glGap > 20 && gpuGap > 20, '兩個後端都有間接光', `WebGL R−B ${f(glGap)}，WebGPU R−B ${f(gpuGap)}`);
-  const gapRatio = Math.max(glGap, gpuGap) / Math.max(Math.min(glGap, gpuGap), 1e-6);
   check(
-    gapRatio < 1.1,
-    '而且兩邊的量級一致 —— 不是一邊亮一倍',
-    `比值 ${gapRatio.toFixed(3)}`,
+    glGap > 20 && gpuGap > 20,
+    '兩個後端都有間接光',
+    `WebGL R−B ${f(glGap)}，WebGPU R−B ${f(gpuGap)}`,
   );
+  const gapRatio = Math.max(glGap, gpuGap) / Math.max(Math.min(glGap, gpuGap), 1e-6);
+  check(gapRatio < 1.1, '而且兩邊的量級一致 —— 不是一邊亮一倍', `比值 ${gapRatio.toFixed(3)}`);
 
   check(errors.length === 0, '沒有主控台錯誤', errors.slice(0, 2).join(' | ') || undefined);
 } catch (e) {

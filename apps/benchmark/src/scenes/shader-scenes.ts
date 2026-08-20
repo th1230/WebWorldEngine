@@ -75,17 +75,19 @@ export const materialComplexityScene: SceneDefinition = {
       scene.add(mesh);
     }
 
-    return Promise.resolve(rawScene(scene, camera, {
-      update: () => {
-        // 相機固定：這個場景量的是每 pixel 的成本，移動只會引入無關變因
-      },
-      reportParams: { iterations, layers },
-      notes: [],
-      dispose: () => {
-        geometry.dispose();
-        for (const m of materials) m.dispose();
-      },
-    }));
+    return Promise.resolve(
+      rawScene(scene, camera, {
+        update: () => {
+          // 相機固定：這個場景量的是每 pixel 的成本，移動只會引入無關變因
+        },
+        reportParams: { iterations, layers },
+        notes: [],
+        dispose: () => {
+          geometry.dispose();
+          for (const m of materials) m.dispose();
+        },
+      }),
+    );
   },
 };
 
@@ -110,7 +112,8 @@ function makeNoiseTexture(size: number, seed: number): DataTexture {
 export const textureLoadScene: SceneDefinition = {
   id: 'texture-load',
   title: '貼圖記憶體與上傳頻寬',
-  measures: 'VRAM 佔用與上傳成本。與 renderer.info.memory.texturesSize 對照，驗證記憶體統計是否可信。',
+  measures:
+    'VRAM 佔用與上傳成本。與 renderer.info.memory.texturesSize 對照，驗證記憶體統計是否可信。',
   create(ctx: SceneContext): Promise<BenchmarkScene> {
     const requested = numberParam(ctx.params, 'count', 48, 1, 512);
     const size = numberParam(ctx.params, 'size', 512, 16, 4096);
@@ -147,20 +150,22 @@ export const textureLoadScene: SceneDefinition = {
       scene.add(mesh);
     }
 
-    return Promise.resolve(rawScene(scene, camera, {
-      update: () => {},
-      reportParams: {
-        count,
-        size,
-        approxTextureMB: Math.round((count * bytesEach) / (1024 * 1024)),
-      },
-      notes,
-      dispose: () => {
-        geometry.dispose();
-        for (const t of textures) t.dispose();
-        for (const m of materials) m.dispose();
-      },
-    }));
+    return Promise.resolve(
+      rawScene(scene, camera, {
+        update: () => {},
+        reportParams: {
+          count,
+          size,
+          approxTextureMB: Math.round((count * bytesEach) / (1024 * 1024)),
+        },
+        notes,
+        dispose: () => {
+          geometry.dispose();
+          for (const t of textures) t.dispose();
+          for (const m of materials) m.dispose();
+        },
+      }),
+    );
   },
 };
 

@@ -96,5 +96,4 @@ for (const entry of await readdir(dist, { withFileTypes: true })) {
   }
 }
 
-
 console.log(`flatten-types: ${names.length} 個宣告檔 → dist/`);

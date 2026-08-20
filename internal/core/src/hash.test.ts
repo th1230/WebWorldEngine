@@ -32,7 +32,9 @@ describe('stableStringify', () => {
   });
 
   it('handles nesting and null', () => {
-    expect(stableStringify({ a: { y: 1, x: null } })).toBe(stableStringify({ a: { x: null, y: 1 } }));
+    expect(stableStringify({ a: { y: 1, x: null } })).toBe(
+      stableStringify({ a: { x: null, y: 1 } }),
+    );
   });
 });
 

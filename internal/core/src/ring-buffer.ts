@@ -37,7 +37,10 @@ export class Float64RingBuffer {
 
   /** index 0 為最舊的樣本。 */
   at(index: number): number {
-    assert(index >= 0 && index < this.count, `RingBuffer index ${index} 超出範圍 (size=${this.count})`);
+    assert(
+      index >= 0 && index < this.count,
+      `RingBuffer index ${index} 超出範圍 (size=${this.count})`,
+    );
     const start = this.count === this.capacity ? this.head : 0;
     return this.data[(start + index) % this.capacity]!;
   }
@@ -57,7 +60,8 @@ export class Float64RingBuffer {
    * 這會配置記憶體，只在產生報告時呼叫，不要放進 render loop。
    */
   toArray(out?: Float64Array): Float64Array {
-    const target = out !== undefined && out.length >= this.count ? out : new Float64Array(this.count);
+    const target =
+      out !== undefined && out.length >= this.count ? out : new Float64Array(this.count);
     const start = this.count === this.capacity ? this.head : 0;
     for (let i = 0; i < this.count; i++) {
       target[i] = this.data[(start + i) % this.capacity]!;

@@ -88,7 +88,8 @@ async function main() {
           );
           await page.close();
 
-          const shrink = previous === null ? '' : `   前一段的 ${(r.percent / previous).toFixed(2)} 倍`;
+          const shrink =
+            previous === null ? '' : `   前一段的 ${(r.percent / previous).toFixed(2)} 倍`;
           console.log(
             `  ${String(width).padStart(4)}×${String(height).padEnd(4)}` +
               `   多畫 ${r.percent.toFixed(3)}%   少畫 ${r.missingPercent.toFixed(3)}%${shrink}`,

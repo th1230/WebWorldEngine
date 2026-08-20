@@ -45,17 +45,31 @@ const COOKED = join(root, 'apps/benchmark/public');
 const DIST = join(root, 'apps/example/dist');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  const file = path.startsWith('/cooked') ? join(COOKED, path) : join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then((b) => {
-    res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[extname(file)] ?? 'application/octet-stream' });
-    res.end(b);
-  }, () => res.writeHead(404).end());
+  const file = path.startsWith('/cooked')
+    ? join(COOKED, path)
+    : join(DIST, path === '/' ? 'index.html' : path);
+  readFile(file).then(
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
+            extname(file)
+          ] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
+    () => res.writeHead(404).end(),
+  );
 });
 await listenSafe(server);
 const url = `http://localhost:${server.address().port}/`;
 const browser = await chromium.launch({ channel: 'chrome' });
 const BASE = '?cooked=1&count=20000&hlodBudgetMB=512';
-const CASES = [['2（預設）', ''], ['3', '&errorPixels=3'], ['4', '&errorPixels=4']];
+const CASES = [
+  ['2（預設）', ''],
+  ['3', '&errorPixels=3'],
+  ['4', '&errorPixels=4'],
+];
 const rows = [];
 for (let round = 0; round < 3; round++) {
   const row = {};
@@ -74,12 +88,16 @@ for (let round = 0; round < 3; round++) {
     await page.close();
   }
   rows.push(row);
-  console.log(`  第 ${round + 1} 輪  ` + CASES.map(([k]) => `${k} ${row[k].ms.toFixed(2)}`).join('   '));
+  console.log(
+    `  第 ${round + 1} 輪  ` + CASES.map(([k]) => `${k} ${row[k].ms.toFixed(2)}`).join('   '),
+  );
 }
 const med = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 console.log('');
 for (const [k] of CASES) {
-  console.log(`  errorPixels ${k.padEnd(10)} ${med(rows.map((r) => r[k].ms)).toFixed(3)} ms   ${rows[0][k].tri.toLocaleString('en-US').padStart(11)} 個三角形`);
+  console.log(
+    `  errorPixels ${k.padEnd(10)} ${med(rows.map((r) => r[k].ms)).toFixed(3)} ms   ${rows[0][k].tri.toLocaleString('en-US').padStart(11)} 個三角形`,
+  );
 }
 await browser.close();
 server.close();

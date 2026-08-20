@@ -14,7 +14,14 @@ function solid(level: number, size: number): Uint8Array {
   return data;
 }
 
-const make = (over: Partial<{ pagesPerSide: number; pageSize: number; atlasPages: number; border: number }> = {}) =>
+const make = (
+  over: Partial<{
+    pagesPerSide: number;
+    pageSize: number;
+    atlasPages: number;
+    border: number;
+  }> = {},
+) =>
   new VirtualTexture({
     pageSize: over.pageSize ?? 16,
     pagesPerSide: over.pagesPerSide ?? 16,
@@ -92,7 +99,13 @@ describe('虛擬貼圖', () => {
 
   it('有 map 就接得上，而且會標記材質要重編', () => {
     const vt = make();
-    const map = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+    const map = new DataTexture(
+      new Uint8Array([255, 255, 255, 255]),
+      1,
+      1,
+      RGBAFormat,
+      UnsignedByteType,
+    );
     const material = new MeshBasicMaterial({ map });
     expect(() => vt.apply(material)).not.toThrow();
     expect(material.version).toBeGreaterThan(0);

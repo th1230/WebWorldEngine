@@ -1,5 +1,11 @@
 import * as WW from '@webworld/three';
-import { MeshBasicNodeMaterial, MeshStandardNodeMaterial, PerspectiveCamera, Scene, WebGPURenderer } from 'three/webgpu';
+import {
+  MeshBasicNodeMaterial,
+  MeshStandardNodeMaterial,
+  PerspectiveCamera,
+  Scene,
+  WebGPURenderer,
+} from 'three/webgpu';
 import { HemisphereLight, DirectionalLight, Color, Matrix4, Vector3 } from 'three/webgpu';
 import { makeSkinnedRig } from './skinned.ts';
 import { makeGiScene, type GiScene } from './gi-scene.ts';
@@ -7,10 +13,7 @@ import { makeSkyScene, type SkyScene } from './sky-scene.ts';
 import { makeContactScene, type ContactScene } from './contact-scene.ts';
 import { makeDfShadowScene, type DfShadowScene } from './df-shadow-scene.ts';
 import { makeFogScene, type FogScene } from './fog-scene.ts';
-import {
-  makeReflectionProbeScene,
-  type ReflectionProbeScene,
-} from './reflection-probe-scene.ts';
+import { makeReflectionProbeScene, type ReflectionProbeScene } from './reflection-probe-scene.ts';
 import { makeWaterLookScene, type WaterLookScene } from './water-look-scene.ts';
 import { makeVsmScene, type VsmScene } from './vsm-scene.ts';
 import { makeLodFadeScene, type LodFadeScene } from './lod-fade-scene.ts';
@@ -110,7 +113,6 @@ if (GI) {
   // node 材質那條路是**非同步**接上的（動態 import three/tsl）。不等的話
   // 前幾幀還沒有間接光，而量測會剛好落在那幾幀裡。
   await WW.irradianceNodeReady();
-
 }
 
 let vtLookScene: ReturnType<typeof makeVirtualTextureScene> | null = null;
@@ -299,8 +301,7 @@ Object.assign(window, {
       lodFadeScene === null
         ? null
         : {
-            render: (distance: number): number =>
-              lodFadeScene.render(renderer as never, distance),
+            render: (distance: number): number => lodFadeScene.render(renderer as never, distance),
             windowAsync: (
               u: number,
               v: number,
@@ -368,7 +369,7 @@ Object.assign(window, {
             settle: (): number => dfShadowScene.settle(),
             render: (): void => dfShadowScene.render(renderer as never),
             sampleWindowAsync: (
-              which: "shadow" | "open" | "behind" | "outside" | "boxTop" | "terminator",
+              which: 'shadow' | 'open' | 'behind' | 'outside' | 'boxTop' | 'terminator',
               size: number,
             ): Promise<number> =>
               dfShadowScene.sampleWindowAsync(renderer, dfShadowScene.points[which], size),
@@ -381,27 +382,30 @@ Object.assign(window, {
             render: (): void => contactScene.render(renderer as never),
             setDebug: (mode: number): void => contactScene.setDebug(mode),
             coverageAsync: (): Promise<number> => contactScene.coverageAsync(renderer),
-            probePixel: (which: "contact" | "open" | "lit" | "terminator" | "under"): unknown =>
+            probePixel: (which: 'contact' | 'open' | 'lit' | 'terminator' | 'under'): unknown =>
               contactScene.probePixel(contactScene.points[which]),
             readPixelAsync: (x: number, y: number): Promise<number> =>
               contactScene.readPixelAsync(renderer, x, y),
-            sampleWindowAsync: (which: "contact" | "open" | "lit" | "terminator" | "under", size: number): Promise<number> =>
+            sampleWindowAsync: (
+              which: 'contact' | 'open' | 'lit' | 'terminator' | 'under',
+              size: number,
+            ): Promise<number> =>
               contactScene.sampleWindowAsync(renderer, contactScene.points[which], size),
             maskMapAsync: (): Promise<number[]> => contactScene.maskMapAsync(renderer),
             normalMapAsync: (): Promise<number[]> => contactScene.normalMapAsync(renderer),
-            sampleNormalAsync: (which: "contact" | "open" | "lit" | "terminator" | "under"): Promise<number[]> =>
+            sampleNormalAsync: (
+              which: 'contact' | 'open' | 'lit' | 'terminator' | 'under',
+            ): Promise<number[]> =>
               contactScene.sampleNormalAsync(renderer, contactScene.points[which]),
             sampleAsync: (
-              which: "contact" | "open" | "lit" | "terminator" | "under",
-            ): Promise<number> =>
-              contactScene.sampleAsync(renderer, contactScene.points[which]),
+              which: 'contact' | 'open' | 'lit' | 'terminator' | 'under',
+            ): Promise<number> => contactScene.sampleAsync(renderer, contactScene.points[which]),
           },
     sky:
       skyScene === null
         ? null
         : {
-            setSun: (elevation: number): boolean =>
-              skyScene.setSun(elevation, renderer as never),
+            setSun: (elevation: number): boolean => skyScene.setSun(elevation, renderer as never),
             sampleFaceAsync: (face: number): Promise<[number, number, number]> =>
               skyScene.sampleFaceAsync(renderer, face),
             bakes: (): number => skyScene.bakes(),
@@ -421,7 +425,8 @@ Object.assign(window, {
             stats: () => giScene.stats(),
             bake: () => giScene.bake(renderer as never, scene as never),
             setEnabled: (on: boolean) => giScene.setEnabled(on),
-            sampleCpu: (p: [number, number, number], n: [number, number, number]) => giScene.sampleCpu(p, n),
+            sampleCpu: (p: [number, number, number], n: [number, number, number]) =>
+              giScene.sampleCpu(p, n),
             // 畫出來的像素 —— SH 對得上不代表著色端也對得上。
             renderedWindowAsync: (u: number, v: number, size: number): Promise<number[]> =>
               giScene.renderedWindowAsync(renderer as never, scene as never, u, v, size),
@@ -431,10 +436,8 @@ Object.assign(window, {
             // 那四張 3D 貼圖被重新上傳之後著色器讀得到新的值。而 intensity
             // 那個 uniform 在同一個 lighting node 底下**只上傳一次** ——
             // 貼圖會不會也一樣，沒有人問過。
-            moveBlocker: (x: number, y: number, z: number): number =>
-              giScene.moveBlocker(x, y, z),
-            bakeStale: (): Promise<number> =>
-              giScene.bakeStale(renderer as never, scene as never),
+            moveBlocker: (x: number, y: number, z: number): number => giScene.moveBlocker(x, y, z),
+            bakeStale: (): Promise<number> => giScene.bakeStale(renderer as never, scene as never),
             sample: (x: number, y: number, w: number, h: number) => {
               const flat = document.createElement('canvas');
               flat.width = canvas.width;

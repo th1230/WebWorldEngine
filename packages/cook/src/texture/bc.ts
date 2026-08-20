@@ -151,8 +151,7 @@ export function selectDiagonal(
     if (c === axis) continue;
     let covariance = 0;
     for (let i = 0; i < BLOCK_PIXELS; i++) {
-      covariance +=
-        (block[i * 4 + c]! - centre[c]!) * (block[i * 4 + axis]! - centre[axis]!);
+      covariance += (block[i * 4 + c]! - centre[c]!) * (block[i * 4 + axis]! - centre[axis]!);
     }
     if (covariance < 0) {
       const swap = lo[c]!;

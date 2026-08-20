@@ -5,7 +5,9 @@ const STEP = 1 / 60;
 
 describe('FixedTimestepAccumulator', () => {
   it('validates its configuration', () => {
-    expect(() => new FixedTimestepAccumulator({ ...DEFAULT_FIXED_TIMESTEP, stepSeconds: 0 })).toThrow();
+    expect(
+      () => new FixedTimestepAccumulator({ ...DEFAULT_FIXED_TIMESTEP, stepSeconds: 0 }),
+    ).toThrow();
     expect(
       () => new FixedTimestepAccumulator({ ...DEFAULT_FIXED_TIMESTEP, maxStepsPerFrame: 0 }),
     ).toThrow();

@@ -463,11 +463,18 @@ export class VirtualShadowMap {
   }
 
   private ensureResolveTarget(width: number, height: number): void {
-    if (this.resolveTarget !== null && this.resolveTarget.width === width && this.resolveTarget.height === height) {
+    if (
+      this.resolveTarget !== null &&
+      this.resolveTarget.width === width &&
+      this.resolveTarget.height === height
+    ) {
       return;
     }
     this.resolveTarget?.dispose();
-    this.resolveTarget = new WebGLRenderTarget(width, height, { colorSpace: NoColorSpace, depthBuffer: false });
+    this.resolveTarget = new WebGLRenderTarget(width, height, {
+      colorSpace: NoColorSpace,
+      depthBuffer: false,
+    });
   }
 
   /**

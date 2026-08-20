@@ -135,7 +135,9 @@ describe('generateLodLevels', () => {
 
   it('三角形太少就不產生，而不是回傳一堆一模一樣的階', async () => {
     const source: GeometryData = {
-      attributes: { position: { array: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), itemSize: 3 } },
+      attributes: {
+        position: { array: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), itemSize: 3 },
+      },
       indices: new Uint32Array([0, 1, 2]),
     };
 

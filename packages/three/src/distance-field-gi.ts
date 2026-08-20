@@ -6,7 +6,12 @@ import {
   RedFormat,
   Vector3,
 } from 'three';
-import { bakeDistanceField, bakeSurfaceCache, type DistanceFieldOptions, type SurfaceCache } from '@webworld/format';
+import {
+  bakeDistanceField,
+  bakeSurfaceCache,
+  type DistanceFieldOptions,
+  type SurfaceCache,
+} from '@webworld/format';
 import type { BufferGeometry } from 'three';
 
 /**
@@ -118,7 +123,12 @@ export class DistanceFieldVolume {
       },
     );
 
-    const texture = new Data3DTexture(field.data, field.resolution, field.resolution, field.resolution);
+    const texture = new Data3DTexture(
+      field.data,
+      field.resolution,
+      field.resolution,
+      field.resolution,
+    );
     texture.format = RedFormat;
     // ## 單精度，不是半精度
     //
@@ -202,9 +212,18 @@ export class DistanceFieldVolume {
   albedoAt(point: Vector3, target: Vector3): Vector3 {
     const cache = this.surface;
     const n = cache.resolution;
-    const gx = Math.min(n - 1, Math.max(0, Math.floor(((point.x - cache.min[0]) / cache.size[0]) * n)));
-    const gy = Math.min(n - 1, Math.max(0, Math.floor(((point.y - cache.min[1]) / cache.size[1]) * n)));
-    const gz = Math.min(n - 1, Math.max(0, Math.floor(((point.z - cache.min[2]) / cache.size[2]) * n)));
+    const gx = Math.min(
+      n - 1,
+      Math.max(0, Math.floor(((point.x - cache.min[0]) / cache.size[0]) * n)),
+    );
+    const gy = Math.min(
+      n - 1,
+      Math.max(0, Math.floor(((point.y - cache.min[1]) / cache.size[1]) * n)),
+    );
+    const gz = Math.min(
+      n - 1,
+      Math.max(0, Math.floor(((point.z - cache.min[2]) / cache.size[2]) * n)),
+    );
     const cell = ((gz * n + gy) * n + gx) * 3;
     return target.set(cache.data[cell]!, cache.data[cell + 1]!, cache.data[cell + 2]!);
   }

@@ -170,7 +170,7 @@ export function classifyTier(input: ClassifyInput): TierDecision {
   }
 
   const perfTier = scoreTier ?? UNMEASURED_TIER;
-  const tier = (Math.min(gate.maxTier, perfTier) as QualityTier);
+  const tier = Math.min(gate.maxTier, perfTier) as QualityTier;
 
   reasons.push(`硬性門檻上限 Tier ${gate.maxTier}`);
   for (const cap of gate.caps) reasons.push(`封頂 Tier ${cap.tier}：${cap.reason}`);

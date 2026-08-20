@@ -1,4 +1,11 @@
-import { BufferAttribute, BufferGeometry, Mesh, OrthographicCamera, Scene, ShaderMaterial } from 'three';
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Mesh,
+  OrthographicCamera,
+  Scene,
+  ShaderMaterial,
+} from 'three';
 import type { WebGLRenderer } from 'three';
 
 /**
@@ -14,7 +21,10 @@ import type { WebGLRenderer } from 'three';
  * 那個技巧」在好幾個檔案裡各寫一次 —— 而那種重複遲早會有一份被改壞。
  */
 const geometry = new BufferGeometry();
-geometry.setAttribute('position', new BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
+geometry.setAttribute(
+  'position',
+  new BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3),
+);
 geometry.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 2, 0, 0, 2]), 2));
 
 const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);

@@ -5,16 +5,68 @@ import { innerBox } from './inner-box.ts';
 function box(half: number): { positions: Float32Array; indices: Uint32Array } {
   const h = half;
   const positions = new Float32Array([
-    -h, -h, -h, h, -h, -h, -h, h, -h, h, h, -h,
-    -h, -h, h, h, -h, h, -h, h, h, h, h, h,
+    -h,
+    -h,
+    -h,
+    h,
+    -h,
+    -h,
+    -h,
+    h,
+    -h,
+    h,
+    h,
+    -h,
+    -h,
+    -h,
+    h,
+    h,
+    -h,
+    h,
+    -h,
+    h,
+    h,
+    h,
+    h,
+    h,
   ]);
   const indices = new Uint32Array([
-    0, 2, 3, 0, 3, 1, // -z
-    4, 5, 7, 4, 7, 6, // +z
-    0, 1, 5, 0, 5, 4, // -y
-    2, 6, 7, 2, 7, 3, // +y
-    0, 4, 6, 0, 6, 2, // -x
-    1, 3, 7, 1, 7, 5, // +x
+    0,
+    2,
+    3,
+    0,
+    3,
+    1, // -z
+    4,
+    5,
+    7,
+    4,
+    7,
+    6, // +z
+    0,
+    1,
+    5,
+    0,
+    5,
+    4, // -y
+    2,
+    6,
+    7,
+    2,
+    7,
+    3, // +y
+    0,
+    4,
+    6,
+    0,
+    6,
+    2, // -x
+    1,
+    3,
+    7,
+    1,
+    7,
+    5, // +x
   ]);
   return { positions, indices };
 }

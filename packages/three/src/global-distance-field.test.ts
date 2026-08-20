@@ -5,7 +5,11 @@ import { GlobalDistanceField } from './global-distance-field.ts';
 import { IrradianceVolume } from './irradiance.ts';
 
 /** 一個放在指定位置的盒子距離場。 */
-function boxAt(x: number, y: number, z: number): { volume: DistanceFieldVolume; matrixWorld: Matrix4 } {
+function boxAt(
+  x: number,
+  y: number,
+  z: number,
+): { volume: DistanceFieldVolume; matrixWorld: Matrix4 } {
   return {
     volume: new DistanceFieldVolume(new BoxGeometry(10, 10, 10), { resolution: 16, padding: 0.5 }),
     matrixWorld: new Matrix4().makeTranslation(x, y, z),
@@ -100,16 +104,16 @@ describe('全域距離場：把很多個合成一個', () => {
   it('物件比一格還小的時候會警告 —— 否則它靜靜地不擋光', () => {
     // 全域場是低頻的：一格只存一個距離。物件比一格小的話格心會全部落在
     // 它外面 —— 那個物件在這份場裡等於不存在，而畫面上看不出原因。
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const field = new GlobalDistanceField({ resolution: 8, extent: 400 });
     field.add(boxAt(0, 0, 0));
     expect(warn).toHaveBeenCalled();
-    expect(String(warn.mock.calls[0]?.[0])).toContain("比一格");
+    expect(String(warn.mock.calls[0]?.[0])).toContain('比一格');
     warn.mockRestore();
   });
 
   it('物件夠大的時候不會亂吼', () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const field = new GlobalDistanceField({ resolution: 32, extent: 100 });
     field.add(boxAt(0, 0, 0));
     expect(warn).not.toHaveBeenCalled();
@@ -168,7 +172,13 @@ describe('全域距離場：追蹤回傳的是顏色，不只是擋不擋', () =
     settle(field, new Vector3(0, 0, 0));
 
     const back = field.radianceAlong(new Vector3(0, 0, 0), new Vector3(0, 0, -1), whiteLight, 40);
-    const front = field.radianceAlong(new Vector3(0, 0, 0), new Vector3(0, 0, 1), whiteLight, 40, new Vector3());
+    const front = field.radianceAlong(
+      new Vector3(0, 0, 0),
+      new Vector3(0, 0, 1),
+      whiteLight,
+      40,
+      new Vector3(),
+    );
     expect(back.x).toBeGreaterThan(back.z);
     expect(front.z).toBeGreaterThan(front.x);
   });
@@ -191,7 +201,11 @@ describe('全域距離場：追蹤回傳的是顏色，不只是擋不擋', () =
     field.add(colouredBox(0, 0, -20, [1, 1, 1]));
     settle(field, new Vector3(0, 0, 0));
 
-    const dim = field.radianceAlong(new Vector3(0, 0, 0), new Vector3(0, 0, -1), () => new Vector3(0.2, 0.2, 0.2));
+    const dim = field.radianceAlong(
+      new Vector3(0, 0, 0),
+      new Vector3(0, 0, -1),
+      () => new Vector3(0.2, 0.2, 0.2),
+    );
     const bright = field.radianceAlong(
       new Vector3(0, 0, 0),
       new Vector3(0, 0, -1),
@@ -226,8 +240,10 @@ describe('全域距離場：追蹤回傳的是顏色，不只是擋不擋', () =
     field.add(colouredBox(0, 0, -20, [1, 0, 0]));
     settle(field, new Vector3(0, 0, 0));
 
-    const light = field.radianceAlong(new Vector3(0, 0, 0), new Vector3(0, 0, -1), (point, normal) =>
-      probes.sampleAt(point, normal),
+    const light = field.radianceAlong(
+      new Vector3(0, 0, 0),
+      new Vector3(0, 0, -1),
+      (point, normal) => probes.sampleAt(point, normal),
     );
     // 紅牆 × 亮度 2 → 紅色通道大約 2，另外兩個是 0。
     expect(light.x).toBeCloseTo(2, 1);

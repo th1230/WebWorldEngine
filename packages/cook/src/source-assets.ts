@@ -55,15 +55,46 @@ function makeMesh(positions: number[], indices: number[]): RawMesh {
 export function icosphere(subdivisions: number, radius = 1): RawMesh {
   const t = (1 + Math.sqrt(5)) / 2;
   let positions: number[] = [
-    -1, t, 0, 1, t, 0, -1, -t, 0, 1, -t, 0,
-    0, -1, t, 0, 1, t, 0, -1, -t, 0, 1, -t,
-    t, 0, -1, t, 0, 1, -t, 0, -1, -t, 0, 1,
+    -1,
+    t,
+    0,
+    1,
+    t,
+    0,
+    -1,
+    -t,
+    0,
+    1,
+    -t,
+    0,
+    0,
+    -1,
+    t,
+    0,
+    1,
+    t,
+    0,
+    -1,
+    -t,
+    0,
+    1,
+    -t,
+    t,
+    0,
+    -1,
+    t,
+    0,
+    1,
+    -t,
+    0,
+    -1,
+    -t,
+    0,
+    1,
   ];
   let indices: number[] = [
-    0, 11, 5, 0, 5, 1, 0, 1, 7, 0, 7, 10, 0, 10, 11,
-    1, 5, 9, 5, 11, 4, 11, 10, 2, 10, 7, 6, 7, 1, 8,
-    3, 9, 4, 3, 4, 2, 3, 2, 6, 3, 6, 8, 3, 8, 9,
-    4, 9, 5, 2, 4, 11, 6, 2, 10, 8, 6, 7, 9, 8, 1,
+    0, 11, 5, 0, 5, 1, 0, 1, 7, 0, 7, 10, 0, 10, 11, 1, 5, 9, 5, 11, 4, 11, 10, 2, 10, 7, 6, 7, 1,
+    8, 3, 9, 4, 3, 4, 2, 3, 2, 6, 3, 6, 8, 3, 8, 9, 4, 9, 5, 2, 4, 11, 6, 2, 10, 8, 6, 7, 9, 8, 1,
   ];
 
   for (let s = 0; s < subdivisions; s++) {
@@ -247,7 +278,7 @@ export async function writeSourceGltf(asset: SourceAsset): Promise<Uint8Array> {
   return new NodeIO().writeBinary(document);
 }
 
-const IDENTITY_MATRIX: readonly number[] = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+const IDENTITY_MATRIX: readonly number[] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 /** 取 4×4 的線性部分（左上 3×3），欄優先。 */
 function upper3x3(m: readonly number[]): number[] {
@@ -263,7 +294,12 @@ function determinant3x3(m: readonly number[]): number {
 }
 
 /** 位置：套用完整的 4×4（含位移）。 */
-function transformPoint(v: readonly number[], m: readonly number[], out: Float32Array, at: number): void {
+function transformPoint(
+  v: readonly number[],
+  m: readonly number[],
+  out: Float32Array,
+  at: number,
+): void {
   const x = v[0]!;
   const y = v[1]!;
   const z = v[2]!;
@@ -273,7 +309,12 @@ function transformPoint(v: readonly number[], m: readonly number[], out: Float32
 }
 
 /** 方向：只套用線性部分，並重新正規化。 */
-function transformDirection(v: readonly number[], m: readonly number[], out: Float32Array, at: number): void {
+function transformDirection(
+  v: readonly number[],
+  m: readonly number[],
+  out: Float32Array,
+  at: number,
+): void {
   const x = v[0]!;
   const y = v[1]!;
   const z = v[2]!;

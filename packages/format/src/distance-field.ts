@@ -73,7 +73,8 @@ export function bakeDistanceField(
 ): DistanceField {
   const n = Math.max(8, Math.floor(options.resolution ?? 32));
   const padding = options.padding ?? 0.25;
-  const triangleCount = indices !== null ? Math.floor(indices.length / 3) : Math.floor(positions.length / 9);
+  const triangleCount =
+    indices !== null ? Math.floor(indices.length / 3) : Math.floor(positions.length / 9);
 
   let minX = Infinity;
   let minY = Infinity;
@@ -232,7 +233,8 @@ function markInside(data: Float32Array, n: number, surface: Uint8Array): void {
   for (let z = 0; z < n; z++) {
     for (let y = 0; y < n; y++) {
       for (let x = 0; x < n; x++) {
-        if (x === 0 || y === 0 || z === 0 || x === n - 1 || y === n - 1 || z === n - 1) push(x, y, z);
+        if (x === 0 || y === 0 || z === 0 || x === n - 1 || y === n - 1 || z === n - 1)
+          push(x, y, z);
       }
     }
   }

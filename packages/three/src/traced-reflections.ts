@@ -1,4 +1,12 @@
-import { Color, Matrix4, NoColorSpace, ShaderMaterial, Vector3, HalfFloatType, WebGLRenderTarget } from 'three';
+import {
+  Color,
+  Matrix4,
+  NoColorSpace,
+  ShaderMaterial,
+  Vector3,
+  HalfFloatType,
+  WebGLRenderTarget,
+} from 'three';
 import { drawFullscreen, FULLSCREEN_VERTEX, VIEW_POSITION_GLSL } from './fullscreen.ts';
 // 只有型別是靜態的 —— 那份 TSL 轉寫是動態載入的，見 `renderNode`。
 import type { TracedReflectionsNodeHandle } from './traced-reflections-node.ts';
@@ -195,7 +203,16 @@ export class TracedReflections {
 
     // WebGPU 不吃 ShaderMaterial，走 node 那份。兩份的一致性由跨後端關卡守。
     if ((renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer === true) {
-      return this.renderNode(renderer, camera, colorTexture, depth, normal, field, irradiance, probes);
+      return this.renderNode(
+        renderer,
+        camera,
+        colorTexture,
+        depth,
+        normal,
+        field,
+        irradiance,
+        probes,
+      );
     }
 
     const perspective = camera as PerspectiveCamera;
@@ -310,7 +327,8 @@ export class TracedReflections {
   }
 
   private ensureTarget(width: number, height: number): void {
-    if (this.target !== null && this.target.width === width && this.target.height === height) return;
+    if (this.target !== null && this.target.width === width && this.target.height === height)
+      return;
     this.target?.dispose();
     // 反射是**顏色**，而且可能超過 1（亮的天空、鏡面高光），所以半精度。
     // 遮蔽遮罩那一類用八位元就好，這一類不行。

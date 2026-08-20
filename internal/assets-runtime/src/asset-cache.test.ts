@@ -10,7 +10,13 @@ import {
 
 import { describe, expect, it, vi } from 'vitest';
 import { AssetCache } from './asset-cache.ts';
-import { AssetFormatError, decodeMesh, pixelsPerUnitAtOneMetre, readMeshHeader, selectLod } from './decode.ts';
+import {
+  AssetFormatError,
+  decodeMesh,
+  pixelsPerUnitAtOneMetre,
+  readMeshHeader,
+  selectLod,
+} from './decode.ts';
 
 /** 建構一個最小但合法的 .wwm：4 個頂點、2 個 LOD。 */
 function buildMesh(): { bytes: Uint8Array; entry: MeshEntry } {
@@ -140,7 +146,7 @@ describe('decodeMesh', () => {
 
 describe('selectLod', () => {
   const lods = [
-    { level: 0, error: 0, vertices: new Float32Array(), indices: new Uint16Array(), },
+    { level: 0, error: 0, vertices: new Float32Array(), indices: new Uint16Array() },
     { level: 1, error: 0.1, vertices: new Float32Array(), indices: new Uint16Array() },
     { level: 2, error: 1.0, vertices: new Float32Array(), indices: new Uint16Array() },
   ];

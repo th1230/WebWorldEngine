@@ -162,9 +162,7 @@ async function measureLoad(browser, url) {
   }
   const gpuObjects = memory.geometries + memory.textures;
   if (gpuObjects > GPU_OBJECT_BUDGET) {
-    throw new Error(
-      `GPU 物件 ${gpuObjects} 個超過 ${GPU_OBJECT_BUDGET} —— 最可能是有東西沒被釋放`,
-    );
+    throw new Error(`GPU 物件 ${gpuObjects} 個超過 ${GPU_OBJECT_BUDGET} —— 最可能是有東西沒被釋放`);
   }
   if (main > MAIN_BUNDLE_BUDGET) {
     throw new Error(

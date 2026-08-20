@@ -13,7 +13,12 @@ import {
 } from 'three/webgpu';
 import { applyOrbitPath } from '../camera-path.ts';
 import { DEFAULT_SEED, createRng } from '../rng.ts';
-import { numberParam, type BenchmarkScene, type SceneContext, type SceneDefinition } from './types.ts';
+import {
+  numberParam,
+  type BenchmarkScene,
+  type SceneContext,
+  type SceneDefinition,
+} from './types.ts';
 import { rawScene } from './raw-scene.ts';
 
 // ── compute-indirect ──────────────────────────────────────────────────────
@@ -97,46 +102,50 @@ export const computeIndirectScene: SceneDefinition = {
 
     let computeFailed = false;
 
-    return Promise.resolve(rawScene(scene, camera, {
-      update: (frameIndex) => {
-        applyOrbitPath(camera, frameIndex, {
-          radius: spread * 0.85,
-          height: spread * 0.2,
-          framesPerRevolution: ctx.measureFrames,
-        });
+    return Promise.resolve(
+      rawScene(scene, camera, {
+        update: (frameIndex) => {
+          applyOrbitPath(camera, frameIndex, {
+            radius: spread * 0.85,
+            height: spread * 0.2,
+            framesPerRevolution: ctx.measureFrames,
+          });
 
-        if (!indirectEnabled || computeFailed || computeNode === null) return;
-        try {
-          // 用同步 compute：非同步版本會把 GPU 工作排到量測區間之外
-          (ctx.backend.raw as { compute?: (node: unknown) => void } | null)?.compute?.(computeNode);
-        } catch (error) {
-          computeFailed = true;
-          notes.push(`執行期 compute 失敗，後續幀停用：${message(error)}`);
-        }
-      },
-      reportParams: { count, spread, indirectEnabled },
-      notes,
-      verdict: () => {
-        // 這個場景是 的可行性探針。在有 compute 的 backend 上，
-        // indirect 路徑失效代表它**退化**了 —— 那必須是失敗，不能只留一行 note
-        // 讓整輪 benchmark 照樣通過。沒有 compute 的 backend 則本來就涵蓋不到。
-        if (!ctx.backend.capabilities.compute) {
-          return { ok: true, detail: 'backend 無 compute，indirect 路徑未驗證' };
-        }
-        if (!indirectEnabled) {
-          return { ok: false, detail: `indirect 路徑無法建立：${notes.join('；')}` };
-        }
-        if (computeFailed) {
-          return { ok: false, detail: `indirect 路徑在執行期失效：${notes.join('；')}` };
-        }
-        return { ok: true, detail: 'compute → indirect draw 正常運作' };
-      },
-      dispose: () => {
-        geometry.dispose();
-        material.dispose();
-        mesh.dispose();
-      },
-    }));
+          if (!indirectEnabled || computeFailed || computeNode === null) return;
+          try {
+            // 用同步 compute：非同步版本會把 GPU 工作排到量測區間之外
+            (ctx.backend.raw as { compute?: (node: unknown) => void } | null)?.compute?.(
+              computeNode,
+            );
+          } catch (error) {
+            computeFailed = true;
+            notes.push(`執行期 compute 失敗，後續幀停用：${message(error)}`);
+          }
+        },
+        reportParams: { count, spread, indirectEnabled },
+        notes,
+        verdict: () => {
+          // 這個場景是 的可行性探針。在有 compute 的 backend 上，
+          // indirect 路徑失效代表它**退化**了 —— 那必須是失敗，不能只留一行 note
+          // 讓整輪 benchmark 照樣通過。沒有 compute 的 backend 則本來就涵蓋不到。
+          if (!ctx.backend.capabilities.compute) {
+            return { ok: true, detail: 'backend 無 compute，indirect 路徑未驗證' };
+          }
+          if (!indirectEnabled) {
+            return { ok: false, detail: `indirect 路徑無法建立：${notes.join('；')}` };
+          }
+          if (computeFailed) {
+            return { ok: false, detail: `indirect 路徑在執行期失效：${notes.join('；')}` };
+          }
+          return { ok: true, detail: 'compute → indirect draw 正常運作' };
+        },
+        dispose: () => {
+          geometry.dispose();
+          material.dispose();
+          mesh.dispose();
+        },
+      }),
+    );
   },
 };
 
@@ -175,60 +184,62 @@ export const deviceLossSoakScene: SceneDefinition = {
     const camera = new PerspectiveCamera(60, ctx.aspect, 0.1, 500);
     let triggered = 0;
 
-    return Promise.resolve(rawScene(scene, camera, {
-      update: (frameIndex) => {
-        applyOrbitPath(camera, frameIndex, {
-          radius: 20,
-          height: 4,
-          framesPerRevolution: ctx.measureFrames,
-        });
+    return Promise.resolve(
+      rawScene(scene, camera, {
+        update: (frameIndex) => {
+          applyOrbitPath(camera, frameIndex, {
+            radius: 20,
+            height: 4,
+            framesPerRevolution: ctx.measureFrames,
+          });
 
-        if (frameIndex === 0 || frameIndex % interval !== 0) return;
-        if (triggered >= maxLosses) return;
+          if (frameIndex === 0 || frameIndex % interval !== 0) return;
+          if (triggered >= maxLosses) return;
 
-        if (ctx.backend.simulateDeviceLoss()) {
-          triggered++;
-        } else if (triggered === 0) {
-          triggered = -1;
-          notes.push('此 backend 無法模擬 device loss（WebGL2 路徑沒有 GPUDevice.destroy）');
-        }
-      },
-      get reportParams() {
-        return {
-          interval,
-          requestedLosses: maxLosses,
-          triggeredLosses: Math.max(0, triggered),
-          recoveredLosses: ctx.deviceLost.lossCount,
-          duplicateNotifications: ctx.deviceLost.duplicateNotifications,
-          finalState: ctx.deviceLost.state,
-        };
-      },
-      notes,
-      verdict: () => {
-        const fired = Math.max(0, triggered);
-        const recovered = ctx.deviceLost.lossCount;
-        const state = ctx.deviceLost.state;
+          if (ctx.backend.simulateDeviceLoss()) {
+            triggered++;
+          } else if (triggered === 0) {
+            triggered = -1;
+            notes.push('此 backend 無法模擬 device loss（WebGL2 路徑沒有 GPUDevice.destroy）');
+          }
+        },
+        get reportParams() {
+          return {
+            interval,
+            requestedLosses: maxLosses,
+            triggeredLosses: Math.max(0, triggered),
+            recoveredLosses: ctx.deviceLost.lossCount,
+            duplicateNotifications: ctx.deviceLost.duplicateNotifications,
+            finalState: ctx.deviceLost.state,
+          };
+        },
+        notes,
+        verdict: () => {
+          const fired = Math.max(0, triggered);
+          const recovered = ctx.deviceLost.lossCount;
+          const state = ctx.deviceLost.state;
 
-        if (fired === 0) {
-          // WebGL2 路徑無法模擬遺失。這不是失敗，只是這個 backend 涵蓋不到。
-          return { ok: true, detail: '此 backend 無法模擬 device loss，未驗證恢復流程' };
-        }
-        if (state !== 'running') {
-          return { ok: false, detail: `結束時狀態為 ${state}，未回到 running` };
-        }
-        if (recovered < fired) {
-          return { ok: false, detail: `觸發 ${fired} 次遺失，但只恢復了 ${recovered} 次` };
-        }
-        return {
-          ok: true,
-          detail: `${recovered} 次遺失全部恢復（去重 ${ctx.deviceLost.duplicateNotifications} 則重複通報）`,
-        };
-      },
-      dispose: () => {
-        geometry.dispose();
-        material.dispose();
-      },
-    }));
+          if (fired === 0) {
+            // WebGL2 路徑無法模擬遺失。這不是失敗，只是這個 backend 涵蓋不到。
+            return { ok: true, detail: '此 backend 無法模擬 device loss，未驗證恢復流程' };
+          }
+          if (state !== 'running') {
+            return { ok: false, detail: `結束時狀態為 ${state}，未回到 running` };
+          }
+          if (recovered < fired) {
+            return { ok: false, detail: `觸發 ${fired} 次遺失，但只恢復了 ${recovered} 次` };
+          }
+          return {
+            ok: true,
+            detail: `${recovered} 次遺失全部恢復（去重 ${ctx.deviceLost.duplicateNotifications} 則重複通報）`,
+          };
+        },
+        dispose: () => {
+          geometry.dispose();
+          material.dispose();
+        },
+      }),
+    );
   },
 };
 

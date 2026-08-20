@@ -1,4 +1,13 @@
-import { ASSET_SCHEMA_VERSION, VERTEX_FLOATS, type AssetManifest, type CookStats, type MaterialEntry, type MeshEntry, type TextureEntry, asAssetId } from '@webworld/format';
+import {
+  ASSET_SCHEMA_VERSION,
+  VERTEX_FLOATS,
+  type AssetManifest,
+  type CookStats,
+  type MaterialEntry,
+  type MeshEntry,
+  type TextureEntry,
+  asAssetId,
+} from '@webworld/format';
 import { hashObject, hashString } from '@ww/core';
 import {
   DEFAULT_LOD_OPTIONS,
@@ -564,7 +573,8 @@ async function decodeOrm(
   occlusion: ImportedTexture | null,
   label: string,
 ): Promise<Image | null> {
-  const mr = metallicRoughness === null ? null : (await decodeTexture(metallicRoughness.bytes, label)).image;
+  const mr =
+    metallicRoughness === null ? null : (await decodeTexture(metallicRoughness.bytes, label)).image;
   const ao = occlusion === null ? null : (await decodeTexture(occlusion.bytes, label)).image;
   return packOrm(mr, ao);
 }

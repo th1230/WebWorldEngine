@@ -346,7 +346,9 @@ describe('packMesh', () => {
 describe('glTF round-trip', () => {
   it('preserves geometry through write and read', async () => {
     const source = icosphere(2);
-    const restored = await readSourceGltf(await writeSourceGltf({ material: 'material:rock', id: 'test', mesh: source }));
+    const restored = await readSourceGltf(
+      await writeSourceGltf({ material: 'material:rock', id: 'test', mesh: source }),
+    );
 
     expect(vertexCount(restored)).toBe(vertexCount(source));
     expect(triangleCount(restored)).toBe(triangleCount(source));

@@ -32,9 +32,12 @@ const server = createServer((req, res) => {
     (b) => {
       res.writeHead(200, {
         'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
+          {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.json': 'application/json',
+            '.wasm': 'application/wasm',
+          }[extname(file)] ?? 'application/octet-stream',
       });
       res.end(b);
     },
@@ -61,10 +64,16 @@ const check = (ok, label, detail) => {
 try {
   // 探針**關掉**（intensity 0），這樣量到的完全是 SSGI 的貢獻。
   const radius = process.argv[2] ?? 12;
-  await page.goto(`http://localhost:${server.address().port}/?gi=1&giOff=1&ssgiRadius=${radius}`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__ww?.gi !== null && window.__ww?.gi !== undefined, undefined, {
-    timeout: 180000,
+  await page.goto(`http://localhost:${server.address().port}/?gi=1&giOff=1&ssgiRadius=${radius}`, {
+    waitUntil: 'load',
   });
+  await page.waitForFunction(
+    () => window.__ww?.gi !== null && window.__ww?.gi !== undefined,
+    undefined,
+    {
+      timeout: 180000,
+    },
+  );
 
   const out = await page.evaluate(() => {
     const api = window.__ww;

@@ -52,7 +52,7 @@ const meta = (): ReportMeta => ({
   params: { count: 100 },
   machineId: 'test-machine',
   cpuReferenceMs: 100,
-    memoryReferenceMs: 50,
+  memoryReferenceMs: 50,
   platform: {
     backend: 'webgpu',
     tier: QualityTier.DesktopHigh,

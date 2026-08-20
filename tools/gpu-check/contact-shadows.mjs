@@ -23,10 +23,21 @@ assertDistFresh(root);
 const DIST = join(root, 'apps/example/dist');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
   const file = join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
+            extname(file)
+          ] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -39,13 +50,19 @@ const check = (ok, message) => {
   if (!ok) failed++;
 };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
   page.on('pageerror', (e) => errors.push(String(e)));
   page.setDefaultNavigationTimeout(120000);
   await page.goto(`${base}/?contact=1&verify=1`, { waitUntil: 'load' });
@@ -86,7 +103,7 @@ try {
   console.log(`  球的明暗界 開 ${f(out.on.terminator)}   關 ${f(out.off.terminator)}`);
   console.log(`  浮空箱下方 開 ${f(out.on.under)}   關 ${f(out.off.under)}`);
   console.log(`  接縫（另一個相機角度） ${f(out.other.contact)}`);
-  console.log("");
+  console.log('');
 
   check(out.on.contact < 0.75, `接縫處真的暗了 —— ${f(out.on.contact)}（1 是沒遮蔽）`);
   check(out.on.open > 0.95, `空曠的地面沒有被暗掉 —— ${f(out.on.open)}`);
@@ -122,8 +139,14 @@ try {
     out.coverage > 0.001 && out.coverage < 0.015,
     `暗的範圍是接縫而不是一大片 —— ${(out.coverage * 100).toFixed(2)}%（自我遮蔽會到 2.8%，遠方假遮蔽會到 5.6%）`,
   );
-  check(out.off.contact > 0.95, `強度歸零之後接縫也不暗了 —— ${f(out.off.contact)}（證明暗的是這個效果畫的）`);
-  check(errors.length === 0, `沒有主控台錯誤${errors.length > 0 ? "：" + errors[0].slice(0, 120) : ""}`);
+  check(
+    out.off.contact > 0.95,
+    `強度歸零之後接縫也不暗了 —— ${f(out.off.contact)}（證明暗的是這個效果畫的）`,
+  );
+  check(
+    errors.length === 0,
+    `沒有主控台錯誤${errors.length > 0 ? '：' + errors[0].slice(0, 120) : ''}`,
+  );
 } catch (e) {
   console.log('失敗：' + String(e).split(String.fromCharCode(10))[0].slice(0, 220));
   failed++;

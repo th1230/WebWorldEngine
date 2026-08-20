@@ -24,10 +24,21 @@ assertDistFresh(root);
 const DIST = join(root, 'apps/example/dist');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
   const file = join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
+            extname(file)
+          ] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -40,13 +51,19 @@ const check = (ok, message) => {
   if (!ok) failed++;
 };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
   page.on('pageerror', (e) => errors.push(String(e)));
   page.setDefaultNavigationTimeout(240000);
   await page.goto(`${base}/?sky=1&verify=1`, { waitUntil: 'load' });
@@ -82,16 +99,31 @@ try {
     const nightZenith = api.sampleFace(2);
 
     return {
-      noonZenith, noonAway, noonNadir, bakesAfterNoon, bakesUnchanged, noonProbe, noonProbeCount,
-      duskToward, duskAway, duskZenith, duskProbe, nightToward, nightZenith,
+      noonZenith,
+      noonAway,
+      noonNadir,
+      bakesAfterNoon,
+      bakesUnchanged,
+      noonProbe,
+      noonProbeCount,
+      duskToward,
+      duskAway,
+      duskZenith,
+      duskProbe,
+      nightToward,
+      nightZenith,
     };
   });
   await page.close();
 
   const f = (v) => v.toFixed(4);
   const show = (c) => `${f(c[0])}, ${f(c[1])}, ${f(c[2])}`;
-  console.log(`  正午 天頂 ${show(out.noonZenith)}   背陽 ${show(out.noonAway)}   地平線下 ${show(out.noonNadir)}`);
-  console.log(`  日落 朝陽 ${show(out.duskToward)}   背陽 ${show(out.duskAway)}   天頂 ${show(out.duskZenith)}`);
+  console.log(
+    `  正午 天頂 ${show(out.noonZenith)}   背陽 ${show(out.noonAway)}   地平線下 ${show(out.noonNadir)}`,
+  );
+  console.log(
+    `  日落 朝陽 ${show(out.duskToward)}   背陽 ${show(out.duskAway)}   天頂 ${show(out.duskZenith)}`,
+  );
   console.log(`  夜晚 朝陽 ${show(out.nightToward)}   天頂 ${show(out.nightZenith)}`);
   console.log(`  探針（白色地面）正午 ${show(out.noonProbe)}   日落 ${show(out.duskProbe)}`);
   console.log(`  重烘次數 ${out.bakesAfterNoon}，太陽沒動之後 ${out.bakesUnchanged}\n`);
@@ -131,17 +163,24 @@ try {
     out.nightZenith[0] + out.nightZenith[1] + out.nightZenith[2] < 0.02,
     `夜晚天頂幾乎全黑 —— ${show(out.nightZenith)}（少了「陽光被地球擋住」那條檢查，這裡會亮著）`,
   );
-  check(out.bakesUnchanged === out.bakesAfterNoon, `太陽沒動就不重烘 —— ${out.bakesAfterNoon} 次沒有變`);
+  check(
+    out.bakesUnchanged === out.bakesAfterNoon,
+    `太陽沒動就不重烘 —— ${out.bakesAfterNoon} 次沒有變`,
+  );
   check(out.noonProbeCount > 0, `探針烘得起來 —— ${out.noonProbeCount} 顆`);
   check(
     out.noonProbe[2] > out.noonProbe[0],
     `正午白色地面上的間接光偏藍（來自藍天）—— B ${f(out.noonProbe[2])} vs R ${f(out.noonProbe[0])}`,
   );
   check(
-    out.duskProbe[0] / Math.max(out.duskProbe[2], 1e-6) > out.noonProbe[0] / Math.max(out.noonProbe[2], 1e-6) * 1.5,
+    out.duskProbe[0] / Math.max(out.duskProbe[2], 1e-6) >
+      (out.noonProbe[0] / Math.max(out.noonProbe[2], 1e-6)) * 1.5,
     `日落的間接光比正午紅得多 —— R/B 從 ${f(out.noonProbe[0] / Math.max(out.noonProbe[2], 1e-6))} 變成 ${f(out.duskProbe[0] / Math.max(out.duskProbe[2], 1e-6))}`,
   );
-  check(errors.length === 0, `沒有主控台錯誤${errors.length > 0 ? '：' + errors[0].slice(0, 140) : ''}`);
+  check(
+    errors.length === 0,
+    `沒有主控台錯誤${errors.length > 0 ? '：' + errors[0].slice(0, 140) : ''}`,
+  );
 } catch (e) {
   console.log('失敗：' + String(e).split(String.fromCharCode(10))[0].slice(0, 240));
   failed++;

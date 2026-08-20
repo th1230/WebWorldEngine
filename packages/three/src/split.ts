@@ -83,7 +83,11 @@ export function splitGeometry(
       }
       out.setAttribute(
         name,
-        new BufferAttribute(array as never, itemSize, (source as { normalized?: boolean }).normalized),
+        new BufferAttribute(
+          array as never,
+          itemSize,
+          (source as { normalized?: boolean }).normalized,
+        ),
       );
     }
 

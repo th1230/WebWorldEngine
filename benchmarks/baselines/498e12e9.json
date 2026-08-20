@@ -37,9 +37,7 @@
         "viewportHeight": 720
       },
       "verdict": null,
-      "notes": [
-        "3 次交錯執行取中位數；frame p95 範圍 6.60–6.70ms（±1.5%）；開頭 30 幀 176–176ms"
-      ],
+      "notes": ["3 次交錯執行取中位數；frame p95 範圍 6.60–6.70ms（±1.5%）；開頭 30 幀 176–176ms"],
       "schemaVersion": 4,
       "capturedAt": "2026-08-16T12:49:12.955Z",
       "frames": 300,
@@ -662,9 +660,7 @@
         "viewportHeight": 720
       },
       "verdict": null,
-      "notes": [
-        "3 次交錯執行取中位數；frame p95 範圍 6.60–6.60ms（±0.0%）；開頭 30 幀 176–176ms"
-      ],
+      "notes": ["3 次交錯執行取中位數；frame p95 範圍 6.60–6.60ms（±0.0%）；開頭 30 幀 176–176ms"],
       "schemaVersion": 4,
       "capturedAt": "2026-08-16T12:49:22.971Z",
       "frames": 300,

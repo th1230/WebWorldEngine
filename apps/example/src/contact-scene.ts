@@ -158,7 +158,12 @@ export function makeContactScene(): ContactScene {
   root.add(blocker);
 
   const gbuffer = new WW.SceneDepthNormals({ scale: 1 });
-  const shadows = new WW.ContactShadows({ distance: 2.5, thickness: 1.2, steps: 16, strength: 0.9 });
+  const shadows = new WW.ContactShadows({
+    distance: 2.5,
+    thickness: 1.2,
+    steps: 16,
+    strength: 0.9,
+  });
 
   const scene = new THREE.Scene();
   scene.add(root);
@@ -179,14 +184,30 @@ export function makeContactScene(): ContactScene {
     render: drawOnce,
     normalMapAsync: async (renderer) => {
       const target = (gbuffer as unknown as { target: { width: number; height: number } }).target;
-      const data = await readPixelsAsync(renderer, target, 0, 0, target.width, target.height, (n) => new Uint8Array(n));
+      const data = await readPixelsAsync(
+        renderer,
+        target,
+        0,
+        0,
+        target.width,
+        target.height,
+        (n) => new Uint8Array(n),
+      );
       const out: number[] = [];
       for (let r = 0; r < 9; r++) {
         for (let c = 0; c < 16; c++) {
           let sum = 0;
           let n = 0;
-          for (let y = Math.floor((r / 9) * target.height); y < Math.floor(((r + 1) / 9) * target.height); y += 2) {
-            for (let x = Math.floor((c / 16) * target.width); x < Math.floor(((c + 1) / 16) * target.width); x += 2) {
+          for (
+            let y = Math.floor((r / 9) * target.height);
+            y < Math.floor(((r + 1) / 9) * target.height);
+            y += 2
+          ) {
+            for (
+              let x = Math.floor((c / 16) * target.width);
+              x < Math.floor(((c + 1) / 16) * target.width);
+              x += 2
+            ) {
               sum += data[(y * target.width + x) * 4 + 1] ?? 0;
               n++;
             }
@@ -198,7 +219,15 @@ export function makeContactScene(): ContactScene {
     },
     maskMapAsync: async (renderer) => {
       const target = targetOf(shadows);
-      const data = await readPixelsAsync(renderer, target, 0, 0, target.width, target.height, (n) => new Uint8Array(n));
+      const data = await readPixelsAsync(
+        renderer,
+        target,
+        0,
+        0,
+        target.width,
+        target.height,
+        (n) => new Uint8Array(n),
+      );
       const cols = 16;
       const rows = 9;
       const out: number[] = [];
@@ -206,8 +235,16 @@ export function makeContactScene(): ContactScene {
         for (let c = 0; c < cols; c++) {
           let sum = 0;
           let n = 0;
-          for (let y = Math.floor((r / rows) * target.height); y < Math.floor(((r + 1) / rows) * target.height); y += 2) {
-            for (let x = Math.floor((c / cols) * target.width); x < Math.floor(((c + 1) / cols) * target.width); x += 2) {
+          for (
+            let y = Math.floor((r / rows) * target.height);
+            y < Math.floor(((r + 1) / rows) * target.height);
+            y += 2
+          ) {
+            for (
+              let x = Math.floor((c / cols) * target.width);
+              x < Math.floor(((c + 1) / cols) * target.width);
+              x += 2
+            ) {
               sum += data[(y * target.width + x) * 4] ?? 0;
               n++;
             }
@@ -219,7 +256,15 @@ export function makeContactScene(): ContactScene {
     },
     coverageAsync: async (renderer) => {
       const target = targetOf(shadows);
-      const data = await readPixelsAsync(renderer, target, 0, 0, target.width, target.height, (n) => new Uint8Array(n));
+      const data = await readPixelsAsync(
+        renderer,
+        target,
+        0,
+        0,
+        target.width,
+        target.height,
+        (n) => new Uint8Array(n),
+      );
       let dark = 0;
       for (let i = 0; i < data.length; i += 4) if ((data[i] ?? 255) < 230) dark++;
       return dark / (target.width * target.height);
@@ -243,9 +288,23 @@ export function makeContactScene(): ContactScene {
       const target = targetOf(shadows);
       projected.copy(point).project(camera);
       const half = size >> 1;
-      const x = Math.min(target.width - size, Math.max(0, Math.round(((projected.x + 1) / 2) * target.width) - half));
-      const y = Math.min(target.height - size, Math.max(0, Math.round(((projected.y + 1) / 2) * target.height) - half));
-      const data = await readPixelsAsync(renderer, target, x, y, size, size, (n) => new Uint8Array(n));
+      const x = Math.min(
+        target.width - size,
+        Math.max(0, Math.round(((projected.x + 1) / 2) * target.width) - half),
+      );
+      const y = Math.min(
+        target.height - size,
+        Math.max(0, Math.round(((projected.y + 1) / 2) * target.height) - half),
+      );
+      const data = await readPixelsAsync(
+        renderer,
+        target,
+        x,
+        y,
+        size,
+        size,
+        (n) => new Uint8Array(n),
+      );
       let sum = 0;
       for (let i = 0; i < size * size; i++) sum += data[i * 4] ?? 0;
       return sum / (size * size) / 255;
@@ -253,8 +312,14 @@ export function makeContactScene(): ContactScene {
     sampleNormalAsync: async (renderer, point) => {
       const target = (gbuffer as unknown as { target: { width: number; height: number } }).target;
       projected.copy(point).project(camera);
-      const x = Math.min(target.width - 1, Math.max(0, Math.round(((projected.x + 1) / 2) * target.width)));
-      const y = Math.min(target.height - 1, Math.max(0, Math.round(((projected.y + 1) / 2) * target.height)));
+      const x = Math.min(
+        target.width - 1,
+        Math.max(0, Math.round(((projected.x + 1) / 2) * target.width)),
+      );
+      const y = Math.min(
+        target.height - 1,
+        Math.max(0, Math.round(((projected.y + 1) / 2) * target.height)),
+      );
       const data = await readPixelsAsync(renderer, target, x, y, 1, 1, (n) => new Uint8Array(n));
       return [(data[0] ?? 0) / 255, (data[1] ?? 0) / 255, (data[2] ?? 0) / 255];
     },

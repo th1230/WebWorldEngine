@@ -40,9 +40,12 @@ const server = createServer((req, res) => {
     (b) => {
       res.writeHead(200, {
         'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
+          {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.json': 'application/json',
+            '.wasm': 'application/wasm',
+          }[extname(file)] ?? 'application/octet-stream',
       });
       res.end(b);
     },
@@ -56,10 +59,16 @@ const browser = await chromium.launch({ channel: 'chrome' });
 const page = await browser.newPage({ viewport: { width: 800, height: 480 } });
 
 for (const res of [4, 8, 16, 24]) {
-  await page.goto(`http://localhost:${server.address().port}/?gi=1&probeRes=${res}`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__ww?.gi !== null && window.__ww?.gi !== undefined, undefined, {
-    timeout: 180000,
+  await page.goto(`http://localhost:${server.address().port}/?gi=1&probeRes=${res}`, {
+    waitUntil: 'load',
   });
+  await page.waitForFunction(
+    () => window.__ww?.gi !== null && window.__ww?.gi !== undefined,
+    undefined,
+    {
+      timeout: 180000,
+    },
+  );
   const out = await page.evaluate(async () => {
     const gi = window.__ww.gi;
     let rounds = 0;

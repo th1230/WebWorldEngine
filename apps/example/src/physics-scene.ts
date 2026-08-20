@@ -61,12 +61,7 @@ export async function makePhysicsScene(): Promise<PhysicsScene> {
   // 而猜錯的症狀是箱子浮在空中或陷進地裡 —— 不報錯，走到那一塊才看得到。
   const field = WW.terrainHeightfield({ size: SIZE, samples: 129, height: terrainHeight });
   world.createCollider(
-    RAPIER.ColliderDesc.heightfield(
-      field.rows - 1,
-      field.columns - 1,
-      field.heights,
-      field.scale,
-    ),
+    RAPIER.ColliderDesc.heightfield(field.rows - 1, field.columns - 1, field.heights, field.scale),
   );
 
   // ── 水 ────────────────────────────────────────────────────────────
@@ -145,7 +140,10 @@ export async function makePhysicsScene(): Promise<PhysicsScene> {
    * 所以「停用時把狀態存起來、啟用時放回去」是使用這個調度器的**必要**
    * 步驟，不是優化。
    */
-  const lastPose = new Map<number, { p: [number, number, number]; q: [number, number, number, number] }>();
+  const lastPose = new Map<
+    number,
+    { p: [number, number, number]; q: [number, number, number, number] }
+  >();
   const scheduler = new WW.PhysicsScheduler({
     activeRadius: 200,
     maxActive: 120,

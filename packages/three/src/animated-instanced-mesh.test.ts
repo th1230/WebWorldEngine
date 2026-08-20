@@ -16,7 +16,12 @@ import { AnimatedInstancedMesh, injectVertexAnimation } from './animated-instanc
  * 所以這裡驗的是**注入後的字串長什麼樣**，不是「有沒有跑完」。
  */
 
-const RAW = ['#include <common>', '#include <batching_vertex>', '#include <begin_vertex>', '#include <project_vertex>'].join('\n');
+const RAW = [
+  '#include <common>',
+  '#include <batching_vertex>',
+  '#include <begin_vertex>',
+  '#include <project_vertex>',
+].join('\n');
 
 describe('把 VAT 取樣插進 vertex shader', () => {
   it('取樣寫在 begin_vertex 之後 —— 之前的話 transformed 還不存在', () => {
@@ -29,7 +34,9 @@ describe('把 VAT 取樣插進 vertex shader', () => {
 
   it('在 project_vertex 之前 —— 之後的話投影已經用舊的位置算完了', () => {
     const out = injectVertexAnimation(RAW);
-    expect(out.indexOf('transformed = mix(')).toBeLessThan(out.indexOf('#include <project_vertex>'));
+    expect(out.indexOf('transformed = mix(')).toBeLessThan(
+      out.indexOf('#include <project_vertex>'),
+    );
   });
 
   it('相位取自 getIndirectIndex，不是不存在的 batchId', () => {

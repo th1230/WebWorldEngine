@@ -130,4 +130,3 @@ function toGeometry(lod: DecodedLod): BufferGeometry {
   geometry.setIndex(new BufferAttribute(packed, 1));
   return geometry;
 }
-

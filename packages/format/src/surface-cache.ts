@@ -57,7 +57,8 @@ export function bakeSurfaceCache(
   const n = Math.max(4, Math.floor(options.resolution ?? 16));
   const padding = options.padding ?? 0.25;
   const flat = options.flat ?? [1, 1, 1];
-  const triangleCount = indices !== null ? Math.floor(indices.length / 3) : Math.floor(positions.length / 9);
+  const triangleCount =
+    indices !== null ? Math.floor(indices.length / 3) : Math.floor(positions.length / 9);
 
   let minX = Infinity;
   let minY = Infinity;

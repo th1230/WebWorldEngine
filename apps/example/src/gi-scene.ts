@@ -143,10 +143,7 @@ export function makeGiScene(
     [-ROOM, 0, Math.PI / 2],
     [0, -ROOM, 0],
   ] as const) {
-    const wall = new THREE.Mesh(
-      new THREE.PlaneGeometry(ROOM * 2, ROOM),
-      makeMaterial(0xcc1010, 1),
-    );
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(ROOM * 2, ROOM), makeMaterial(0xcc1010, 1));
     wall.position.set(x, ROOM / 2, z);
     wall.rotation.y = ry;
     root.add(wall);
@@ -155,10 +152,7 @@ export function makeGiScene(
   // ## 白箱子：被反彈光照到的東西
   //
   // 白色是因為它不能自己帶顏色 —— 帶紅色的話「它偏紅」就證明不了任何事。
-  const box = new THREE.Mesh(
-    new THREE.BoxGeometry(10, 10, 10),
-    makeMaterial(0xffffff, 0.9),
-  );
+  const box = new THREE.Mesh(new THREE.BoxGeometry(10, 10, 10), makeMaterial(0xffffff, 0.9));
   box.position.set(0, 14, 0);
   root.add(box);
 
@@ -182,10 +176,7 @@ export function makeGiScene(
   //
   // 場景裡除了它以外沒有任何藍色，所以「箱子那一面有沒有變藍」是個
   // 只有它做得出來的訊號。一開始放得很遠，免得影響第一次烘。
-  const blocker = new THREE.Mesh(
-    new THREE.BoxGeometry(8, 8, 1),
-    makeMaterial(0x1030ff, 0.9),
-  );
+  const blocker = new THREE.Mesh(new THREE.BoxGeometry(8, 8, 1), makeMaterial(0x1030ff, 0.9));
   blocker.position.set(0, 4, ROOM - 2);
   root.add(blocker);
 
@@ -207,7 +198,8 @@ export function makeGiScene(
   return {
     root,
     volume,
-    bake: (renderer, scene) => WW.bakeIrradiance(renderer, scene, volume, { budgetMs: 12, faceSize }),
+    bake: (renderer, scene) =>
+      WW.bakeIrradiance(renderer, scene, volume, { budgetMs: 12, faceSize }),
     setEnabled: async (on) => {
       // 強度歸零就等於沒有間接光，而且**走的是同一條 shader 路徑** ——
       // 換材質做 A/B 的話比的是兩個不同的著色器，那個比較沒有意義。
@@ -261,8 +253,14 @@ export function makeGiScene(
         measureTarget.height - size,
         Math.max(0, Math.round(v * measureTarget.height) - (size >> 1)),
       );
-      const data = await readPixelsAsync(renderer, measureTarget, x, y, size, size, (n) =>
-        new Uint8Array(n),
+      const data = await readPixelsAsync(
+        renderer,
+        measureTarget,
+        x,
+        y,
+        size,
+        size,
+        (n) => new Uint8Array(n),
       );
       const sum = [0, 0, 0];
       for (let i = 0; i < size * size; i++) {
@@ -292,7 +290,8 @@ export function makeGiScene(
       });
       // 先跑幾次暖機（著色器編譯、target 配置），再計時。第一次一定最慢，
       // 而拿第一次當代表會把編譯時間算成每幀成本。
-      for (let warm = 0; warm < 3; warm++) ssgi.render(renderer, scene, camera, sceneTarget.texture);
+      for (let warm = 0; warm < 3; warm++)
+        ssgi.render(renderer, scene, camera, sceneTarget.texture);
       renderer.getContext().finish();
       const started = performance.now();
       const ROUNDS = 20;
@@ -303,7 +302,7 @@ export function makeGiScene(
 
       // 把收集到的那張讀回來量。讀的是 SSGI 的輸出本身 —— 合成之後再量
       // 的話混著直接光，分不出是誰貢獻的。
-      const readTarget = (indirect as unknown as { source?: unknown });
+      const readTarget = indirect as unknown as { source?: unknown };
       void readTarget;
       // ## 緩衝型別要跟 target 的型別對上
       //

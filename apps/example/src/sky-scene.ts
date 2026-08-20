@@ -177,7 +177,10 @@ export function makeSkyScene(): SkyScene {
       let baked = 0;
       let guard = 0;
       while (guard++ < 400) {
-        const done = await WW.bakeIrradiance(renderer, scene, probes, { budgetMs: 8, faceSize: 16 });
+        const done = await WW.bakeIrradiance(renderer, scene, probes, {
+          budgetMs: 8,
+          faceSize: 16,
+        });
         baked += done;
         if (done === 0) break;
       }

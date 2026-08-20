@@ -54,7 +54,9 @@ async function main() {
     for (const count of COUNTS) {
       const page = await browser.newPage();
       await page.goto(`${site.url}?skinned=${count}&spread=120&orbit=90`, { waitUntil: 'load' });
-      await page.waitForFunction(() => window.__ww?.totalFrames > 60, undefined, { timeout: 60_000 });
+      await page.waitForFunction(() => window.__ww?.totalFrames > 60, undefined, {
+        timeout: 60_000,
+      });
       const r = await page.evaluate(() => {
         const w = window.__ww;
         w.renderer.info.reset();

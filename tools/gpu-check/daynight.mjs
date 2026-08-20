@@ -28,10 +28,21 @@ assertDistFresh(root);
 const DIST = join(root, 'apps/example/dist');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
   const file = join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
+            extname(file)
+          ] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -43,7 +54,11 @@ const check = (ok, message) => {
   console.log('  ' + (ok ? '✓' : '✗') + ' ' + message);
   if (!ok) failed++;
 };
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 
 try {
@@ -83,14 +98,18 @@ try {
   const p50 = roundMs[roundMs.length >> 1] ?? 0;
 
   console.log(`  探針 ${out.probes} 顆，太陽一動全部過期（標了 ${out.marked} 顆）`);
-  console.log(`  整份重烘 **${out.totalMs.toFixed(0)} ms**，分 ${out.rounds.length} 輪，每輪中位數 ${p50.toFixed(1)} ms`);
+  console.log(
+    `  整份重烘 **${out.totalMs.toFixed(0)} ms**，分 ${out.rounds.length} 輪，每輪中位數 ${p50.toFixed(1)} ms`,
+  );
   console.log(`  攤下來每顆 ${perProbe.toFixed(2)} ms\n`);
 
   // 一個日夜循環十分鐘的話，太陽每秒走 0.6 度。探針要多久才跟得上？
   for (const budget of [2, 4, 8]) {
     const frames = out.totalMs / budget;
     const seconds = frames / 60;
-    console.log(`  每幀給 ${budget} ms 的話：要 ${Math.round(frames)} 幀 ≈ ${seconds.toFixed(1)} 秒才追得上一次太陽移動`);
+    console.log(
+      `  每幀給 ${budget} ms 的話：要 ${Math.round(frames)} 幀 ≈ ${seconds.toFixed(1)} 秒才追得上一次太陽移動`,
+    );
   }
 
   console.log('');
@@ -107,11 +126,11 @@ try {
   //
   // 所以直接量：一邊持續重烘一邊跑，幀時間有沒有變差。交錯做 A/B，因為
   // 這台機器的幀時間是雙峰的。
-  console.log("");
+  console.log('');
   console.log('── 持續重烘的實際代價（交錯 A/B）');
   const page2 = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   page2.setDefaultNavigationTimeout(240000);
-  await page2.goto(`${base}/?gi=1&verify=1`, { waitUntil: "load" });
+  await page2.goto(`${base}/?gi=1&verify=1`, { waitUntil: 'load' });
   await page2.waitForFunction(() => window.__ww?.gi != null, undefined, { timeout: 120000 });
 
   const ab = await page2.evaluate(async () => {
@@ -143,12 +162,21 @@ try {
   await page2.close();
 
   // 幀間隔量的是「這一幀之前那一段」，所以工作要往後挪一格配對。
-  const rows = ab.slice(1).map((x, i) => ({ ...ab[i], frameMs: x.frameMs })).slice(30);
-  const mid = (xs, f) => { if (xs.length === 0) return 0; const v = xs.map(f).sort((a, b) => a - b); return v[v.length >> 1]; };
+  const rows = ab
+    .slice(1)
+    .map((x, i) => ({ ...ab[i], frameMs: x.frameMs }))
+    .slice(30);
+  const mid = (xs, f) => {
+    if (xs.length === 0) return 0;
+    const v = xs.map(f).sort((a, b) => a - b);
+    return v[v.length >> 1];
+  };
   const on = rows.filter((r) => r.baking);
   const off = rows.filter((r) => !r.baking);
   console.log(`  有烘的 ${on.length} 幀，沒烘的 ${off.length} 幀`);
-  console.log(`    有烘   幀 ${mid(on, (r) => r.frameMs).toFixed(2)} ms   其中 bake() 佔用主執行緒 ${mid(on, (r) => r.cost).toFixed(2)} ms`);
+  console.log(
+    `    有烘   幀 ${mid(on, (r) => r.frameMs).toFixed(2)} ms   其中 bake() 佔用主執行緒 ${mid(on, (r) => r.cost).toFixed(2)} ms`,
+  );
   console.log(`    沒烘   幀 ${mid(off, (r) => r.frameMs).toFixed(2)} ms`);
   const delta = mid(on, (r) => r.frameMs) - mid(off, (r) => r.frameMs);
   console.log(`    **每幀多付 ${delta.toFixed(2)} ms**`);
@@ -163,11 +191,11 @@ try {
   // 上面證明了重烘撐不住。這一段驗替代方案：兩個太陽角度各烘一份，
   // 執行期內插。要過的條件有三個 —— 內插得出不同的光、中間值在兩端之間、
   // 而且每幀的代價要遠低於重烘的 12.1 ms。
-  console.log("");
+  console.log('');
   console.log('── 關鍵幀那條路（先烘兩個角度，執行期內插）');
   const page3 = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   page3.setDefaultNavigationTimeout(240000);
-  await page3.goto(`${base}/?gi=1&verify=1`, { waitUntil: "load" });
+  await page3.goto(`${base}/?gi=1&verify=1`, { waitUntil: 'load' });
   await page3.waitForFunction(() => window.__ww?.gi != null, undefined, { timeout: 120000 });
 
   const kf = await page3.evaluate(async () => {
@@ -203,7 +231,10 @@ try {
     // 每幀改相位的代價 —— 交錯 A/B。
     const samples = [];
     let seed = 0x85ebca6b;
-    const roll = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed % 100; };
+    const roll = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed % 100;
+    };
     let last = 0;
     for (let frame = 0; frame < 400; frame++) {
       const now = await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -219,8 +250,15 @@ try {
   });
   await page3.close();
 
-  const kfRows = kf.samples.slice(1).map((x, i) => ({ ...kf.samples[i], frameMs: x.frameMs })).slice(30);
-  const mid2 = (xs, f) => { if (xs.length === 0) return 0; const v = xs.map(f).sort((a, b) => a - b); return v[v.length >> 1]; };
+  const kfRows = kf.samples
+    .slice(1)
+    .map((x, i) => ({ ...kf.samples[i], frameMs: x.frameMs }))
+    .slice(30);
+  const mid2 = (xs, f) => {
+    if (xs.length === 0) return 0;
+    const v = xs.map(f).sort((a, b) => a - b);
+    return v[v.length >> 1];
+  };
   const kfOn = kfRows.filter((r) => r.changing);
   const kfOff = kfRows.filter((r) => !r.changing);
 
@@ -230,11 +268,15 @@ try {
   const toLate = dist(kf.mid, kf.late);
 
   console.log(`  關鍵幀 ${kf.keyframes} 份`);
-  console.log(`    相位 0   輻照度 ${kf.early.map((v) => v.toFixed(3)).join(", ")}`);
-  console.log(`    相位 1   輻照度 ${kf.late.map((v) => v.toFixed(3)).join(", ")}`);
-  console.log(`    相位 0.5 輻照度 ${kf.mid.map((v) => v.toFixed(3)).join(", ")}`);
-  console.log(`    兩端差距 ${spread.toFixed(4)}，中間到兩端 ${toEarly.toFixed(4)} / ${toLate.toFixed(4)}`);
-  console.log(`    改相位的幀 ${mid2(kfOn, (r) => r.frameMs).toFixed(2)} ms（主執行緒 ${mid2(kfOn, (r) => r.cost).toFixed(2)} ms），沒改的 ${mid2(kfOff, (r) => r.frameMs).toFixed(2)} ms`);
+  console.log(`    相位 0   輻照度 ${kf.early.map((v) => v.toFixed(3)).join(', ')}`);
+  console.log(`    相位 1   輻照度 ${kf.late.map((v) => v.toFixed(3)).join(', ')}`);
+  console.log(`    相位 0.5 輻照度 ${kf.mid.map((v) => v.toFixed(3)).join(', ')}`);
+  console.log(
+    `    兩端差距 ${spread.toFixed(4)}，中間到兩端 ${toEarly.toFixed(4)} / ${toLate.toFixed(4)}`,
+  );
+  console.log(
+    `    改相位的幀 ${mid2(kfOn, (r) => r.frameMs).toFixed(2)} ms（主執行緒 ${mid2(kfOn, (r) => r.cost).toFixed(2)} ms），沒改的 ${mid2(kfOff, (r) => r.frameMs).toFixed(2)} ms`,
+  );
 
   const perFrame = mid2(kfOn, (r) => r.frameMs) - mid2(kfOff, (r) => r.frameMs);
   check(kf.keyframes === 2, `兩份關鍵幀都存起來了 —— ${kf.keyframes}`);
@@ -244,7 +286,6 @@ try {
     `中間的相位落在兩端之間 —— ${toEarly.toFixed(4)} / ${toLate.toFixed(4)} 都小於 ${spread.toFixed(4)}`,
   );
   check(perFrame < 3, `每幀代價遠低於重烘 —— 多付 ${perFrame.toFixed(2)} ms（重烘是 12.1 ms）`);
-
 } catch (e) {
   console.log('失敗：' + String(e).split(String.fromCharCode(10))[0].slice(0, 220));
   process.exitCode = 1;

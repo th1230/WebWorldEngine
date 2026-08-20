@@ -159,8 +159,14 @@ export function makeLodFadeScene(
     width: number,
     height: number,
   ): Promise<number[]> => {
-    const data = await readPixelsAsync(renderer, target, x, y, width, height, (n) =>
-      new Uint8Array(n),
+    const data = await readPixelsAsync(
+      renderer,
+      target,
+      x,
+      y,
+      width,
+      height,
+      (n) => new Uint8Array(n),
     );
     const sum = [0, 0, 0];
     for (let i = 0; i < width * height; i++) {
@@ -173,7 +179,10 @@ export function makeLodFadeScene(
     root,
     render: (renderer, distance) => draw(renderer as THREE.WebGLRenderer, distance),
     windowAsync: async (renderer, u, v, width, height = width) => {
-      const x = Math.min(target.width - width, Math.max(0, Math.round(u * target.width) - (width >> 1)));
+      const x = Math.min(
+        target.width - width,
+        Math.max(0, Math.round(u * target.width) - (width >> 1)),
+      );
       const y = Math.min(
         target.height - height,
         Math.max(0, Math.round(v * target.height) - (height >> 1)),
@@ -185,8 +194,14 @@ export function makeLodFadeScene(
       //
       // 平均會把「一半的像素全亮」與「全部的像素半亮」混成同一個數字，而
       // 抖動交叉正是前者 —— 不互補的破洞在平均上看不出來。
-      const data = await readPixelsAsync(renderer, target, 0, 0, target.width, target.height, (n) =>
-        new Uint8Array(n),
+      const data = await readPixelsAsync(
+        renderer,
+        target,
+        0,
+        0,
+        target.width,
+        target.height,
+        (n) => new Uint8Array(n),
       );
       let covered = 0;
       const sum = [0, 0, 0];
@@ -205,7 +220,12 @@ export function makeLodFadeScene(
       // 顏色是**畫到的地方**的平均，不是整張的 —— 整張的話背景會把它稀釋掉，
       // 而稀釋的倍率隨距離變，混色的訊號就被距離蓋過去。
       const painted = Math.max(covered, 1);
-      return [covered / total, sum[0]! / painted / 255, sum[1]! / painted / 255, sum[2]! / painted / 255];
+      return [
+        covered / total,
+        sum[0]! / painted / 255,
+        sum[1]! / painted / 255,
+        sum[2]! / painted / 255,
+      ];
     },
     nodeReady: async (renderer) => {
       // node 材質是動態 import 進來的 —— 要等**真的時間**，microtask 不夠。

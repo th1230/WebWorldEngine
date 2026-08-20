@@ -35,7 +35,11 @@ export interface FogScene {
   /** 等 WebGPU 那條路建好。 */
   nodeReady: (renderer: unknown) => Promise<void>;
   /** 讀某個螢幕比例位置的霧：RGB 是散射光，A 是透光率。 */
-  sampleAt: (renderer: THREE.WebGLRenderer, u: number, v: number) => [number, number, number, number];
+  sampleAt: (
+    renderer: THREE.WebGLRenderer,
+    u: number,
+    v: number,
+  ) => [number, number, number, number];
   /**
    * 一小塊區域裡相鄰像素的變異。
    *

@@ -88,7 +88,9 @@ async function main() {
       const rows = [];
       for (const c of scale.cases) {
         const page = await browser.newPage();
-        await page.goto(`${site.url}?terrain=${c.tiles}&terrainSeg=${c.seg}`, { waitUntil: 'load' });
+        await page.goto(`${site.url}?terrain=${c.tiles}&terrainSeg=${c.seg}`, {
+          waitUntil: 'load',
+        });
         await page.waitForFunction(() => window.__ww?.totalFrames > 60, undefined, {
           timeout: 180_000,
         });

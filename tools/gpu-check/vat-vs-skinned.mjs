@@ -85,7 +85,10 @@ async function main() {
       console.log(
         `           整條路（含 LOD）：省 ${((1 - c.ms / a.ms) * 100).toFixed(1)}%，三角形 ${a.triangles.toLocaleString('en-US')} → ${c.triangles.toLocaleString('en-US')}`,
       );
-      if (c.vat) console.log(`          （貼圖 ${c.vat.textureMB} MB：${c.vat.vertices} 頂點 × ${c.vat.frames} 幀）`);
+      if (c.vat)
+        console.log(
+          `          （貼圖 ${c.vat.textureMB} MB：${c.vat.vertices} 頂點 × ${c.vat.frames} 幀）`,
+        );
     }
   } finally {
     await browser.close();

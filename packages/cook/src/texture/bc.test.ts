@@ -1,7 +1,13 @@
 import { read } from 'ktx-parse';
 import { describe, expect, it } from 'vitest';
 import { blocksFor, decodeBc1, decodeBc4, encodeBc1, encodeBc4, encodeBc5 } from './bc.ts';
-import { generateMipChain, heightToNormal, renormalizeNormals, rockAlbedo, type Image } from './image.ts';
+import {
+  generateMipChain,
+  heightToNormal,
+  renormalizeNormals,
+  rockAlbedo,
+  type Image,
+} from './image.ts';
 import { encodeTexture } from './ktx2.ts';
 
 function solidImage(size: number, r: number, g: number, b: number): Image {

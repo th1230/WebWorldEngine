@@ -32,7 +32,12 @@ export interface VsmScene {
   resolve: (renderer: THREE.WebGLRenderer, debug?: number) => void;
   /** 掃一段列，回傳每一列陰影邊界落在第幾行（找不到就 −1）。 */
   edgeColumns: (renderer: THREE.WebGLRenderer) => number[];
-  info: () => { virtualSize: number; atlasSize: number; maxTextureSize: number; pagesDrawn: number };
+  info: () => {
+    virtualSize: number;
+    atlasSize: number;
+    maxTextureSize: number;
+    pagesDrawn: number;
+  };
   /** 遮罩裡有多少比例是暗的 —— 找不到邊界時要先知道遮罩長什麼樣。 */
   maskStats: (renderer: THREE.WebGLRenderer) => { dark: number; mean: number; centre: number[] };
   /**
@@ -56,12 +61,7 @@ export interface VsmScene {
    * 有取樣約定。圖集裡到底有沒有東西、在哪一格，只有直接讀它答得出來 ——
    * 而 `readPixelsAsync` 已經把兩個後端的列順序對齊過了。
    */
-  atlasWindowAsync: (
-    renderer: unknown,
-    u: number,
-    v: number,
-    size: number,
-  ) => Promise<number[]>;
+  atlasWindowAsync: (renderer: unknown, u: number, v: number, size: number) => Promise<number[]>;
   /** 等 WebGPU 那條路建好。 */
   nodeReady: (renderer: unknown) => Promise<void>;
   /** 遮罩的粗略縮圖（16×9 的平均），拿來看它到底長什麼樣。 */
@@ -134,41 +134,41 @@ export function makeVsmScene(pagesPerSide: number): VsmScene {
    * 沒畫進圖集（材質還在非同步建立），所以得再跑一次。
    */
   const doSettle = (renderer: THREE.WebGLRenderer): number => {
-      // ## 只要相機看得到的那一小塊
-      //
-      // 圖集只有 576 個槽位，而最細那一階有 pagesPerSide² 頁 —— 整片要下來
-      // 是不可能的，也**沒有必要**：虛擬陰影圖的重點就是「只畫看得到的」。
-      //
-      // 第一版整片都要，結果 65,536 頁裡只有 63 頁塞得進圖集，其餘全部退回
-      // 最粗那一階 —— 於是「細的那一份」其實一點都不細，量出來兩邊一樣。
-      // 影子的尖端算得出來：箱高 24、太陽 (60,90,30) → 水平位移約 18 個單位，
-      // 方向 (−60,−30) 正規化。所以邊界大約在 (−16, −8) 那一帶。
-      //
-      // 第一版瞄 (−26, −26)，那已經**在影子外面**了 —— 於是掃了 96 列一條
-      // 邊界都沒有，而那看起來像效果壞了。
-      const centre = new THREE.Vector3(-14, 0, -7);
-      const radius = 16;
-      // 用光源空間的 UV，不是世界的 x/z —— 光源平面是斜的。
-      const corners = [
-        new THREE.Vector3(centre.x - radius, 0, centre.z - radius),
-        new THREE.Vector3(centre.x + radius, 0, centre.z - radius),
-        new THREE.Vector3(centre.x - radius, 0, centre.z + radius),
-        new THREE.Vector3(centre.x + radius, 0, centre.z + radius),
-      ].map((c) => shadowMap.worldToUv(c, { u: 0, v: 0 }));
-      const u0 = Math.min(...corners.map((c) => c.u));
-      const u1 = Math.max(...corners.map((c) => c.u));
-      const v0 = Math.min(...corners.map((c) => c.v));
-      const v1 = Math.max(...corners.map((c) => c.v));
-      const request = (): void => shadowMap.requestRegion(u0, v0, u1, v1, 0);
+    // ## 只要相機看得到的那一小塊
+    //
+    // 圖集只有 576 個槽位，而最細那一階有 pagesPerSide² 頁 —— 整片要下來
+    // 是不可能的，也**沒有必要**：虛擬陰影圖的重點就是「只畫看得到的」。
+    //
+    // 第一版整片都要，結果 65,536 頁裡只有 63 頁塞得進圖集，其餘全部退回
+    // 最粗那一階 —— 於是「細的那一份」其實一點都不細，量出來兩邊一樣。
+    // 影子的尖端算得出來：箱高 24、太陽 (60,90,30) → 水平位移約 18 個單位，
+    // 方向 (−60,−30) 正規化。所以邊界大約在 (−16, −8) 那一帶。
+    //
+    // 第一版瞄 (−26, −26)，那已經**在影子外面**了 —— 於是掃了 96 列一條
+    // 邊界都沒有，而那看起來像效果壞了。
+    const centre = new THREE.Vector3(-14, 0, -7);
+    const radius = 16;
+    // 用光源空間的 UV，不是世界的 x/z —— 光源平面是斜的。
+    const corners = [
+      new THREE.Vector3(centre.x - radius, 0, centre.z - radius),
+      new THREE.Vector3(centre.x + radius, 0, centre.z - radius),
+      new THREE.Vector3(centre.x - radius, 0, centre.z + radius),
+      new THREE.Vector3(centre.x + radius, 0, centre.z + radius),
+    ].map((c) => shadowMap.worldToUv(c, { u: 0, v: 0 }));
+    const u0 = Math.min(...corners.map((c) => c.u));
+    const u1 = Math.max(...corners.map((c) => c.u));
+    const v0 = Math.min(...corners.map((c) => c.v));
+    const v1 = Math.max(...corners.map((c) => c.v));
+    const request = (): void => shadowMap.requestRegion(u0, v0, u1, v1, 0);
+    request();
+    let drawn = 0;
+    let guard = 0;
+    while (guard++ < 400) {
+      const n = shadowMap.update(renderer, scene);
+      drawn += n;
+      if (n === 0) break;
       request();
-      let drawn = 0;
-      let guard = 0;
-      while (guard++ < 400) {
-        const n = shadowMap.update(renderer, scene);
-        drawn += n;
-        if (n === 0) break;
-        request();
-      }
+    }
     return drawn;
   };
 
@@ -185,7 +185,8 @@ export function makeVsmScene(pagesPerSide: number): VsmScene {
     resolve: doResolve,
     edgeColumns: (renderer) => {
       void mask;
-      const target = (shadowMap as unknown as { resolveTarget: THREE.WebGLRenderTarget }).resolveTarget;
+      const target = (shadowMap as unknown as { resolveTarget: THREE.WebGLRenderTarget })
+        .resolveTarget;
       const width = target.width;
       // ## 只掃畫面中央那一段
       //
@@ -226,8 +227,14 @@ export function makeVsmScene(pagesPerSide: number): VsmScene {
         target.height - height,
         Math.max(0, Math.round(v * target.height) - (height >> 1)),
       );
-      const data = await readPixelsAsync(renderer, target, x, y, width, height, (n) =>
-        new Uint8Array(n),
+      const data = await readPixelsAsync(
+        renderer,
+        target,
+        x,
+        y,
+        width,
+        height,
+        (n) => new Uint8Array(n),
       );
       const sum = [0, 0, 0];
       for (let i = 0; i < width * height; i++) {
@@ -238,10 +245,22 @@ export function makeVsmScene(pagesPerSide: number): VsmScene {
     },
     atlasWindowAsync: async (renderer, u, v, size) => {
       const atlas = (shadowMap as unknown as { atlas: THREE.WebGLRenderTarget }).atlas;
-      const x = Math.min(atlas.width - size, Math.max(0, Math.round(u * atlas.width) - (size >> 1)));
-      const y = Math.min(atlas.height - size, Math.max(0, Math.round(v * atlas.height) - (size >> 1)));
-      const data = await readPixelsAsync(renderer, atlas, x, y, size, size, (n) =>
-        new Uint8Array(n),
+      const x = Math.min(
+        atlas.width - size,
+        Math.max(0, Math.round(u * atlas.width) - (size >> 1)),
+      );
+      const y = Math.min(
+        atlas.height - size,
+        Math.max(0, Math.round(v * atlas.height) - (size >> 1)),
+      );
+      const data = await readPixelsAsync(
+        renderer,
+        atlas,
+        x,
+        y,
+        size,
+        size,
+        (n) => new Uint8Array(n),
       );
       const sum = [0, 0, 0];
       for (let i = 0; i < size * size; i++) {
@@ -266,7 +285,8 @@ export function makeVsmScene(pagesPerSide: number): VsmScene {
       }
     },
     maskStats: (renderer) => {
-      const target = (shadowMap as unknown as { resolveTarget: THREE.WebGLRenderTarget }).resolveTarget;
+      const target = (shadowMap as unknown as { resolveTarget: THREE.WebGLRenderTarget })
+        .resolveTarget;
       const buffer = new Uint8Array(target.width * target.height * 4);
       renderer.readRenderTargetPixels(target, 0, 0, target.width, target.height, buffer);
       let dark = 0;
@@ -287,7 +307,8 @@ export function makeVsmScene(pagesPerSide: number): VsmScene {
       };
     },
     maskMap: (renderer) => {
-      const target = (shadowMap as unknown as { resolveTarget: THREE.WebGLRenderTarget }).resolveTarget;
+      const target = (shadowMap as unknown as { resolveTarget: THREE.WebGLRenderTarget })
+        .resolveTarget;
       const buffer = new Uint8Array(target.width * target.height * 4);
       renderer.readRenderTargetPixels(target, 0, 0, target.width, target.height, buffer);
       const cols = 16;

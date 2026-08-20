@@ -82,9 +82,7 @@ export function assertDistFresh(root, sources, dist) {
   const state = distFreshness(root, sources, dist);
   if (!state.stale) return state;
   const which =
-    state.dist === null
-      ? '產物根本不存在'
-      : `${state.source.path} 比 ${state.dist.path} 新`;
+    state.dist === null ? '產物根本不存在' : `${state.source.path} 比 ${state.dist.path} 新`;
   throw new Error(
     `關卡吃的是建好的產物，而它是舊的（${which}）。\n` +
       '先跑 pnpm --filter @ww/example-app build 再來。\n' +

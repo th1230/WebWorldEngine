@@ -38,9 +38,12 @@ const server = createServer((req, res) => {
     (b) => {
       res.writeHead(200, {
         'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
+          {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.json': 'application/json',
+            '.wasm': 'application/wasm',
+          }[extname(file)] ?? 'application/octet-stream',
       });
       res.end(b);
     },
@@ -60,7 +63,11 @@ const STEPS = [
 ];
 
 console.log('貼圖壓力：每一張都不一樣，全部在畫面裡\n');
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 
 for (const [count, size] of STEPS) {
@@ -79,7 +86,17 @@ for (const [count, size] of STEPS) {
       const gpu = await window.__ww.measureGpuMs(0, 1200, 12);
       const meta = window.__ww.textureHeavy;
       const heap = performance.memory?.usedJSHeapSize ?? 0;
-      return { gpu: gpu.p50 ?? null, meta: { textures: meta.textures, megabytes: meta.megabytes, uploaded: meta.uploaded, calls: meta.calls, triangles: meta.triangles }, heapMB: Math.round(heap / 1048576) };
+      return {
+        gpu: gpu.p50 ?? null,
+        meta: {
+          textures: meta.textures,
+          megabytes: meta.megabytes,
+          uploaded: meta.uploaded,
+          calls: meta.calls,
+          triangles: meta.triangles,
+        },
+        heapMB: Math.round(heap / 1048576),
+      };
     });
     console.log(
       `  ${String(count).padStart(4)} 張 × ${size}px = ${String(out.meta.megabytes).padStart(6)} MB  ` +
@@ -88,7 +105,9 @@ for (const [count, size] of STEPS) {
         (errors.length > 0 ? `  ⚠ ${errors[0]}` : ''),
     );
   } catch (e) {
-    console.log(`  ${String(count).padStart(4)} 張 × ${size}px  **掛了**：${String(e).split('\n')[0].slice(0, 80)}`);
+    console.log(
+      `  ${String(count).padStart(4)} 張 × ${size}px  **掛了**：${String(e).split('\n')[0].slice(0, 80)}`,
+    );
   }
   await page.close();
 }

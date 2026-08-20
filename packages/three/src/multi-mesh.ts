@@ -90,7 +90,11 @@ export class MultiMesh extends BatchedMesh {
   private readonly errorPixels: number;
   private readonly _levelCounts: number[] = [];
 
-  constructor(sources: readonly GeometrySource[], material: Material, options: MultiMeshOptions = {}) {
+  constructor(
+    sources: readonly GeometrySource[],
+    material: Material,
+    options: MultiMeshOptions = {},
+  ) {
     if (sources.length === 0) {
       throw new Error('WW.MultiMesh: sources 是空的。至少要有一塊幾何。');
     }
@@ -193,7 +197,10 @@ export class MultiMesh extends BatchedMesh {
       _center.copy(piece.center).applyMatrix4(_matrix).applyMatrix4(this.matrixWorld);
       const scale = maxAxisScale(_matrix) * maxAxisScale(this.matrixWorld);
 
-      const distance = Math.max(_cameraPosition.distanceTo(_center) - piece.baseRadius * scale, 1e-6);
+      const distance = Math.max(
+        _cameraPosition.distanceTo(_center) - piece.baseRadius * scale,
+        1e-6,
+      );
       // 與 `InstancedMesh` 完全同一條式子：誤差 × (縮放 ÷ 距離) × 每單位像素。
       const perMetre = (scale / distance) * ppu;
       const level = selectLevel(piece.errors, perMetre, this.errorPixels);

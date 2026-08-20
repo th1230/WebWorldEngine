@@ -145,7 +145,7 @@ describe('World.stream', () => {
     // **每一格數量相同的話這個檢查驗不出來**：卸載一格、載入一格，兩邊
     // 剛好一樣大，錯位互相抵銷。第一版就是這樣，注入缺陷照樣全綠。
     // 所以這裡的每格數量刻意隨座標變動。
-    const perCell = (cx: number, cz: number): number => 2 + (((cx + cz) % 4) + 4) % 4;
+    const perCell = (cx: number, cz: number): number => 2 + ((((cx + cz) % 4) + 4) % 4);
     const { scene, world, rocks, cam } = makeWorld(perCell, { radius: 350 });
 
     const settle = async (x: number, z: number): Promise<void> => {
@@ -216,7 +216,11 @@ describe('World.stream', () => {
   it('重複 stream() 會丟例外，而不是靜靜地疊兩層', () => {
     const { world, rocks } = makeWorld(1);
     expect(() =>
-      world.stream({ cellSize: 100, radius: 150, load: (_cx, _cz, place) => place(rocks, new Matrix4()) }),
+      world.stream({
+        cellSize: 100,
+        radius: 150,
+        load: (_cx, _cz, place) => place(rocks, new Matrix4()),
+      }),
     ).toThrow(/已經在串流/);
   });
 
@@ -427,7 +431,14 @@ describe('onCellChanged：烘好的東西要知道世界變了', () => {
   function watched(options: { cellSize?: number; radius?: number } = {}): {
     scene: Scene;
     cam: PerspectiveCamera;
-    events: { cellX: number; cellZ: number; centerX: number; centerZ: number; radius: number; loaded: boolean }[];
+    events: {
+      cellX: number;
+      cellZ: number;
+      centerX: number;
+      centerZ: number;
+      radius: number;
+      loaded: boolean;
+    }[];
   } {
     const scene = new Scene();
     const rocks = mesh();

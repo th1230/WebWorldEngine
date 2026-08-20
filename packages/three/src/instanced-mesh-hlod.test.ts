@@ -143,7 +143,11 @@ describe('遠景合併', () => {
       const matrix = new Matrix4();
       const size = new Vector3(scale, scale, scale);
       for (let i = 0; i < 64; i++) {
-        matrix.makeTranslation(((i % 8) - 3.5) * scale * 3, 0, (Math.floor(i / 8) - 3.5) * scale * 3);
+        matrix.makeTranslation(
+          ((i % 8) - 3.5) * scale * 3,
+          0,
+          (Math.floor(i / 8) - 3.5) * scale * 3,
+        );
         matrix.scale(size);
         mesh.setMatrixAt(i, matrix);
       }
@@ -192,10 +196,15 @@ describe('遠景合併', () => {
       }
     };
     const make = (hlod: boolean): InstancedMesh => {
-      const mesh = new InstancedMesh({ lods: LODS, errors: ERRORS }, new MeshBasicMaterial(), 1024, {
-        instancesPerCell: 64,
-        hlod,
-      });
+      const mesh = new InstancedMesh(
+        { lods: LODS, errors: ERRORS },
+        new MeshBasicMaterial(),
+        1024,
+        {
+          instancesPerCell: 64,
+          hlod,
+        },
+      );
       scaledPlacement(mesh, 1024);
       renderFrom(mesh, 2500, WARM);
       return mesh;
@@ -285,7 +294,11 @@ describe('遠景合併', () => {
     const scale = new Vector3(40, 40, 40);
     const side = 16;
     for (let i = 0; i < 256; i++) {
-      matrix.makeTranslation(((i % side) / side - 0.5) * 200, 0, (Math.floor(i / side) / side - 0.5) * 200);
+      matrix.makeTranslation(
+        ((i % side) / side - 0.5) * 200,
+        0,
+        (Math.floor(i / side) / side - 0.5) * 200,
+      );
       matrix.scale(scale);
       mesh.setMatrixAt(i, matrix);
     }
@@ -318,12 +331,22 @@ describe('遠景合併 — 串流的區塊路徑', () => {
    * 失效方式全都看不出來**，所以這裡驗的還是同一組性質，只是內容改成整段
    * 寫進來的。
    */
-  const streamed = (cells: number, perCell: number, spread: number, options = {}): InstancedMesh => {
-    const mesh = new InstancedMesh({ lods: LODS, errors: ERRORS }, new MeshBasicMaterial(), cells * perCell, {
-      instancesPerCell: 64,
-      hlodBudgetMB: 256,
-      ...options,
-    });
+  const streamed = (
+    cells: number,
+    perCell: number,
+    spread: number,
+    options = {},
+  ): InstancedMesh => {
+    const mesh = new InstancedMesh(
+      { lods: LODS, errors: ERRORS },
+      new MeshBasicMaterial(),
+      cells * perCell,
+      {
+        instancesPerCell: 64,
+        hlodBudgetMB: 256,
+        ...options,
+      },
+    );
     const matrix = new Matrix4();
     const side = Math.ceil(Math.sqrt(cells));
     for (let c = 0; c < cells; c++) {

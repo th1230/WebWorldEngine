@@ -1,8 +1,4 @@
-import type {
-  GeneratedLevel,
-  GeometryData,
-  LodGenerationOptions,
-} from './lod-generation.ts';
+import type { GeneratedLevel, GeometryData, LodGenerationOptions } from './lod-generation.ts';
 import type { LodRequest, LodResponse } from './lod-worker.ts';
 
 /**
@@ -125,9 +121,8 @@ async function startWorker(): Promise<Worker | null> {
       //
       // 所以這裡只能把等待中的請求全部收掉。不收的話呼叫端會永遠停在
       // 「產生中」，而且看起來只是比較慢。
-      const why = event.message !== '' && event.message !== undefined
-        ? event.message
-        : '沒有錯誤訊息';
+      const why =
+        event.message !== '' && event.message !== undefined ? event.message : '沒有錯誤訊息';
       console.error('WW: LOD worker 中途失效，之後改在主執行緒產生。', why);
       workerUsable = false;
       worker = null;

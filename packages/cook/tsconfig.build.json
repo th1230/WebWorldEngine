@@ -8,42 +8,18 @@
     "rewriteRelativeImportExtensions": true,
     "outDir": "dist",
     "paths": {
-      "@webworld/cook": [
-        "packages/cook/src/index.ts"
-      ],
-      "@webworld/cook/texture": [
-        "packages/cook/src/texture/index.ts"
-      ],
-      "@ww/assets-runtime": [
-        "internal/assets-runtime/src/index.ts"
-      ],
-      "@ww/core": [
-        "internal/core/src/index.ts"
-      ],
-      "@ww/engine": [
-        "internal/engine/src/index.ts"
-      ],
-      "@ww/platform-web": [
-        "internal/platform-web/src/index.ts"
-      ],
-      "@ww/diagnostics": [
-        "internal/diagnostics/src/index.ts"
-      ],
-      "@ww/render-core": [
-        "internal/render-core/src/index.ts"
-      ],
-      "@ww/render-three": [
-        "internal/render-three/src/index.ts"
-      ],
-      "@webworld/three": [
-        "packages/three/src/index.ts"
-      ]
+      "@webworld/cook": ["packages/cook/src/index.ts"],
+      "@webworld/cook/texture": ["packages/cook/src/texture/index.ts"],
+      "@ww/assets-runtime": ["internal/assets-runtime/src/index.ts"],
+      "@ww/core": ["internal/core/src/index.ts"],
+      "@ww/engine": ["internal/engine/src/index.ts"],
+      "@ww/platform-web": ["internal/platform-web/src/index.ts"],
+      "@ww/diagnostics": ["internal/diagnostics/src/index.ts"],
+      "@ww/render-core": ["internal/render-core/src/index.ts"],
+      "@ww/render-three": ["internal/render-three/src/index.ts"],
+      "@webworld/three": ["packages/three/src/index.ts"]
     }
   },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "src/**/*.test.ts"
-  ]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }

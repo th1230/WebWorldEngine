@@ -53,7 +53,10 @@ describe('summarize', () => {
   it('exposes the stutter that mean hides', () => {
     // 95 幀 16ms + 5 幀 500ms —— shader 編譯造成的卡頓大概就長這樣。
     // 平均值 40ms 看起來只是「有點慢」；p99 才顯示出真的有半秒級的停頓。
-    const values = [...Array.from({ length: 95 }, () => 16), ...Array.from({ length: 5 }, () => 500)];
+    const values = [
+      ...Array.from({ length: 95 }, () => 16),
+      ...Array.from({ length: 5 }, () => 500),
+    ];
     const s = summarize(values);
 
     expect(s.p50).toBe(16);

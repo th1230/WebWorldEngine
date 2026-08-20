@@ -56,7 +56,10 @@ export function assertBatchedMeshInternals(mesh: object): BatchedMeshInternals {
   }
   for (const key of REQUIRED_TEXTURES) {
     const texture = raw[key] as { image?: { data?: unknown } } | undefined;
-    if (!(texture?.image?.data instanceof Uint32Array) && !(texture?.image?.data instanceof Float32Array)) {
+    if (
+      !(texture?.image?.data instanceof Uint32Array) &&
+      !(texture?.image?.data instanceof Float32Array)
+    ) {
       missing.push(`${key}.image.data: TypedArray`);
     }
   }

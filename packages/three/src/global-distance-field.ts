@@ -182,7 +182,12 @@ export class GlobalDistanceField {
     const wantedY = Math.round((cameraPosition.y - half) / this.cell) * this.cell;
     const wantedZ = Math.round((cameraPosition.z - half) / this.cell) * this.cell;
 
-    if (!this.centred || wantedX !== this.min.x || wantedY !== this.min.y || wantedZ !== this.min.z) {
+    if (
+      !this.centred ||
+      wantedX !== this.min.x ||
+      wantedY !== this.min.y ||
+      wantedZ !== this.min.z
+    ) {
       this.min.set(wantedX, wantedY, wantedZ);
       this.centred = true;
       // 平移之後**整份都不對了**（每一格的世界座標都變了）。真正的 clipmap
@@ -231,7 +236,9 @@ export class GlobalDistanceField {
     let nearest: FieldInstance | null = null;
     for (const instance of this.instances) {
       // 換到那個物件的區域空間再查。
-      const local = _composeLocal.copy(worldPoint).applyMatrix4(_composeInverse.copy(instance.matrixWorld).invert());
+      const local = _composeLocal
+        .copy(worldPoint)
+        .applyMatrix4(_composeInverse.copy(instance.matrixWorld).invert());
       // 完全在那個場外面的話，用「到場的外接盒有多遠」當下界 —— 直接查會
       // 被夾到邊緣值，而邊緣值對遠處的點是嚴重低估（看起來像那裡有東西）。
       const outside = distanceToBox(local, instance.volume.min, instance.volume.size);

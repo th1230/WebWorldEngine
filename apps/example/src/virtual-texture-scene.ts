@@ -106,7 +106,13 @@ export function makeVirtualTextureScene(
   //
   // 取樣接在 `<map_fragment>` 上，而 Three 只有在有 map 的時候才宣告
   // `vMapUv`。內容會被虛擬貼圖整個蓋掉，要的只是那個 define。
-  const placeholder = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+  const placeholder = new DataTexture(
+    new Uint8Array([255, 255, 255, 255]),
+    1,
+    1,
+    RGBAFormat,
+    UnsignedByteType,
+  );
   placeholder.needsUpdate = true;
 
   const material = new MaterialClass({ map: placeholder });
@@ -129,7 +135,11 @@ export function makeVirtualTextureScene(
   const target = new WebGLRenderTarget(1024, 1024, { colorSpace: NoColorSpace });
 
   const draw = (r: unknown): void => {
-    const gl = r as { getRenderTarget: () => unknown; setRenderTarget: (t: unknown) => void; render: (s: unknown, c: unknown) => void };
+    const gl = r as {
+      getRenderTarget: () => unknown;
+      setRenderTarget: (t: unknown) => void;
+      render: (s: unknown, c: unknown) => void;
+    };
     const previous = gl.getRenderTarget();
     gl.setRenderTarget(target);
     gl.render(scene, camera);
@@ -143,8 +153,14 @@ export function makeVirtualTextureScene(
     sideAt: (level: number) => Math.max(1, pagesPerSide >> level),
     render: draw,
     windowAsync: async (r, u, v, size) => {
-      const x = Math.min(target.width - size, Math.max(0, Math.round(u * target.width) - (size >> 1)));
-      const y = Math.min(target.height - size, Math.max(0, Math.round(v * target.height) - (size >> 1)));
+      const x = Math.min(
+        target.width - size,
+        Math.max(0, Math.round(u * target.width) - (size >> 1)),
+      );
+      const y = Math.min(
+        target.height - size,
+        Math.max(0, Math.round(v * target.height) - (size >> 1)),
+      );
       const data = await readPixelsAsync(r, target, x, y, size, size, (n) => new Uint8Array(n));
       const sum = [0, 0, 0];
       for (let i = 0; i < size * size; i++) {

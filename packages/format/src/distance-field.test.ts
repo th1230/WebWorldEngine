@@ -4,18 +4,45 @@ import { bakeDistanceField } from './distance-field.ts';
 /** 一個以原點為中心、邊長 2h 的方盒。 */
 function box(h: number): { positions: Float32Array; indices: Uint32Array } {
   const positions = new Float32Array([
-    -h, -h, -h, h, -h, -h, -h, h, -h, h, h, -h,
-    -h, -h, h, h, -h, h, -h, h, h, h, h, h,
+    -h,
+    -h,
+    -h,
+    h,
+    -h,
+    -h,
+    -h,
+    h,
+    -h,
+    h,
+    h,
+    -h,
+    -h,
+    -h,
+    h,
+    h,
+    -h,
+    h,
+    -h,
+    h,
+    h,
+    h,
+    h,
+    h,
   ]);
   const indices = new Uint32Array([
-    0, 2, 3, 0, 3, 1, 4, 5, 7, 4, 7, 6, 0, 1, 5, 0, 5, 4,
-    2, 6, 7, 2, 7, 3, 0, 4, 6, 0, 6, 2, 1, 3, 7, 1, 7, 5,
+    0, 2, 3, 0, 3, 1, 4, 5, 7, 4, 7, 6, 0, 1, 5, 0, 5, 4, 2, 6, 7, 2, 7, 3, 0, 4, 6, 0, 6, 2, 1, 3,
+    7, 1, 7, 5,
   ]);
   return { positions, indices };
 }
 
 /** 查一個世界座標的距離（最近的格子，不內插）。 */
-function sample(field: ReturnType<typeof bakeDistanceField>, x: number, y: number, z: number): number {
+function sample(
+  field: ReturnType<typeof bakeDistanceField>,
+  x: number,
+  y: number,
+  z: number,
+): number {
   const n = field.resolution;
   const gx = Math.min(n - 1, Math.max(0, Math.floor(((x - field.min[0]) / field.size[0]) * n)));
   const gy = Math.min(n - 1, Math.max(0, Math.floor(((y - field.min[1]) / field.size[1]) * n)));

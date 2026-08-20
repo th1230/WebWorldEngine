@@ -64,10 +64,9 @@ export const occlusionScene: SceneDefinition = {
     try {
       manifest = (await (await fetch(manifestUrl)).json()) as { meshes: Record<string, unknown> };
     } catch (error) {
-      throw new Error(
-        'Sponza 載不到。先執行 pnpm cook:sponza —— assets/source/ 不進版控。',
-        { cause: error },
-      );
+      throw new Error('Sponza 載不到。先執行 pnpm cook:sponza —— assets/source/ 不進版控。', {
+        cause: error,
+      });
     }
 
     // 每個 primitive 一個 Mesh。Sponza 的每一塊都是獨一無二的幾何，
@@ -101,7 +100,11 @@ export const occlusionScene: SceneDefinition = {
     const camera = new PerspectiveCamera(70, ctx.aspect, radius * 0.002, radius * 4);
     const eye = radius * 0.02;
     const theta = (angle * Math.PI) / 180;
-    camera.position.set(Math.cos(theta) * radius * 0.25, eye * EYE_HEIGHT, Math.sin(theta) * radius * 0.05);
+    camera.position.set(
+      Math.cos(theta) * radius * 0.25,
+      eye * EYE_HEIGHT,
+      Math.sin(theta) * radius * 0.05,
+    );
     camera.lookAt(-Math.cos(theta) * radius, eye * EYE_HEIGHT, -Math.sin(theta) * radius * 0.2);
 
     return {

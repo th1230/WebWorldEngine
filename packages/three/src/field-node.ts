@@ -82,32 +82,30 @@ export function createFieldNodes(tsl: Tsl, three: Tsl): FieldNodeHandles {
    * 球體追蹤：每一步都跳「離最近的表面多遠」，所以空曠處一兩步跨過去，貼近
    * 表面時自動變細。半影是免費的副產品 —— 距離與已走路程之比就是圓錐張角。
    */
-  const visibility = Fn(
-    ([origin, direction, range, steps, softness]: TslNode[]) => {
-      const point = origin!.add(direction!.mul(uCell)).toVar();
-      const travelled = uCell.toVar();
-      const closest = float(1).toVar();
-      const blocked = float(0).toVar();
+  const visibility = Fn(([origin, direction, range, steps, softness]: TslNode[]) => {
+    const point = origin!.add(direction!.mul(uCell)).toVar();
+    const travelled = uCell.toVar();
+    const closest = float(1).toVar();
+    const blocked = float(0).toVar();
 
-      Loop({ start: 0, end: 128, type: 'int', condition: '<' }, ({ i }: any) => {
-        If(float(i).greaterThanEqual(steps!).or(travelled.greaterThanEqual(range!)), () => {
-          Break();
-        });
-        const distance = at(point).toVar();
-        If(distance.lessThan(uCell.mul(0.25)), () => {
-          blocked.assign(1);
-          Break();
-        });
-        closest.assign(closest.min(softness!.mul(distance).div(travelled)));
-        point.addAssign(direction!.mul(distance));
-        travelled.addAssign(distance);
+    Loop({ start: 0, end: 128, type: 'int', condition: '<' }, ({ i }: any) => {
+      If(float(i).greaterThanEqual(steps!).or(travelled.greaterThanEqual(range!)), () => {
+        Break();
       });
+      const distance = at(point).toVar();
+      If(distance.lessThan(uCell.mul(0.25)), () => {
+        blocked.assign(1);
+        Break();
+      });
+      closest.assign(closest.min(softness!.mul(distance).div(travelled)));
+      point.addAssign(direction!.mul(distance));
+      travelled.addAssign(distance);
+    });
 
-      // GLSL 那份打到就 `return 0.0`。TSL 沒有提前 return，所以用旗標乘回去 ——
-      // 算出來的東西一樣。
-      return closest.clamp(0, 1).mul(float(1).sub(blocked));
-    },
-  );
+    // GLSL 那份打到就 `return 0.0`。TSL 沒有提前 return，所以用旗標乘回去 ——
+    // 算出來的東西一樣。
+    return closest.clamp(0, 1).mul(float(1).sub(blocked));
+  });
 
   return { tField, tAlbedo, uFieldMin, uFieldExtent, uCell, at, albedoAt, visibility };
 }

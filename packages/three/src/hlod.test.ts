@@ -56,7 +56,8 @@ describe('mergeInstances', () => {
     const half = indices.count / 2;
     // 沒平移的話第二份會畫在第一份的頂點上 —— 兩份完全重疊，而數量正確。
     for (let i = 0; i < half; i++) expect(indices.getX(i)).toBeLessThan(vertices);
-    for (let i = half; i < indices.count; i++) expect(indices.getX(i)).toBeGreaterThanOrEqual(vertices);
+    for (let i = half; i < indices.count; i++)
+      expect(indices.getX(i)).toBeGreaterThanOrEqual(vertices);
   });
 
   it('位置是相對中心的，中心另外回傳', () => {
@@ -106,9 +107,7 @@ describe('mergeInstances', () => {
     const box = new BoxGeometry(1, 1, 1);
     // 只壓扁 y。3×3 直接乘會讓斜面的法線往壓扁的方向偏。
     const squashed = new Matrix4().makeScale(1, 0.1, 1);
-    const rotated = new Matrix4()
-      .makeRotationZ(Math.PI / 4)
-      .premultiply(squashed);
+    const rotated = new Matrix4().makeRotationZ(Math.PI / 4).premultiply(squashed);
 
     const merged = mergeInstances(box, matricesOf(rotated), ALL(1), 0, 1)!;
     const normal = merged.geometry.getAttribute('normal');
@@ -134,7 +133,9 @@ describe('mergeInstances', () => {
     const instances = 3000; // 72,000 個頂點
     const merged = mergeInstances(
       box,
-      new Float32Array(instances * 16).map((_, i) => (i % 16 === 0 || i % 16 === 5 || i % 16 === 10 || i % 16 === 15 ? 1 : 0)),
+      new Float32Array(instances * 16).map((_, i) =>
+        i % 16 === 0 || i % 16 === 5 || i % 16 === 10 || i % 16 === 15 ? 1 : 0,
+      ),
       ALL(instances),
       0,
       instances,

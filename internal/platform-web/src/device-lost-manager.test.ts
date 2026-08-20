@@ -15,7 +15,11 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function owner(id: string, log: string[], hooks: Partial<DeviceResourceOwner> = {}): DeviceResourceOwner {
+function owner(
+  id: string,
+  log: string[],
+  hooks: Partial<DeviceResourceOwner> = {},
+): DeviceResourceOwner {
   return {
     id,
     onDeviceLost: () => {
@@ -57,14 +61,7 @@ describe('DeviceLostManager', () => {
 
     await m.notifyLost('test');
 
-    expect(log).toEqual([
-      'c:lost',
-      'b:lost',
-      'a:lost',
-      'a:restored',
-      'b:restored',
-      'c:restored',
-    ]);
+    expect(log).toEqual(['c:lost', 'b:lost', 'a:lost', 'a:restored', 'b:restored', 'c:restored']);
     expect(m.state).toBe('running');
     expect(m.lossCount).toBe(1);
   });
@@ -114,7 +111,9 @@ describe('DeviceLostManager', () => {
     const m = new DeviceLostManager({
       reacquire: () => {
         attempts++;
-        return attempts < 3 ? Promise.reject(new Error('GPU process still down')) : Promise.resolve();
+        return attempts < 3
+          ? Promise.reject(new Error('GPU process still down'))
+          : Promise.resolve();
       },
       maxAttempts: 4,
       retryDelayMs: 100,

@@ -130,12 +130,7 @@ export class ScreenSpaceGI {
    * 分成兩步而不是直接寫回畫面：合成要怎麼做（加上去？乘上去？先做色調對應？）
    * 是開發者的選擇，而這個套件不替他決定那種事。
    */
-  render(
-    renderer: WebGLRenderer,
-    scene: Scene,
-    camera: Camera,
-    colorTexture: Texture,
-  ): Texture {
+  render(renderer: WebGLRenderer, scene: Scene, camera: Camera, colorTexture: Texture): Texture {
     renderer.getDrawingBufferSize(this.size);
     const width = Math.max(1, Math.floor(this.size.x * this.options.scale));
     const height = Math.max(1, Math.floor(this.size.y * this.options.scale));
@@ -175,7 +170,11 @@ export class ScreenSpaceGI {
   }
 
   private ensureTargets(width: number, height: number): void {
-    if (this.normalTarget !== null && this.normalTarget.width === width && this.normalTarget.height === height) {
+    if (
+      this.normalTarget !== null &&
+      this.normalTarget.width === width &&
+      this.normalTarget.height === height
+    ) {
       return;
     }
     this.normalTarget?.dispose();
@@ -206,8 +205,6 @@ export class ScreenSpaceGI {
     this.gatherMaterial.dispose();
   }
 }
-
-
 
 const FRAGMENT = /* glsl */ `
 uniform sampler2D tColor;

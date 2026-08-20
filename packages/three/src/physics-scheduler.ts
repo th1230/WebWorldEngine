@@ -118,7 +118,10 @@ export class PhysicsScheduler implements Rebasable {
   constructor(options: PhysicsSchedulerOptions) {
     this.activeRadius = options.activeRadius;
     // 下限而不是隨便給：兩條線太近就等於沒有遲滯。
-    this.sleepRadius = Math.max(options.sleepRadius ?? options.activeRadius * 1.25, options.activeRadius * 1.05);
+    this.sleepRadius = Math.max(
+      options.sleepRadius ?? options.activeRadius * 1.25,
+      options.activeRadius * 1.05,
+    );
     this.maxActive = options.maxActive ?? Infinity;
     this.onActivate = options.onActivate;
     this.onDeactivate = options.onDeactivate;

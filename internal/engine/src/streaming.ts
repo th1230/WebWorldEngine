@@ -30,7 +30,7 @@ import type { EntityId } from '@ww/core';
 export interface CellSource<T = EntityId> {
   /**
    * 載入一個 cell，回傳它建立的所有 entity。
- *
+   *
    * **必須是決定性的**：同樣的 (cellX, cellZ) 必須產生同樣的內容。
    * 否則走出去再走回來，世界會變成另一個樣子 —— 那種 bug 在巡遊測試裡
    * 表現為「記憶體沒漏但畫面對不上」，極難歸因。
@@ -38,9 +38,9 @@ export interface CellSource<T = EntityId> {
   load(cellX: number, cellZ: number): Promise<T[]> | T[];
   /**
    * 載入一個 cell 的**代理內容**（HLOD）—— 用極少的 entity 表示整個 cell。
- *
+   *
    * 沒有實作就等於關閉代理層：串流退化成只有一個半徑，行為與先前完全相同。
- *
+   *
    * 代理層存在的理由是 r²：等密度下常駐內容隨視距的平方成長，實測
    * 視野從 3.5 個 cell 深拉到 10 個，常駐就從 44,000 漲到 328,000。
    * 要看到地平線又不炸掉記憶體，遠處就不能是完整內容。
@@ -48,10 +48,10 @@ export interface CellSource<T = EntityId> {
   loadProxy?(cellX: number, cellZ: number): Promise<T[]> | T[];
   /**
    * 卸載一批 entity。必須釋放 ECS row 與資產參考。
- *
+   *
    * **這不代表 cell 消失了。** 層級變更（full ↔ proxy）也會呼叫它 ——
    * 舊層級的 entity 被卸掉，但 cell 仍然常駐，只是換了內容。
- *
+   *
    * 單層的時候兩者是同一件事，加上代理層之後就不是了。把「這批 entity
    * 沒了」與「這個 cell 沒了」混在一起，會讓呼叫端在層級變更時釋放掉
    * 仍在使用中的資源 —— 實際踩到過：cell 的可見性槽位被提早釋放，
@@ -60,7 +60,7 @@ export interface CellSource<T = EntityId> {
   unload(cellX: number, cellZ: number, entities: readonly T[]): void;
   /**
    * 這個 cell **完全離開**了常駐集合。
- *
+   *
    * 與 `unload` 的差別見上。cell 層級的資源（可見性槽位、HLOD 快取、
    * 空間索引項目）應該在這裡釋放，而不是在 `unload`。
    */
@@ -74,38 +74,38 @@ export interface StreamingOptions {
   loadRadius: number;
   /**
    * 超過多遠才卸載。**必須大於 `loadRadius`**。
- *
+   *
    * 兩者相同的話，相機在邊界上來回移動幾公分就會讓 cell 反覆載入卸載。
    * 差值就是遲滯帶 —— 它換來的是「不會在邊界上抖動」。
    */
   unloadRadius: number;
   /**
    * 同時進行中的載入上限。
- *
+   *
    * 從「每幀最多載幾個」改成「同時最多幾個在飛」：非同步之後，一個載入
    * 可能橫跨數十幀，用「每幀」計數會讓在途的請求無限累積。
    */
   maxConcurrentLoads?: number;
   /**
    * 代理層的外半徑。**必須大於 unloadRadius**，且需要 CellSource.loadProxy。
- *
+   *
    * loadRadius 以內是完整內容，到 proxyRadius 之間只有代理物。
    * 沒設就等於沒有代理層。
    */
   proxyRadius?: number;
   /**
    * 代理物超過多遠才卸載。**必須大於 proxyRadius**，預設為它的 1.15 倍。
- *
+   *
    * 與 unloadRadius 同一個道理：外緣也是一條邊界，一樣會抖動。
    */
   proxyUnloadRadius?: number;
   /**
    * 代理層的併發載入上限，預設是 maxConcurrentLoads 的 16 倍。
- *
+   *
    * 兩層共用一個數字是錯的：預算存在的理由是「載入很貴」，而一個代理
    * 載入只產生 1 個 entity，比完整載入便宜三個數量級。用個數當預算等於
    * 在量錯的東西。
- *
+   *
    * 實測共用預算 2 時，代理環該有約 340 個 cell 卻只填到 72 個，
    * 佇列永遠積著 206 個 —— 而所有數字看起來都很漂亮，因為**世界是空的**。
    */
@@ -114,22 +114,22 @@ export interface StreamingOptions {
   maxUnloadsPerFrame?: number;
   /**
    * 每幀的時間預算（毫秒）。設了就啟用自適應載入。
- *
+   *
    * ## 為什麼是幀時間而不是 CPU 時間
- *
+   *
    * 直覺會想「限制串流的 CPU 用量」。實測那是錯的方向：
- *
+   *
    * ```text
    * 有 cell 完成載入的幀   CPU 1.409 ms
    * 沒有的幀               CPU 1.099 ms
    * ```
- *
+   *
    * 差 0.31 ms，而幀時間的 p95 比 p50 高 14 ms。**卡頓不在 CPU 端。**
- *
+   *
    * 真正的成本在 GPU：相機靜止時 GPU p95 是 13.74 ms，以速度 48 移動時
    * 變成 23.71 ms —— 新 cell 進入視野會讓 instance buffer 重新配置與上傳，
    * 而那筆錢是 GPU 付的。
- *
+   *
    * 所以預算看的是**整幀時間**，控制的是「每幀讓多少新內容進場」。
    * 只量 CPU 的話，串流器會覺得自己很閒而一路加碼。
    */
@@ -161,14 +161,14 @@ export interface StreamingStats {
   totalUnloads: number;
   /**
    * 載入完成時已經不再需要、因而立刻被卸載的次數。
- *
+   *
    * 持續很高代表相機移動快於載入速度 —— 一直在做白工。
    * 這個數字本身不是錯誤，但它是「載入預算或半徑設定不當」的指標。
    */
   cancelledLoads: number;
   /**
    * 層級變更次數（full ↔ proxy）。
- *
+   *
    * 持續飆高代表兩條邊界的遲滯帶太窄 —— 而症狀只是「莫名其妙很慢」，
    * 因為每一次變更都是整個 cell 的內容重建。
    */
@@ -222,14 +222,14 @@ export class WorldStreamer<T = EntityId> {
   private _pendingTotal = 0;
   /**
    * 正在載入中的 cell。
- *
+   *
    * 沒有這個集合，`enqueue` 每一幀都會看到「它不在 resident 裡」而重新
    * 發出載入 —— 同一個 cell 被載入數十次，entity 直接翻倍。
    */
   private readonly loading = new Map<number, CellTier>();
   /**
    * 載入途中被判定為不再需要的 cell。
- *
+   *
    * 完成時要立刻卸載而不是納入常駐。這是非同步串流最容易漏掉的一條路徑：
    * 只在「相機移動快於載入速度」時才會走到。
    */
@@ -261,7 +261,7 @@ export class WorldStreamer<T = EntityId> {
     }
     /**
      * 代理層需要 source 真的實作 `loadProxy`。
- *
+     *
      * 只設半徑卻沒有實作的話，遠處的 cell 會被排進佇列、載入時拿不到內容，
      * 於是每一幀都重排一次同樣的 cell —— 畫面正常（遠處本來就空），
      * CPU 卻在做無止盡的白工。那種形態極難從症狀反推，所以擋在建構子。
@@ -292,7 +292,10 @@ export class WorldStreamer<T = EntityId> {
     /** 最外圈：超過這個距離的 cell 不留任何東西。 */
     this.outerRadius = wantsProxy ? this.proxyUnloadRadius : options.unloadRadius;
     this.maxConcurrent = Math.max(1, options.maxConcurrentLoads ?? 4);
-    this.maxConcurrentProxy = Math.max(1, options.maxConcurrentProxyLoads ?? this.maxConcurrent * 16);
+    this.maxConcurrentProxy = Math.max(
+      1,
+      options.maxConcurrentProxyLoads ?? this.maxConcurrent * 16,
+    );
     this.maxConcurrentProxy = Math.max(
       1,
       options.maxConcurrentProxyLoads ?? this.maxConcurrent * 16,
@@ -305,25 +308,25 @@ export class WorldStreamer<T = EntityId> {
 
   /**
    * 依相機位置更新常駐集合。每幀呼叫一次。
- *
+   *
    * 順序是**先卸載再載入**：先騰出空間，尖峰記憶體才不會是「舊的還在、
    * 新的已經進來」的總和。
    */
   /**
    * 回報上一幀的實際耗時，讓串流器調整載入速率。
- *
+   *
    * 只有設了 `frameBudgetMs` 才有作用。呼叫端不必每幀都給 —— 沒給就維持
    * 目前的速率。
- *
+   *
    * 調整刻意**不對稱**：超出預算時砍半，有餘裕時每次只加 0.25。對稱的話
    * 會在預算邊界上振盪 —— 加碼 → 超出 → 減速 → 有餘裕 → 加碼，而每個
    * 週期都伴隨一次看得見的卡頓。這與兩條半徑的遲滯是同一個道理。
- *
+   *
    * 「明顯有餘裕」訂在 80%：貼著預算加碼等於刻意讓每一幀都踩線。
    */
   /**
    * 換一個幀預算。
- *
+   *
    * 存在的理由是**預算不該由作者猜**：對的值是「這台機器自己的基準幀時間」，
    * 而那只有在使用者的機器上跑起來才量得到。呼叫端量到之後設進來。
    */
@@ -390,11 +393,11 @@ export class WorldStreamer<T = EntityId> {
 
   /**
    * 卸載超出**最外圈**的 cell。
- *
+   *
    * 注意這裡用的是 `outerRadius` 而不是 `unloadRadius`：有代理層時，
    * 一個離開 `unloadRadius` 的完整 cell 不該被卸載，而是要**降級成代理**。
    * 那件事由 `enqueue` 處理 —— 它會排一個 proxy 載入，完成時才換掉舊內容。
- *
+   *
    * 先卸載再載入會在畫面上留下一個空洞的中間幀。所以層級變更走的是
    * 「新的到了才換掉舊的」，而 evict 只負責「這裡什麼都不該有」。
    */
@@ -426,14 +429,14 @@ export class WorldStreamer<T = EntityId> {
 
   /**
    * 決定每個 cell**應該**是哪一層，把不符的排進佇列。
- *
+   *
    * 兩條邊界各有自己的遲滯：
- *
+   *
    * ```text
    *   |<--- full --->|<-- 遲滯 -->|<---- proxy ---->|<- 遲滯 ->|
    *   0          loadRadius   unloadRadius      proxyRadius  proxyUnloadRadius
    * ```
- *
+   *
    * 已經是 full 的 cell 在 `unloadRadius` 以內都維持 full，不會一越過
    * `loadRadius` 就降級 —— 否則相機在那條線上前後移動就會讓整個 cell
    * 的內容反覆重建，而那正是代理層最貴的操作。
@@ -441,17 +444,17 @@ export class WorldStreamer<T = EntityId> {
   private enqueue(cameraX: number, cameraZ: number): void {
     /**
      * 相機還在同一個 cell 裡、而且候選清單還沒用完時，整個掃描可以跳過。
- *
+     *
      * 掃描是這個系統最貴的東西：實測視距 16,000 時 `update()` 佔 CPU 幀的
      * **74%**（4.211 ms／5.70 ms），全部在走訪 161×161 = 25,921 個座標。
      * 而相機是平滑移動的 —— 需要載入的集合只有在**跨越 cell 邊界**時
      * 才會改變。
- *
+     *
      * 兩個重新掃描的條件缺一不可：
- *
+     *
      * - 相機換了 cell：需要的集合真的變了
      * - 候選清單空了：`admit` 把上一輪的都送出去了，不重掃就會停止載入
- *
+     *
      * 少了第二條，開場時會 admit 掉最初的 K 個之後永遠不再載入 ——
      * 而畫面只是「遠處一直是空的」，不會有任何錯誤。
      */
@@ -506,15 +509,15 @@ export class WorldStreamer<T = EntityId> {
 
   /**
    * 把一個候選放進「最近的 K 個」清單，維持依距離遞增。
- *
+   *
    * 原本是把**全部**候選塞進一個 Map，`admit` 再整個排序。每幀最多只
    * admit 幾十個，所以維護七萬個候選是純浪費 —— 而且那個浪費隨視距的
    * 平方成長，與常駐量完全無關。
- *
+   *
    * 實測視距 32,000 時待載清單有 71,462 筆，CPU 46.20 ms；同樣的常駐量
    * 在視距 16,000 時只有 15,182 筆、12.90 ms。**牆是串流器自己的每幀
    * 成本，不是世界的大小。**
- *
+   *
    * K 取併發上限的 4 倍：足以吸收「最近的幾個剛好都在載入中」的情況，
    * 又遠小於候選總數。
    */
@@ -536,17 +539,17 @@ export class WorldStreamer<T = EntityId> {
 
   /**
    * 在併發預算內開始載入佇列中最近的 cell。
- *
+   *
    * ## 非同步之後多出來的三個失效模式
- *
+   *
    * **1. 完成時已經不該存在。** 載入橫跨數十幀，相機可能早就走遠了。
    * 這時候不能只是「丟掉 promise」—— 載入**已經建立了 entity**，必須把它們
    * 交給 `unload` 清掉。單純忽略結果就是洩漏，而且是最難查的那種：
    * 只在「快速移動」時才發生。
- *
+   *
    * **2. 亂序完成。** 兩個 cell 的載入可能以任意順序結束，所以每個完成
    * 都必須自己檢查「我還該不該常駐」，不能假設順序。
- *
+   *
    * **3. 重複發出。** 一個 cell 在載入途中，下一幀的 `enqueue` 又會看到
    * 它不在 `resident` 裡。必須用 `loading` 集合擋掉，否則同一個 cell 會
    * 被載入好幾次，entity 直接翻倍。
@@ -556,7 +559,7 @@ export class WorldStreamer<T = EntityId> {
 
     /**
      * 兩層各有自己的預算。
- *
+     *
      * 共用一個數字是錯的：預算存在的理由是「載入很貴」，而一個代理載入
      * 只產生 1 個 entity，比完整載入便宜三個數量級。實測共用預算 2 時，
      * 代理環該有約 340 個 cell 卻只填到 72，佇列永遠積著 206 個 ——
@@ -623,17 +626,11 @@ export class WorldStreamer<T = EntityId> {
 
   /**
    * 一次載入完成。決定它該常駐還是立刻卸載。
- *
+   *
    * `cancelled` 是關鍵：相機在載入期間走遠的話，這個 cell 已經不該存在了。
    * 但 entity **已經被建立**，所以必須走完整的卸載流程 —— 直接丟棄就是洩漏。
    */
-  private settle(
-    key: number,
-    cx: number,
-    cz: number,
-    tier: CellTier,
-    entities: T[],
-  ): void {
+  private settle(key: number, cx: number, cz: number, tier: CellTier, entities: T[]): void {
     this.loading.delete(key);
 
     if (this.cancelled.has(key)) {

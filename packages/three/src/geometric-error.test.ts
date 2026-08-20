@@ -81,7 +81,12 @@ describe('量簡化網格真正偏離原始網格多遠', () => {
 
   it('空的簡化網格回傳 0 而不是爆掉', () => {
     const mesh = toMesh(new IcosahedronGeometry(1, 1));
-    expect(maxSurfaceDeviation(mesh.positions, { positions: mesh.positions, indices: new Uint32Array(0) })).toBe(0);
+    expect(
+      maxSurfaceDeviation(mesh.positions, {
+        positions: mesh.positions,
+        indices: new Uint32Array(0),
+      }),
+    ).toBe(0);
   });
 
   it('十萬個頂點對五千個三角形要在一秒內量完', () => {

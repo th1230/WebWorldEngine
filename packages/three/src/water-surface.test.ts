@@ -17,7 +17,9 @@ describe('WaterSurface', () => {
   it('頂點著色器裡的位移，就是 water.displacementGLSL() 產生的那一份', () => {
     const water = new Water({
       level: 3,
-      waves: [{ directionX: 1, directionZ: 0.3, length: 17, amplitude: 1.4, speed: 0.7, steepness: 0.5 }],
+      waves: [
+        { directionX: 1, directionZ: 0.3, length: 17, amplitude: 1.4, speed: 0.7, steepness: 0.5 },
+      ],
     });
     const surface = new WaterSurface({ water });
     // 逐字包含 —— 不是「長得很像」。改寫一份等價的式子也算分岔。
@@ -28,10 +30,16 @@ describe('WaterSurface', () => {
     // 上面那條在「位移那段是寫死的常數字串」時也會過（只要剛好一樣）。
     // 這一條擋掉那個。
     const calm = new WaterSurface({
-      water: new Water({ waves: [{ directionX: 1, directionZ: 0, length: 10, amplitude: 0.2, speed: 1, steepness: 0 }] }),
+      water: new Water({
+        waves: [
+          { directionX: 1, directionZ: 0, length: 10, amplitude: 0.2, speed: 1, steepness: 0 },
+        ],
+      }),
     });
     const rough = new WaterSurface({
-      water: new Water({ waves: [{ directionX: 1, directionZ: 0, length: 10, amplitude: 4, speed: 1, steepness: 0 }] }),
+      water: new Water({
+        waves: [{ directionX: 1, directionZ: 0, length: 10, amplitude: 4, speed: 1, steepness: 0 }],
+      }),
     });
     expect(calm.material.vertexShader).not.toBe(rough.material.vertexShader);
   });

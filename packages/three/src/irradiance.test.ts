@@ -272,7 +272,8 @@ describe('三線性內插', () => {
       size: new Vector3(10, 10, 10),
       resolution: [2, 2, 2],
     });
-    for (let i = 0; i < volume.probeCount; i++) volume.setProbe(i, uniformProbe(i % 2 === 1 ? 4 : 0));
+    for (let i = 0; i < volume.probeCount; i++)
+      volume.setProbe(i, uniformProbe(i % 2 === 1 ? 4 : 0));
     const n = new Vector3(0, 1, 0);
     // 遠遠超出 +x 那一側，拿到的還是那一面的值。
     expect(volume.sampleAt(new Vector3(999, 5, 5), n).x).toBeCloseTo(4, 5);

@@ -84,7 +84,10 @@ export function makeDfShadowScene(): DfShadowScene {
   root.add(ground);
 
   const boxGeometry = new THREE.BoxGeometry(BOX, BOX, BOX);
-  const box = new THREE.Mesh(boxGeometry, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }));
+  const box = new THREE.Mesh(
+    boxGeometry,
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }),
+  );
   box.position.set(0, BOX / 2, 0);
   box.updateMatrixWorld(true);
   root.add(box);
@@ -95,7 +98,10 @@ export function makeDfShadowScene(): DfShadowScene {
   // 上剛好都不改變結果（朝光與否兩邊判一樣）。球面上什麼角度都有，一定有
   // 一批像素的判斷會翻掉 —— 而那批像素只有看整張的暗掉比例才數得到。
   const sphereGeometry = new THREE.SphereGeometry(9, 48, 32);
-  const sphere = new THREE.Mesh(sphereGeometry, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }));
+  const sphere = new THREE.Mesh(
+    sphereGeometry,
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }),
+  );
   // 擺遠一點：球自己的影子不可以壓到對照點上（第一版壓到了，於是「側面應該
   // 是亮的」那條紅了 —— 而那是場景擺錯，不是效果錯）。
   sphere.position.set(-4, 9, 55);
@@ -112,7 +118,11 @@ export function makeDfShadowScene(): DfShadowScene {
   // 場裡放的是**同一份幾何**，位置也一樣 —— 場與畫面對不上的話陰影會整個
   // 偏掉，而那看起來像實作壞了。
   const volume = new WW.DistanceFieldVolume(boxGeometry, { resolution: 32, padding: 0.3 });
-  const field = new WW.GlobalDistanceField({ resolution: FIELD_RESOLUTION, extent: FIELD_EXTENT, budget: 200000 });
+  const field = new WW.GlobalDistanceField({
+    resolution: FIELD_RESOLUTION,
+    extent: FIELD_EXTENT,
+    budget: 200000,
+  });
   field.add({ volume, matrixWorld: box.matrixWorld });
   const sphereVolume = new WW.DistanceFieldVolume(sphereGeometry, { resolution: 32, padding: 0.3 });
   field.add({ volume: sphereVolume, matrixWorld: sphere.matrixWorld });
@@ -160,12 +170,25 @@ export function makeDfShadowScene(): DfShadowScene {
     render: drawOnce,
     renderFog: (renderer, useField) => {
       gbuffer.update(renderer, scene, camera);
-      fog.render(renderer, camera, gbuffer, lightDirection, new THREE.Color(0xffffff), useField ? field : null);
+      fog.render(
+        renderer,
+        camera,
+        gbuffer,
+        lightDirection,
+        new THREE.Color(0xffffff),
+        useField ? field : null,
+      );
     },
     sampleFog: (renderer, point) => {
       const target = (fog as unknown as { target: THREE.WebGLRenderTarget }).target;
       projected.copy(point).project(camera);
-      if (projected.x < -1 || projected.x > 1 || projected.y < -1 || projected.y > 1 || projected.z > 1) {
+      if (
+        projected.x < -1 ||
+        projected.x > 1 ||
+        projected.y < -1 ||
+        projected.y > 1 ||
+        projected.z > 1
+      ) {
         return [Number.NaN, Number.NaN, Number.NaN, Number.NaN];
       }
       const x = Math.round(((projected.x + 1) / 2) * target.width);
@@ -198,14 +221,30 @@ export function makeDfShadowScene(): DfShadowScene {
         target.height - size,
         Math.max(0, Math.round(((projected.y + 1) / 2) * target.height) - half),
       );
-      const data = await readPixelsAsync(renderer, target, x, y, size, size, (n) => new Uint8Array(n));
+      const data = await readPixelsAsync(
+        renderer,
+        target,
+        x,
+        y,
+        size,
+        size,
+        (n) => new Uint8Array(n),
+      );
       let sum = 0;
       for (let i = 0; i < size * size; i++) sum += data[i * 4] ?? 0;
       return sum / (size * size) / 255;
     },
     coverageAsync: async (renderer) => {
       const target = targetOf(shadows);
-      const data = await readPixelsAsync(renderer, target, 0, 0, target.width, target.height, (n) => new Uint8Array(n));
+      const data = await readPixelsAsync(
+        renderer,
+        target,
+        0,
+        0,
+        target.width,
+        target.height,
+        (n) => new Uint8Array(n),
+      );
       let dark = 0;
       for (let i = 0; i < data.length; i += 4) if ((data[i] ?? 255) < 230) dark++;
       return dark / (target.width * target.height);
@@ -227,7 +266,13 @@ export function makeDfShadowScene(): DfShadowScene {
       //
       // 實測踩過：一個場外的取樣點根本不在畫面上，而它讓「越界回 0」那個
       // 破壞完全驗不到。
-      if (projected.x < -1 || projected.x > 1 || projected.y < -1 || projected.y > 1 || projected.z > 1) {
+      if (
+        projected.x < -1 ||
+        projected.x > 1 ||
+        projected.y < -1 ||
+        projected.y > 1 ||
+        projected.z > 1
+      ) {
         return Number.NaN;
       }
       const x = Math.round(((projected.x + 1) / 2) * target.width);

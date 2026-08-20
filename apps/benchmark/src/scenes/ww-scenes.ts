@@ -77,7 +77,12 @@ function place(
   }
 }
 
-function orbit(camera: PerspectiveCamera, frameIndex: number, spread: number, frames: number): void {
+function orbit(
+  camera: PerspectiveCamera,
+  frameIndex: number,
+  spread: number,
+  frames: number,
+): void {
   applyOrbitPath(camera, frameIndex, {
     radius: spread * 0.45,
     height: spread * 0.03,
@@ -108,9 +113,7 @@ export const nativeInstancingScene: SceneDefinition = {
       rawScene(scene, camera, {
         update: (frameIndex) => orbit(camera, frameIndex, spread, ctx.measureFrames),
         reportParams: { count, spread, variant: 'native', lodLevels: 1 },
-        notes: [
-          '對照組：沒有剔除、沒有 LOD。與 ab-ww-instanced 是同一份矩陣、同一條相機路徑。',
-        ],
+        notes: ['對照組：沒有剔除、沒有 LOD。與 ab-ww-instanced 是同一份矩陣、同一條相機路徑。'],
         dispose: () => {
           geometry.dispose();
           material.dispose();

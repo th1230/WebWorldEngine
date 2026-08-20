@@ -17,7 +17,12 @@ import {
 } from 'three/webgpu';
 import { applyOrbitPath } from '../camera-path.ts';
 import { DEFAULT_SEED, createRng } from '../rng.ts';
-import { numberParam, type BenchmarkScene, type SceneContext, type SceneDefinition } from './types.ts';
+import {
+  numberParam,
+  type BenchmarkScene,
+  type SceneContext,
+  type SceneDefinition,
+} from './types.ts';
 import { rawScene } from './raw-scene.ts';
 
 function makeCamera(aspect: number, far = 4000): PerspectiveCamera {
@@ -42,14 +47,16 @@ export const baselineEmptyScene: SceneDefinition = {
     const scene = new Scene();
     const camera = makeCamera(ctx.aspect);
 
-    return Promise.resolve(rawScene(scene, camera, {
-      update: () => {
-        // 刻意什麼都不做：這個場景量的就是「什麼都不畫」要花多少時間
-      },
-      reportParams: {},
-      notes: [],
-      dispose: () => {},
-    }));
+    return Promise.resolve(
+      rawScene(scene, camera, {
+        update: () => {
+          // 刻意什麼都不做：這個場景量的就是「什麼都不畫」要花多少時間
+        },
+        reportParams: {},
+        notes: [],
+        dispose: () => {},
+      }),
+    );
   },
 };
 
@@ -89,23 +96,25 @@ export const instancingScene: SceneDefinition = {
 
     const camera = makeCamera(ctx.aspect, spread * 6);
 
-    return Promise.resolve(rawScene(scene, camera, {
-      update: (frameIndex) => {
-        applyOrbitPath(camera, frameIndex, {
-          radius: spread * 0.9,
-          height: spread * 0.2,
-          framesPerRevolution: ctx.measureFrames,
-          bobAmplitude: spread * 0.1,
-        });
-      },
-      reportParams: { count, spread },
-      notes: [],
-      dispose: () => {
-        geometry.dispose();
-        material.dispose();
-        mesh.dispose();
-      },
-    }));
+    return Promise.resolve(
+      rawScene(scene, camera, {
+        update: (frameIndex) => {
+          applyOrbitPath(camera, frameIndex, {
+            radius: spread * 0.9,
+            height: spread * 0.2,
+            framesPerRevolution: ctx.measureFrames,
+            bobAmplitude: spread * 0.1,
+          });
+        },
+        reportParams: { count, spread },
+        notes: [],
+        dispose: () => {
+          geometry.dispose();
+          material.dispose();
+          mesh.dispose();
+        },
+      }),
+    );
   },
 };
 
@@ -173,21 +182,23 @@ export const batchingScene: SceneDefinition = {
 
     const camera = makeCamera(ctx.aspect, spread * 6);
 
-    return Promise.resolve(rawScene(scene, camera, {
-      update: (frameIndex) => {
-        applyOrbitPath(camera, frameIndex, {
-          radius: spread * 0.8,
-          height: spread * 0.25,
-          framesPerRevolution: ctx.measureFrames,
-        });
-      },
-      reportParams: { count: instances, shapes: shapes.length, spread },
-      notes,
-      dispose: () => {
-        for (const g of shapes) g.dispose();
-        material.dispose();
-        batched.dispose();
-      },
-    }));
+    return Promise.resolve(
+      rawScene(scene, camera, {
+        update: (frameIndex) => {
+          applyOrbitPath(camera, frameIndex, {
+            radius: spread * 0.8,
+            height: spread * 0.25,
+            framesPerRevolution: ctx.measureFrames,
+          });
+        },
+        reportParams: { count: instances, shapes: shapes.length, spread },
+        notes,
+        dispose: () => {
+          for (const g of shapes) g.dispose();
+          material.dispose();
+          batched.dispose();
+        },
+      }),
+    );
   },
 };

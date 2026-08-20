@@ -177,10 +177,7 @@ export class AnimatedInstancedMesh extends InstancedMesh {
     }
 
     const previous = material.onBeforeCompile;
-    const injected = (
-      shader: WebGLProgramParametersWithUniforms,
-      ...rest: unknown[]
-    ): void => {
+    const injected = (shader: WebGLProgramParametersWithUniforms, ...rest: unknown[]): void => {
       // 使用者可能自己掛過一個 —— 蓋掉別人的鉤子等於靜靜改變他的材質。
       (previous as ((...args: unknown[]) => void) | undefined)?.call(material, shader, ...rest);
       Object.assign(shader.uniforms, uniforms);
@@ -229,9 +226,7 @@ export class AnimatedInstancedMesh extends InstancedMesh {
     );
   }
 
-  override onBeforeRender(
-    ...args: Parameters<InstancedMesh['onBeforeRender']>
-  ): void {
+  override onBeforeRender(...args: Parameters<InstancedMesh['onBeforeRender']>): void {
     super.onBeforeRender(...args);
     // 在這裡查而不是建構時：蓋掉我們的那一行通常發生在建構之後。
     this.checkHook();

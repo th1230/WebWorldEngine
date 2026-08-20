@@ -204,8 +204,8 @@ describe('WW.load', () => {
       'fetch',
       vi.fn(async (url: string) =>
         url.endsWith('.json')
-          ? ({ ok: true, json: async () => asset.manifest }) as Response
-          : ({ ok: true, arrayBuffer: async () => broken.buffer.slice(0) }) as Response,
+          ? ({ ok: true, json: async () => asset.manifest } as Response)
+          : ({ ok: true, arrayBuffer: async () => broken.buffer.slice(0) } as Response),
       ),
     );
 

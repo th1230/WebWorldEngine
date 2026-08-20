@@ -78,9 +78,7 @@ const COUNT = Number(params.get('count') ?? 60_000);
  * 把門檻放寬回去應該要能拿回那個差，而那正是這個參數存在的理由：讓
  * 「契約多嚴」變成一個量得出價錢的選擇，而不是一句話。
  */
-const ERROR_PIXELS = params.has('errorPixels')
-  ? Number(params.get('errorPixels'))
-  : undefined;
+const ERROR_PIXELS = params.has('errorPixels') ? Number(params.get('errorPixels')) : undefined;
 
 /** `?extendLod=1` 開啟引擎自己接更粗的階（套件裡預設關）。 */
 const EXTEND_LOD = params.get('extendLod') === '1';
@@ -173,9 +171,7 @@ const SINGLE_LOD = params.get('lodLevels') === '1';
  * 可合併的格數（實測 60 對 443），於是**哪幾格是合併的每一幀都在變**，
  * 畫面比對就永遠不穩。兩種畫法都在契約內，但那讓檢查讀不出程式碼的差異。
  */
-const HLOD_BUDGET_MB = params.has('hlodBudgetMB')
-  ? Number(params.get('hlodBudgetMB'))
-  : undefined;
+const HLOD_BUDGET_MB = params.has('hlodBudgetMB') ? Number(params.get('hlodBudgetMB')) : undefined;
 /**
  * 內容鋪多大、每個多大、相機繞多遠。
  *
@@ -358,9 +354,9 @@ const source: WW.GeometrySource = useCooked
 
 // 只留第 0 階 —— 那時選階不可能挑到別階，差異裡就沒有 LOD 這一項。
 const usedSource: WW.GeometrySource = SINGLE_LOD
-  ? (Array.isArray((source as { lods?: unknown[] }).lods)
-      ? { lods: [(source as unknown as { lods: THREE.BufferGeometry[] }).lods[0]!], errors: [0] }
-      : source)
+  ? Array.isArray((source as { lods?: unknown[] }).lods)
+    ? { lods: [(source as unknown as { lods: THREE.BufferGeometry[] }).lods[0]!], errors: [0] }
+    : source
   : source;
 
 /**
@@ -433,7 +429,9 @@ if (skinnedField !== null) {
  * 而這裡只烘第一個 —— 這支是量尺不是完整的載入器，而「只烘一個 primitive」
  * 這件事要講出來，不然畫面上少了大半個模型會看起來像烘壞了。
  */
-async function loadSkinnedGlb(name: string): Promise<{ mesh: THREE.SkinnedMesh; clip: THREE.AnimationClip } | null> {
+async function loadSkinnedGlb(
+  name: string,
+): Promise<{ mesh: THREE.SkinnedMesh; clip: THREE.AnimationClip } | null> {
   const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
   const gltf = await new GLTFLoader().loadAsync(`/source-assets/gltf-sample/${name}.glb`);
   let found: THREE.SkinnedMesh | null = null;
@@ -487,7 +485,12 @@ const vtLookScene = VT_LOOK
 
 const impostorScene: ImpostorScene | null =
   TREES > 0 || IMPOSTOR_LOOK
-    ? makeImpostorScene(renderer, IMPOSTOR_LOOK ? 300 : TREES, IMPOSTOR_LOOK ? 300 : SPREAD, IMPOSTOR_LOOK ? true : USE_IMPOSTOR)
+    ? makeImpostorScene(
+        renderer,
+        IMPOSTOR_LOOK ? 300 : TREES,
+        IMPOSTOR_LOOK ? 300 : SPREAD,
+        IMPOSTOR_LOOK ? true : USE_IMPOSTOR,
+      )
     : null;
 if (impostorScene !== null && !IMPOSTOR_LOOK) {
   scene.add(impostorScene.root);
@@ -512,16 +515,25 @@ const textureHeavy: TextureHeavyScene | null =
 // 1024 kB，加了 WebGPU 那條路之後就頂到了。
 //
 // 調高預算是最容易的做法，也是最糟的：一個一撞到就往上調的預算不是預算。
-const contactScene: ContactScene | null = params.get('contact') === '1' ? (await import('./contact-scene.ts')).makeContactScene() : null;
+const contactScene: ContactScene | null =
+  params.get('contact') === '1' ? (await import('./contact-scene.ts')).makeContactScene() : null;
 /** `?dfshadow=1` 大箱子在空地上，證明遠處的陰影是距離場追出來的。 */
-const dfShadowScene: DfShadowScene | null = params.get('dfshadow') === '1' ? (await import('./df-shadow-scene.ts')).makeDfShadowScene() : null;
+const dfShadowScene: DfShadowScene | null =
+  params.get('dfshadow') === '1'
+    ? (await import('./df-shadow-scene.ts')).makeDfShadowScene()
+    : null;
 /** `?reflect=1` 一面鏡子照到畫面外的紅箱子 —— 螢幕空間做不到的那一段。 */
-const reflectionScene: ReflectionScene | null = params.get('reflect') === '1' ? (await import('./reflection-scene.ts')).makeReflectionScene() : null;
+const reflectionScene: ReflectionScene | null =
+  params.get('reflect') === '1'
+    ? (await import('./reflection-scene.ts')).makeReflectionScene()
+    : null;
 /** `?sky=1` 大氣散射的天空，順便證明它會餵給探針。 */
-const skyScene: SkyScene | null = params.get('sky') === '1' ? (await import('./sky-scene.ts')).makeSkyScene() : null;
+const skyScene: SkyScene | null =
+  params.get('sky') === '1' ? (await import('./sky-scene.ts')).makeSkyScene() : null;
 if (skyScene !== null) rocks.visible = false;
 /** `?fog=1` 一面有缺口的牆，太陽在後面 —— 光柱要被擋住。 */
-const fogScene: FogScene | null = params.get('fog') === '1' ? (await import('./fog-scene.ts')).makeFogScene() : null;
+const fogScene: FogScene | null =
+  params.get('fog') === '1' ? (await import('./fog-scene.ts')).makeFogScene() : null;
 if (fogScene !== null) rocks.visible = false;
 /** `?vsm=N` 虛擬陰影圖，N 是最細階一邊幾頁（A/B 用）。 */
 /** `?waterlook=1` 水的外觀。 */
@@ -541,17 +553,14 @@ const shadowLodScene: ShadowLodScene | null = params.has('shadowlod')
   ? (await import('./shadow-lod-scene.ts')).makeShadowLodScene({
       mode: (params.get('shadowlod') ?? 'offscreen') as 'offscreen' | 'field' | 'occluded',
       shadowCulling: params.get('shadowcull') !== '0',
-      ...(params.has('shadowerr')
-        ? { shadowErrorPixels: Number(params.get('shadowerr')) }
-        : {}),
+      ...(params.has('shadowerr') ? { shadowErrorPixels: Number(params.get('shadowerr')) } : {}),
     })
   : null;
 if (shadowLodScene !== null) rocks.visible = false;
 
 /** `?lodfade=1` 換成換階淡入的場景（與主場景的 `?lodFade=` 不同，那個是 A/B）。 */
-const lodFadeScene = params.get('lodfade') === '1'
-  ? (await import('./lod-fade-scene.ts')).makeLodFadeScene()
-  : null;
+const lodFadeScene =
+  params.get('lodfade') === '1' ? (await import('./lod-fade-scene.ts')).makeLodFadeScene() : null;
 
 const vsmScene: VsmScene | null = params.has('vsm')
   ? (await import('./vsm-scene.ts')).makeVsmScene(Math.max(1, Number(params.get('vsm'))))
@@ -561,7 +570,10 @@ if (reflectionScene !== null) rocks.visible = false;
 if (dfShadowScene !== null) rocks.visible = false;
 if (contactScene !== null) rocks.visible = false;
 
-const vtScene: VirtualTextureScene | null = params.get('vt') === '1' ? (await import('./virtual-texture-scene.ts')).makeVirtualTextureScene() : null;
+const vtScene: VirtualTextureScene | null =
+  params.get('vt') === '1'
+    ? (await import('./virtual-texture-scene.ts')).makeVirtualTextureScene()
+    : null;
 /** 正交相機，讓那張平面剛好鋪滿畫布：UV (0,0) 在左下、(1,1) 在右上。 */
 /** `?rewrite=P&rewriteCount=M`：**大約 P% 的幀**（交錯，不是定期）重寫 M 個矩陣。 */
 const rewriteProbe = {
@@ -646,8 +658,7 @@ if (textureHeavy !== null) {
   rocks.visible = false;
 }
 
-const bigMesh: BigMeshScene | null =
-  BIG_MESH > 0 ? await makeBigMesh(3000, BIG_MESH, SPLIT) : null;
+const bigMesh: BigMeshScene | null = BIG_MESH > 0 ? await makeBigMesh(3000, BIG_MESH, SPLIT) : null;
 if (bigMesh !== null) {
   scene.add(bigMesh.root);
   rocks.visible = false;
@@ -656,7 +667,12 @@ if (bigMesh !== null) {
 /** `?giOff=1` 把間接光的強度在**建構時**設成 0 —— node 那條路只有這個時機改得動。 */
 const GI_OFF = params.get('giOff') === '1';
 const giScene: GiScene | null = GI
-  ? makeGiScene(undefined, GI_OFF ? 0 : 1, Number(params.get('probeFace') ?? 16), Number(params.get('probeRes') ?? 8))
+  ? makeGiScene(
+      undefined,
+      GI_OFF ? 0 : 1,
+      Number(params.get('probeFace') ?? 16),
+      Number(params.get('probeRes') ?? 8),
+    )
   : null;
 if (giScene !== null) {
   scene.add(giScene.root);
@@ -770,9 +786,7 @@ if (csm !== null) WW.applyShadows(csm, scene);
 const composer = usePost ? new EffectComposer(renderer) : null;
 if (composer !== null) {
   composer.addPass(new RenderPass(scene, camera));
-  composer.addPass(
-    new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.6, 0.5, 0.85),
-  );
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.6, 0.5, 0.85));
   composer.addPass(new OutputPass());
   composer.setSize(innerWidth, innerHeight);
 }
@@ -795,8 +809,8 @@ const PER_CELL = 400;
  * 接在同一個 `stream` 上，所以兩種寫法**產出的東西是同一種** —— 那才
  * 比得出差別。
  */
-const scattered = SCATTER
-  && enhanced
+const scattered =
+  SCATTER && enhanced
     ? WW.scatter([
         {
           mesh: rocks as WW.InstancedMesh,
@@ -804,7 +818,7 @@ const scattered = SCATTER
           scale: [0.6, 3],
         },
       ])
-  : null;
+    : null;
 
 /**
  * 串流時那幾幀為什麼比較慢 —— 量測用（tools/gpu-check/stream-hitch.mjs）。
@@ -878,7 +892,10 @@ if (useStream && world !== null) {
         quaternion.setFromEuler(euler);
         const size = (0.6 + rnd() * 2.4) * SIZE;
         // 刻意重複使用同一個 Matrix4 —— 那是 Three.js 的慣例，介面必須撐得住。
-        place(rocks as WW.InstancedMesh, matrix.compose(position, quaternion, scale.setScalar(size)));
+        place(
+          rocks as WW.InstancedMesh,
+          matrix.compose(position, quaternion, scale.setScalar(size)),
+        );
       }
       streamProbe.loadMs += performance.now() - probeStart;
     },
@@ -908,7 +925,11 @@ const animate = (time: number): void => {
   const t = time / 1000;
   const radius = ORBIT;
   camera.position.set(Math.cos(t * 0.12) * radius, 14 * SIZE, Math.sin(t * 0.12) * radius);
-  camera.lookAt(Math.cos(t * 0.12 + 1.2) * (radius * 0.23), 8 * SIZE, Math.sin(t * 0.12 + 1.2) * (radius * 0.23));
+  camera.lookAt(
+    Math.cos(t * 0.12 + 1.2) * (radius * 0.23),
+    8 * SIZE,
+    Math.sin(t * 0.12 + 1.2) * (radius * 0.23),
+  );
   walker.position.set(camera.position.x * 0.9, 1.4, camera.position.z * 0.9);
 
   // ## 送指令的時間，不是 GPU 的時間
@@ -982,7 +1003,9 @@ const animate = (time: number): void => {
     if (countProbe.full === 0) countProbe.full = mesh.count;
     const roll = probeRandom();
     countProbe.didToggle = roll < countProbe.every;
-    mesh.count = countProbe.didToggle ? Math.max(0, countProbe.full - countProbe.delta) : countProbe.full;
+    mesh.count = countProbe.didToggle
+      ? Math.max(0, countProbe.full - countProbe.delta)
+      : countProbe.full;
     countProbe.frame++;
   }
 
@@ -1085,9 +1108,7 @@ function updateHud(): void {
         `累計            載入 ${s.totalLoads} / 卸載 ${s.totalUnloads}`,
       );
     }
-    lines.push(
-      `<a href="?ww=0&count=${COUNT}">→ 換回 THREE.InstancedMesh</a>`,
-    );
+    lines.push(`<a href="?ww=0&count=${COUNT}">→ 換回 THREE.InstancedMesh</a>`);
   } else {
     lines.push(
       `<span class="off">THREE.InstancedMesh（原生）</span>`,
@@ -1142,7 +1163,11 @@ function step(t = 0): void {
       camera.lookAt(0, 0, 0);
     } else {
       const side = Math.ceil(Math.sqrt(textureHeavy.textures)) * 9;
-      camera.position.set(Math.cos(t * 0.15) * side * 0.6, side * 0.75, Math.sin(t * 0.15) * side * 0.6);
+      camera.position.set(
+        Math.cos(t * 0.15) * side * 0.6,
+        side * 0.75,
+        Math.sin(t * 0.15) * side * 0.6,
+      );
       camera.lookAt(0, 0, 0);
     }
   } else if (bigMesh !== null) {
@@ -1978,9 +2003,9 @@ Object.assign(window, {
               fogScene.sampleWindowAsync(renderer, u, v, size),
             spots: (): unknown => fogScene.spots,
             render: (useField: boolean): void => fogScene.render(renderer, useField),
-            variance: (which: "throughGap" | "behindWall" | "sky"): number =>
+            variance: (which: 'throughGap' | 'behindWall' | 'sky'): number =>
               fogScene.localVariance(renderer, fogScene.spots[which][0], fogScene.spots[which][1]),
-            sample: (which: "throughGap" | "behindWall"): [number, number, number, number] =>
+            sample: (which: 'throughGap' | 'behindWall'): [number, number, number, number] =>
               fogScene.sampleAt(renderer, fogScene.spots[which][0], fogScene.spots[which][1]),
           },
     /**
@@ -2020,7 +2045,8 @@ Object.assign(window, {
           const col = Math.min(cols - 1, Math.floor((x / width) * cols));
           const i = (y * width + x) * 4;
           const cell = row * cols + col;
-          sums[cell] = (sums[cell] ?? 0) + (buffer[i] ?? 0) + (buffer[i + 1] ?? 0) + (buffer[i + 2] ?? 0);
+          sums[cell] =
+            (sums[cell] ?? 0) + (buffer[i] ?? 0) + (buffer[i + 1] ?? 0) + (buffer[i + 2] ?? 0);
           counts[cell] = (counts[cell] ?? 0) + 1;
         }
       }
@@ -2062,7 +2088,8 @@ Object.assign(window, {
         ? null
         : {
             setSun: (elevation: number): boolean => skyScene.setSun(elevation, renderer),
-            sampleFace: (face: number): [number, number, number] => skyScene.sampleFace(renderer, face),
+            sampleFace: (face: number): [number, number, number] =>
+              skyScene.sampleFace(renderer, face),
             // 跨後端比對要走同一支 —— 兩邊各用各的讀法，量到的差異會混著
             // 「讀法不同」與「實作不同」，而那分不開。
             sampleFaceAsync: (face: number): Promise<[number, number, number]> =>
@@ -2077,7 +2104,9 @@ Object.assign(window, {
         : {
             settle: (): Promise<number> => reflectionScene.settle(renderer),
             render: (useField: boolean): void => reflectionScene.render(renderer, useField),
-            sample: (which: "mirror" | "mirrorLow" | "mirrorGreen"): [number, number, number, number] =>
+            sample: (
+              which: 'mirror' | 'mirrorLow' | 'mirrorGreen',
+            ): [number, number, number, number] =>
               reflectionScene.sample(renderer, reflectionScene.points[which]),
             boxOnScreen: (): boolean => reflectionScene.boxOnScreen(),
             greenOnScreen: (): boolean => reflectionScene.greenOnScreen(),
@@ -2093,16 +2122,19 @@ Object.assign(window, {
             render: (): void => dfShadowScene.render(renderer),
             // 跨後端比對要走同一支。WebGPU 沒有同步的讀回。
             sampleWindowAsync: (
-              which: "shadow" | "open" | "behind" | "outside" | "boxTop" | "terminator",
+              which: 'shadow' | 'open' | 'behind' | 'outside' | 'boxTop' | 'terminator',
               size: number,
             ): Promise<number> =>
               dfShadowScene.sampleWindowAsync(renderer, dfShadowScene.points[which], size),
             coverageAsync: (): Promise<number> => dfShadowScene.coverageAsync(renderer),
-            sample: (which: "shadow" | "open" | "behind" | "outside" | "boxTop" | "terminator"): number =>
-              dfShadowScene.sample(renderer, dfShadowScene.points[which]),
+            sample: (
+              which: 'shadow' | 'open' | 'behind' | 'outside' | 'boxTop' | 'terminator',
+            ): number => dfShadowScene.sample(renderer, dfShadowScene.points[which]),
             coverage: (): number => dfShadowScene.coverage(renderer),
             renderFog: (useField: boolean): void => dfShadowScene.renderFog(renderer, useField),
-            sampleFog: (which: "shadow" | "open" | "behind" | "outside" | "boxTop" | "terminator"): [number, number, number, number] =>
+            sampleFog: (
+              which: 'shadow' | 'open' | 'behind' | 'outside' | 'boxTop' | 'terminator',
+            ): [number, number, number, number] =>
               dfShadowScene.sampleFog(renderer, dfShadowScene.points[which]),
             setStrength: (v: number): void => dfShadowScene.setStrength(v),
             setCameraAngle: (w: 0 | 1): void => dfShadowScene.setCameraAngle(w),
@@ -2112,23 +2144,28 @@ Object.assign(window, {
         ? null
         : {
             render: (): void => contactScene.render(renderer),
-            sample: (which: "contact" | "open" | "lit" | "terminator" | "under"): number =>
+            sample: (which: 'contact' | 'open' | 'lit' | 'terminator' | 'under'): number =>
               contactScene.sample(renderer, contactScene.points[which]),
             // 跨後端比對要走同一支。WebGPU 沒有同步的讀回。
             sampleAsync: (
-              which: "contact" | "open" | "lit" | "terminator" | "under",
+              which: 'contact' | 'open' | 'lit' | 'terminator' | 'under',
             ): Promise<number> => contactScene.sampleAsync(renderer, contactScene.points[which]),
             coverage: (): number => contactScene.coverage(renderer),
             coverageAsync: (): Promise<number> => contactScene.coverageAsync(renderer),
-            probePixel: (which: "contact" | "open" | "lit" | "terminator" | "under"): unknown =>
+            probePixel: (which: 'contact' | 'open' | 'lit' | 'terminator' | 'under'): unknown =>
               contactScene.probePixel(contactScene.points[which]),
             readPixelAsync: (x: number, y: number): Promise<number> =>
               contactScene.readPixelAsync(renderer, x, y),
-            sampleWindowAsync: (which: "contact" | "open" | "lit" | "terminator" | "under", size: number): Promise<number> =>
+            sampleWindowAsync: (
+              which: 'contact' | 'open' | 'lit' | 'terminator' | 'under',
+              size: number,
+            ): Promise<number> =>
               contactScene.sampleWindowAsync(renderer, contactScene.points[which], size),
             maskMapAsync: (): Promise<number[]> => contactScene.maskMapAsync(renderer),
             normalMapAsync: (): Promise<number[]> => contactScene.normalMapAsync(renderer),
-            sampleNormalAsync: (which: "contact" | "open" | "lit" | "terminator" | "under"): Promise<number[]> =>
+            sampleNormalAsync: (
+              which: 'contact' | 'open' | 'lit' | 'terminator' | 'under',
+            ): Promise<number[]> =>
               contactScene.sampleNormalAsync(renderer, contactScene.points[which]),
             setStrength: (v: number): void => contactScene.setStrength(v),
             setCameraAngle: (which: 0 | 1): void => contactScene.setCameraAngle(which),
@@ -2244,7 +2281,8 @@ Object.assign(window, {
             stats: () => giScene.stats(),
             bake: () => giScene.bake(renderer, scene),
             setEnabled: (on: boolean) => giScene.setEnabled(on),
-            sampleCpu: (p: [number, number, number], n: [number, number, number]) => giScene.sampleCpu(p, n),
+            sampleCpu: (p: [number, number, number], n: [number, number, number]) =>
+              giScene.sampleCpu(p, n),
             // 畫出來的像素 —— SH 對得上不代表著色端也對得上。
             renderedWindowAsync: (u: number, v: number, size: number): Promise<number[]> =>
               giScene.renderedWindowAsync(renderer, scene, u, v, size),
@@ -2508,12 +2546,16 @@ Object.assign(window, {
             count: VAT,
             frames: vatField.baked.frameCount,
             vertices: vatField.baked.vertexCount,
-            textureMB: +((vatField.baked.vertexCount * vatField.baked.frameCount * 16) / 1048576).toFixed(2),
+            textureMB: +(
+              (vatField.baked.vertexCount * vatField.baked.frameCount * 16) /
+              1048576
+            ).toFixed(2),
             bakeMs: +vatField.bakeMs.toFixed(1),
           },
-    skinned: skinnedField === null
-      ? null
-      : { count: SKINNED, triangles: skinnedField.triangles, bones: skinnedField.bones },
+    skinned:
+      skinnedField === null
+        ? null
+        : { count: SKINNED, triangles: skinnedField.triangles, bones: skinnedField.bones },
     // 任何 GPU 計時之前都要先跑它。沒跑的話量到的是**還在烘遠景合併**的
     // 那幾幀 —— 實測同一個場景 44.5 ms 對 14.7 ms，差三倍，而且看起來
     // 完全像一個真實的結果。

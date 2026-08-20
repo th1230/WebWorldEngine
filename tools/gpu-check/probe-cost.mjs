@@ -35,9 +35,12 @@ const server = createServer((req, res) => {
     (b) => {
       res.writeHead(200, {
         'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
+          {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.json': 'application/json',
+            '.wasm': 'application/wasm',
+          }[extname(file)] ?? 'application/octet-stream',
       });
       res.end(b);
     },
@@ -50,25 +53,33 @@ const browser = await chromium.launch({ channel: 'chrome' });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 try {
   for (const face of [4, 8, 16, 32]) {
-  await page.goto(`http://localhost:${server.address().port}/?gi=1&probeFace=${face}`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__ww?.gi !== null && window.__ww?.gi !== undefined, undefined, {
-    timeout: 120000,
-  });
-  const out = await page.evaluate(async () => {
-    const gi = window.__ww.gi;
-    const started = performance.now();
-    let rounds = 0;
-    while (gi.stats().baked < gi.stats().probes && rounds < 5000) {
-      await gi.bake();
-      rounds++;
-    }
-    const elapsed = performance.now() - started;
-    const stats = gi.stats();
-    return { elapsed, rounds, probes: stats.probes };
-  });
-  const perProbe = out.elapsed / out.probes;
+    await page.goto(`http://localhost:${server.address().port}/?gi=1&probeFace=${face}`, {
+      waitUntil: 'load',
+    });
+    await page.waitForFunction(
+      () => window.__ww?.gi !== null && window.__ww?.gi !== undefined,
+      undefined,
+      {
+        timeout: 120000,
+      },
+    );
+    const out = await page.evaluate(async () => {
+      const gi = window.__ww.gi;
+      const started = performance.now();
+      let rounds = 0;
+      while (gi.stats().baked < gi.stats().probes && rounds < 5000) {
+        await gi.bake();
+        rounds++;
+      }
+      const elapsed = performance.now() - started;
+      const stats = gi.stats();
+      return { elapsed, rounds, probes: stats.probes };
+    });
+    const perProbe = out.elapsed / out.probes;
 
-  console.log(`  面寬 ${face}：一顆 ${perProbe.toFixed(2)} ms（${out.rounds} 輪烘完 ${out.probes} 顆）`);
+    console.log(
+      `  面寬 ${face}：一顆 ${perProbe.toFixed(2)} ms（${out.rounds} 輪烘完 ${out.probes} 顆）`,
+    );
   }
 } catch (e) {
   console.log('失敗：' + String(e).split('\n')[0].slice(0, 160));

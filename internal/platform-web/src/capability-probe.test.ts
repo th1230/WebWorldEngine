@@ -43,7 +43,11 @@ afterEach(() => {
 describe('probeCapabilities on WebGPU', () => {
   it('reads limits defined as prototype getters', async () => {
     stubWebGPU({
-      limits: { maxTextureDimension2D: 16384, maxStorageBufferBindingSize: 2147483644, maxBindGroups: 4 },
+      limits: {
+        maxTextureDimension2D: 16384,
+        maxStorageBufferBindingSize: 2147483644,
+        maxBindGroups: 4,
+      },
     });
 
     const profile = await probeCapabilities();

@@ -99,7 +99,9 @@ describe('高度場地表', () => {
 
   it('segments 不是 2 的冪就當場丟', () => {
     // 除不盡的話最後一排格子會被默默丟掉 —— 地表邊緣缺一條，不報錯。
-    expect(() => buildTerrain({ size: 100, tiles: 1, segments: 12, height: hills })).toThrow(/2 的冪/);
+    expect(() => buildTerrain({ size: 100, tiles: 1, segments: 12, height: hills })).toThrow(
+      /2 的冪/,
+    );
   });
 
   it('切幾塊都是同一片地形 —— 高度用世界座標算', () => {

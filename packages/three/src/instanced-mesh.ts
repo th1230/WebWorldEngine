@@ -20,16 +20,8 @@ import { createFrustum, frustumFromCamera, type Frustum } from './camera-frustum
 import { InstanceBlocks } from './instance-blocks.ts';
 import { InstanceGrid } from './instance-grid.ts';
 import { pixelsPerUnit, resolveLodChain, selectLevel, type GeometrySource } from './lod-chain.ts';
-import {
-  LOD_FADE_CAPACITY,
-  LOD_FADE_FRAGMENT_GLSL,
-  LOD_FADE_VERTEX_GLSL,
-} from './lod-fade.ts';
-import type {
-  GeneratedLevel,
-  GeometryData,
-  LodGenerationOptions,
-} from './lod-generation.ts';
+import { LOD_FADE_CAPACITY, LOD_FADE_FRAGMENT_GLSL, LOD_FADE_VERTEX_GLSL } from './lod-fade.ts';
+import type { GeneratedLevel, GeometryData, LodGenerationOptions } from './lod-generation.ts';
 import { requestLodLevels } from './lod-service.ts';
 import { mergeInstances, mergedSize, placeholderLike } from './hlod.ts';
 import { assertBatchedMeshInternals, type BatchedMeshInternals } from './three-internals.ts';
@@ -797,7 +789,10 @@ export class InstancedMesh extends BatchedMesh {
     this.sourceGeometry = geometries[0]!;
     this.lodErrors = errors;
     this.errorPixels = options.errorPixels ?? 2;
-    this.shadowErrorPixels = Math.max(this.errorPixels, options.shadowErrorPixels ?? this.errorPixels * 3);
+    this.shadowErrorPixels = Math.max(
+      this.errorPixels,
+      options.shadowErrorPixels ?? this.errorPixels * 3,
+    );
     this.shadowCulling = options.shadowCulling ?? true;
     this.lodFadeBand = Math.max(0, options.lodFadeBand ?? 0);
     if (this.lodFadeBand > 0) this.installLodFade(material);
@@ -1575,7 +1570,8 @@ export class InstancedMesh extends BatchedMesh {
         .multiplyMatrices(perspective.projectionMatrix, perspective.matrixWorldInverse)
         .multiply(this.matrixWorld);
       // 半徑 1 的東西在距離 1 處佔幾個緩衝像素。透視投影的 m[5] 是 1/tan(fov/2)。
-      const radiusScale = perspective.projectionMatrix.elements[5]! * 0.5 * this.occlusionBuffer.height;
+      const radiusScale =
+        perspective.projectionMatrix.elements[5]! * 0.5 * this.occlusionBuffer.height;
       this.occlusionBuffer.setViewProjection(_viewProjection.elements, radiusScale);
     }
 
@@ -1590,7 +1586,8 @@ export class InstancedMesh extends BatchedMesh {
     // 深度材質 = 正在畫陰影。Three 的 shadow map 與這個套件的虛擬陰影圖
     // 都是這樣畫的，所以一個判斷涵蓋兩條路。
     const asDepth = material as { isMeshDepthMaterial?: boolean; isMeshDistanceMaterial?: boolean };
-    this.drawingShadow = asDepth.isMeshDepthMaterial === true || asDepth.isMeshDistanceMaterial === true;
+    this.drawingShadow =
+      asDepth.isMeshDepthMaterial === true || asDepth.isMeshDistanceMaterial === true;
     const multiplier = (material as { wireframe?: boolean }).wireframe === true ? 2 : 1;
 
     const collectStarted = performance.now();
@@ -2511,7 +2508,12 @@ export class InstancedMesh extends BatchedMesh {
     // 走訪順序換人時（格子剛重建、或剛恢復）就整份重算 —— 那時每一格對應
     // 到的 instance 都變了。
     const sameLayout = this.spheresByOrder === byOrder;
-    if (sameLayout && !this.spheresAllDirty && this.dirtyCount === 0 && previousCount === this.count) {
+    if (
+      sameLayout &&
+      !this.spheresAllDirty &&
+      this.dirtyCount === 0 &&
+      previousCount === this.count
+    ) {
       return;
     }
     const incremental = sameLayout && !byOrder && !this.spheresAllDirty;
@@ -2833,7 +2835,15 @@ export class InstancedMesh extends BatchedMesh {
     // 過渡中的那幾個補在最後 —— 排在遮蔽剔除之後，所以它們不參與剔除。
     // 數量有上限而且很小，那個代價是刻意接受的。
     if (fadeBand > 0) {
-      drawCount = this.appendLodFade(drawCount, fadeCount, starts, counts, indirect, bytesPerElement, multiplier);
+      drawCount = this.appendLodFade(
+        drawCount,
+        fadeCount,
+        starts,
+        counts,
+        indirect,
+        bytesPerElement,
+        multiplier,
+      );
     }
     this._testedInstances = tested;
     this._skippedPlanes = skippedPlanes;
@@ -2969,12 +2979,12 @@ export class InstancedMesh extends BatchedMesh {
       this.warnedOcclusion = true;
       console.warn(
         [
-          "WW.InstancedMesh: 遮蔽剔除開著，但連續 120 幀幾乎沒有剔到東西",
+          'WW.InstancedMesh: 遮蔽剔除開著，但連續 120 幀幾乎沒有剔到東西',
           `（這一幀 ${drawCount} 個裡剔掉 ${occluded} 個），而它仍然要花 CPU。`,
-          "這個技巧在**大遮蔽物**的內容上有效（牆、山、建築）；密集散佈的小東西",
-          "幾乎剔不到 —— 遮蔽物只能用內接盒、被測物要用外接球，兩層保守疊起來",
-          "之後通不過。這種內容關掉它會比較快。",
-        ].join("\n"),
+          '這個技巧在**大遮蔽物**的內容上有效（牆、山、建築）；密集散佈的小東西',
+          '幾乎剔不到 —— 遮蔽物只能用內接盒、被測物要用外接球，兩層保守疊起來',
+          '之後通不過。這種內容關掉它會比較快。',
+        ].join('\n'),
       );
     }
     return kept;
@@ -2985,7 +2995,7 @@ export class InstancedMesh extends BatchedMesh {
     if (this.innerBoxComputed) return this.innerBoxLocal;
     this.innerBoxComputed = true;
     const geometry = this.sourceGeometry;
-    const position = geometry.getAttribute("position");
+    const position = geometry.getAttribute('position');
     if (position === undefined) return null;
     const index = geometry.getIndex();
     const found = innerBox(
@@ -2994,8 +3004,12 @@ export class InstancedMesh extends BatchedMesh {
     );
     if (found === null) return null;
     this.innerBoxLocal = new Float32Array([
-      found.minX, found.minY, found.minZ,
-      found.maxX, found.maxY, found.maxZ,
+      found.minX,
+      found.minY,
+      found.minZ,
+      found.maxX,
+      found.maxY,
+      found.maxZ,
     ]);
     return this.innerBoxLocal;
   }
@@ -3022,8 +3036,7 @@ export class InstancedMesh extends BatchedMesh {
 
   private projectionScale(renderer: WebGLRenderer, camera: Camera): number {
     const target = renderer.getRenderTarget();
-    const height =
-      target !== null ? target.height : renderer.getDrawingBufferSize(_size).height;
+    const height = target !== null ? target.height : renderer.getDrawingBufferSize(_size).height;
 
     // 正交沒有透視收縮 —— 像素/單位是常數，與距離無關。呼叫端因此要把
     // 選階的距離換成 1（見 `orthographic`）。

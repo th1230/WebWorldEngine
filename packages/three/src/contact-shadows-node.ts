@@ -38,7 +38,8 @@ export interface ContactShadowsNodeHandle {
 export async function createContactShadowsNodeMaterial(): Promise<ContactShadowsNodeHandle> {
   const tsl = await loadTsl();
   const webgpu = await loadWebGPU();
-  const { Fn, Loop, If, Break, float, vec3, vec4, uniform, uv, texture, normalize, dot, mat4 } = tsl;
+  const { Fn, Loop, If, Break, float, vec3, vec4, uniform, uv, texture, normalize, dot, mat4 } =
+    tsl;
 
   // `texture(null)` 建不起來，所以先給一張佔位的 —— `setTextures` 之後會換掉。
   const tNormal = texture(texture2DPlaceholder(webgpu));
@@ -64,7 +65,13 @@ export async function createContactShadowsNodeMaterial(): Promise<ContactShadows
     // 天空：沒有東西就沒有接觸。GLSL 那份是 `return`，TSL 沒有提前 return，
     // 所以整段包在 If 裡 —— 結構不同，算出來的東西一樣。
     If(rawDepth.lessThan(1), () => {
-      const origin = viewPositionFromDepth(tsl, screenUv, rawDepth, uProjectionInverse, convention).toVar();
+      const origin = viewPositionFromDepth(
+        tsl,
+        screenUv,
+        rawDepth,
+        uProjectionInverse,
+        convention,
+      ).toVar();
       const normal = normalize(tNormal.sample(flipV(tsl, screenUv)).xyz.mul(2).sub(1)).toVar();
       // 往光源走（uLightDirection 是照過來的方向，所以要取負）。
       const toLight = normalize(uLightDirection.negate()).toVar();
@@ -133,23 +140,41 @@ export async function createContactShadowsNodeMaterial(): Promise<ContactShadows
     });
 
     const debugged = vec3(result).toVar();
-    If(uDebug.equal(1), () => { debugged.assign(vec3(rawDepth)); });
-    If(uDebug.equal(2), () => { debugged.assign(tNormal.sample(flipV(tsl, screenUv)).xyz); });
+    If(uDebug.equal(1), () => {
+      debugged.assign(vec3(rawDepth));
+    });
+    If(uDebug.equal(2), () => {
+      debugged.assign(tNormal.sample(flipV(tsl, screenUv)).xyz);
+    });
     // 9/10/11：參數本身。設錯的話上面每一個中間值看起來都正常，只有結果不對。
-    If(uDebug.equal(9), () => { debugged.assign(vec3(uThickness.mul(4))); });
-    If(uDebug.equal(10), () => { debugged.assign(vec3(uSteps.div(32))); });
-    If(uDebug.equal(11), () => { debugged.assign(vec3(uDistance.mul(0.5))); });
+    If(uDebug.equal(9), () => {
+      debugged.assign(vec3(uThickness.mul(4)));
+    });
+    If(uDebug.equal(10), () => {
+      debugged.assign(vec3(uSteps.div(32)));
+    });
+    If(uDebug.equal(11), () => {
+      debugged.assign(vec3(uDistance.mul(0.5)));
+    });
     // 13：迴圈裡**最小的正差值**除以 4。小於 0.3 就代表它落在厚度 1.2 之內，
     //     那時遮蔽本來就該成立。
     If(uDebug.equal(13), () => {
-      const o = viewPositionFromDepth(tsl, screenUv, rawDepth, uProjectionInverse, convention).toVar();
+      const o = viewPositionFromDepth(
+        tsl,
+        screenUv,
+        rawDepth,
+        uProjectionInverse,
+        convention,
+      ).toVar();
       const n = normalize(tNormal.sample(flipV(tsl, screenUv)).xyz.mul(2).sub(1)).toVar();
       const l = normalize(uLightDirection.negate()).toVar();
       const st = o.add(n.mul(uThickness).mul(0.5)).toVar();
       const sl = uDistance.div(uSteps).toVar();
       const smallest = float(99).toVar();
-      Loop({ start: 1, end: 33, type: "int", condition: "<" }, ({ i }: any) => {
-        If(float(i).greaterThan(uSteps), () => { Break(); });
+      Loop({ start: 1, end: 33, type: 'int', condition: '<' }, ({ i }: any) => {
+        If(float(i).greaterThan(uSteps), () => {
+          Break();
+        });
         const sp = st.add(l.mul(sl.mul(float(i)))).toVar();
         const c = uProjection.mul(vec4(sp, 1)).toVar();
         const su = c.xy.div(c.w).mul(0.5).add(0.5).toVar();
@@ -157,21 +182,29 @@ export async function createContactShadowsNodeMaterial(): Promise<ContactShadows
         If(sr.lessThan(1), () => {
           const scp = viewPositionFromDepth(tsl, su, sr, uProjectionInverse, convention);
           const d = scp.z.sub(sp.z);
-          If(d.greaterThan(0), () => { smallest.assign(smallest.min(d)); });
+          If(d.greaterThan(0), () => {
+            smallest.assign(smallest.min(d));
+          });
         });
       });
       debugged.assign(vec3(smallest.div(4)));
     });
     // 14：厚度本身除以 4（1.2 → 0.3）。乘 4 那個版本會飽和，分不出 0.25 與 1.2。
-    If(uDebug.equal(14), () => { debugged.assign(vec3(uThickness.div(4))); });
+    If(uDebug.equal(14), () => {
+      debugged.assign(vec3(uThickness.div(4)));
+    });
     // 15：哪些像素被判為天空（早退）。白 = 有幾何，黑 = 天空。
     If(uDebug.equal(15), () => {
       const isGeometry = float(0).toVar();
-      If(rawDepth.lessThan(1), () => { isGeometry.assign(1); });
+      If(rawDepth.lessThan(1), () => {
+        isGeometry.assign(1);
+      });
       debugged.assign(vec3(isGeometry));
     });
     // 12：迴圈實際跑到第幾步（除以 16）。提早 break 的話這個數字會很小。
-    If(uDebug.equal(12), () => { debugged.assign(vec3(stepsReached.div(16))); });
+    If(uDebug.equal(12), () => {
+      debugged.assign(vec3(stepsReached.div(16)));
+    });
     // 7：面向光的程度。這個閘門把整片擋掉的話，結果會恆為 1。
     If(uDebug.equal(7), () => {
       const n7 = normalize(tNormal.sample(flipV(tsl, screenUv)).xyz.mul(2).sub(1));
@@ -180,14 +213,22 @@ export async function createContactShadowsNodeMaterial(): Promise<ContactShadows
     // 8：迴圈裡看到的最大深度差（除以 thickness）。> 1 代表打到但被厚度擋掉，
     //    ≤ 0 代表根本沒有東西擋在前面。
     If(uDebug.equal(8), () => {
-      const o8 = viewPositionFromDepth(tsl, screenUv, rawDepth, uProjectionInverse, convention).toVar();
+      const o8 = viewPositionFromDepth(
+        tsl,
+        screenUv,
+        rawDepth,
+        uProjectionInverse,
+        convention,
+      ).toVar();
       const n8 = normalize(tNormal.sample(flipV(tsl, screenUv)).xyz.mul(2).sub(1)).toVar();
       const l8 = normalize(uLightDirection.negate()).toVar();
       const s8 = o8.add(n8.mul(uThickness).mul(0.5)).toVar();
       const step8 = uDistance.div(uSteps).toVar();
       const best = float(-1).toVar();
-      Loop({ start: 1, end: 33, type: "int", condition: "<" }, ({ i }: any) => {
-        If(float(i).greaterThan(uSteps), () => { Break(); });
+      Loop({ start: 1, end: 33, type: 'int', condition: '<' }, ({ i }: any) => {
+        If(float(i).greaterThan(uSteps), () => {
+          Break();
+        });
         const sp = s8.add(l8.mul(step8.mul(float(i)))).toVar();
         const c = uProjection.mul(vec4(sp, 1)).toVar();
         const su = c.xy.div(c.w).mul(0.5).add(0.5).toVar();
@@ -202,20 +243,40 @@ export async function createContactShadowsNodeMaterial(): Promise<ContactShadows
     // 4：把自己的位置投影回 UV 再取一次深度。與 1 相同代表投影往返是對的；
     //    不同就代表取樣座標被翻轉了（TSL 對 render target 會自動套 flipY）。
     If(uDebug.equal(4), () => {
-      const origin4 = viewPositionFromDepth(tsl, screenUv, rawDepth, uProjectionInverse, convention);
+      const origin4 = viewPositionFromDepth(
+        tsl,
+        screenUv,
+        rawDepth,
+        uProjectionInverse,
+        convention,
+      );
       const clip4 = uProjection.mul(vec4(origin4, 1));
       const uv4 = clip4.xy.div(clip4.w).mul(0.5).add(0.5);
       debugged.assign(vec3(sampleDepth(tsl, tDepth, uv4)));
     });
     // 5：片段自己的 uv 的 y。6：投影往返算出來的 y。兩者相加為 1 就是翻轉了。
-    If(uDebug.equal(5), () => { debugged.assign(vec3(screenUv.y)); });
+    If(uDebug.equal(5), () => {
+      debugged.assign(vec3(screenUv.y));
+    });
     If(uDebug.equal(6), () => {
-      const origin6 = viewPositionFromDepth(tsl, screenUv, rawDepth, uProjectionInverse, convention);
+      const origin6 = viewPositionFromDepth(
+        tsl,
+        screenUv,
+        rawDepth,
+        uProjectionInverse,
+        convention,
+      );
       const clip6 = uProjection.mul(vec4(origin6, 1));
       debugged.assign(vec3(clip6.y.div(clip6.w).mul(0.5).add(0.5)));
     });
     If(uDebug.equal(3), () => {
-      debugged.assign(vec3(viewPositionFromDepth(tsl, screenUv, rawDepth, uProjectionInverse, convention).z.negate().div(50)));
+      debugged.assign(
+        vec3(
+          viewPositionFromDepth(tsl, screenUv, rawDepth, uProjectionInverse, convention)
+            .z.negate()
+            .div(50),
+        ),
+      );
     });
     return vec4(debugged, 1);
   });

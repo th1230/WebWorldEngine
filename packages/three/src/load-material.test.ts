@@ -151,7 +151,9 @@ describe('WW.loadTexture / WW.loadMaterial', () => {
     // 兩個 Texture 包同一份位元組的話，Three 會依實例上傳 —— VRAM 加倍，
     // 而畫面完全正常。
     expect(a).toBe(b);
-    expect(vi.mocked(fetch).mock.calls.filter(([u]) => String(u).endsWith('.ktx2'))).toHaveLength(1);
+    expect(vi.mocked(fetch).mock.calls.filter(([u]) => String(u).endsWith('.ktx2'))).toHaveLength(
+      1,
+    );
   });
 
   it('材質把三張貼圖接到對的插槽，ORM 共用同一個實例', async () => {
@@ -222,9 +224,7 @@ describe('WW.loadTexture / WW.loadMaterial', () => {
   });
 
   it('id 打錯時把有哪些可選一起講出來', async () => {
-    await expect(loadTexture(MANIFEST_URL, 'texture:nope')).rejects.toThrow(
-      /texture:rock-albedo/,
-    );
+    await expect(loadTexture(MANIFEST_URL, 'texture:nope')).rejects.toThrow(/texture:rock-albedo/);
     await expect(loadMaterial(MANIFEST_URL, 'material:nope')).rejects.toThrow(/material:rock/);
   });
 

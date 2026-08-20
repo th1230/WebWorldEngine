@@ -1,4 +1,12 @@
-import { Color, HalfFloatType, Matrix4, NoColorSpace, ShaderMaterial, Vector3, WebGLRenderTarget } from 'three';
+import {
+  Color,
+  HalfFloatType,
+  Matrix4,
+  NoColorSpace,
+  ShaderMaterial,
+  Vector3,
+  WebGLRenderTarget,
+} from 'three';
 import { drawFullscreen, FULLSCREEN_VERTEX, VIEW_POSITION_GLSL } from './fullscreen.ts';
 // 只有型別是靜態的 —— 那份 TSL 轉寫是動態載入的，見 `renderNode`。
 import type { VolumetricFogNodeHandle } from './volumetric-fog-node.ts';
@@ -216,7 +224,8 @@ export class VolumetricFog {
   }
 
   private ensureTarget(width: number, height: number): void {
-    if (this.target !== null && this.target.width === width && this.target.height === height) return;
+    if (this.target !== null && this.target.width === width && this.target.height === height)
+      return;
     this.target?.dispose();
     // 散射光可以超過 1（朝著太陽看的時候），所以半精度。
     this.target = new WebGLRenderTarget(width, height, {

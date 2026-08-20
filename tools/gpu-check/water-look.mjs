@@ -34,10 +34,21 @@ assertDistFresh(root);
 const DIST = join(root, 'apps/example/dist');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
   const file = join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
+            extname(file)
+          ] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -67,11 +78,17 @@ function residual(values) {
   return { count: n, rms };
 }
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+page.on('console', (m) => {
+  if (m.type() === 'error') errors.push(m.text());
+});
 page.on('pageerror', (e) => errors.push(String(e)));
 page.setDefaultNavigationTimeout(240000);
 
@@ -89,7 +106,7 @@ try {
     const baked = await api.settle();
 
     // 由近（淺、正對）到遠（深、掠射）。0.11 還在沙灘上。
-    const rows = [0.13, 0.15, 0.18, 0.24, 0.32, 0.40, 0.46];
+    const rows = [0.13, 0.15, 0.18, 0.24, 0.32, 0.4, 0.46];
     const read = (mode, u) => {
       api.render(mode);
       return rows.map((v) => api.sample(u, v));
@@ -117,7 +134,20 @@ try {
     const edgesOff = api.edges(48);
     api.setRefraction(0.05);
 
-    return { baked, rows, world, cpu, depth, foam, fresnel, refracted, final, edgesOn, edgesOff, coverage: api.coverage() };
+    return {
+      baked,
+      rows,
+      world,
+      cpu,
+      depth,
+      foam,
+      fresnel,
+      refracted,
+      final,
+      edgesOn,
+      edgesOff,
+      coverage: api.coverage(),
+    };
   });
 
   const n = out.rows.length;
@@ -160,10 +190,7 @@ try {
     ratios[0] > lowest * 2.5,
     `同一片灰色的水底，越深紅掉得越多 —— 紅/藍 ${ratios[0].toFixed(3)} → ${lowest.toFixed(3)}`,
   );
-  check(
-    lowest < 0.4,
-    `而水一深紅就先不見 —— 紅/藍 最低掉到 ${lowest.toFixed(3)}`,
-  );
+  check(lowest < 0.4, `而水一深紅就先不見 —— 紅/藍 最低掉到 ${lowest.toFixed(3)}`);
   // 單調只在「水底還看得見」的那一段成立：再深下去水底被吸收光了，顏色
   // 收斂回散射色本身的比例（這個場景裡是 1）。
   const shallow = out.depth.map((d, i) => [d, ratios[i]]).filter(([d]) => d < 20);
@@ -193,27 +220,25 @@ try {
   // 大部分是透視不是折射。所以看的是**離直線多遠**。
   const on = residual(out.edgesOn);
   const off = residual(out.edgesOff);
-  console.log(`  水底那條直邊：開折射 ${on.count} 列、離直線 ${on.rms.toFixed(2)} 像素；關折射 ${off.count} 列、離直線 ${off.rms.toFixed(2)} 像素`);
+  console.log(
+    `  水底那條直邊：開折射 ${on.count} 列、離直線 ${on.rms.toFixed(2)} 像素；關折射 ${off.count} 列、離直線 ${off.rms.toFixed(2)} 像素`,
+  );
   check(on.count > 20 && off.count > 20, `兩組都抓得到那條邊 —— ${on.count} / ${off.count} 列`);
   // ## 判準是絕對值，不是比值
   //
   // 關掉折射時殘差是 **0.00** 像素 —— 一條世界空間的直線在透視投影下本來就
   // 還是直線，這是精確的。而 `on > off × 3` 在 off 是 0 的時候恆成立：
   // 折射壞掉只剩 0.01 像素，那條斷言照樣綠。
-  check(
-    off.rms < 0.1,
-    `沒有折射時那條邊是直的 —— 離直線 ${off.rms.toFixed(3)} 像素`,
-  );
-  check(
-    on.rms > 0.5,
-    `折射把它推歪了 —— 離直線 ${on.rms.toFixed(2)} 像素`,
-  );
+  check(off.rms < 0.1, `沒有折射時那條邊是直的 —— 離直線 ${off.rms.toFixed(3)} 像素`);
+  check(on.rms > 0.5, `折射把它推歪了 —— 離直線 ${on.rms.toFixed(2)} 像素`);
 
   // ── 六、反射的是真的環境，不是回退色 ──
   //
   // 天空罩是紫紅（藍高、綠低），回退色是綠。最遠那一列幾乎全是反射。
   const far = out.final[n - 1];
-  console.log(`  最遠那一列的顏色：${far.map((v) => v.toFixed(3)).join(' / ')}（天空罩紫紅、回退色綠）`);
+  console.log(
+    `  最遠那一列的顏色：${far.map((v) => v.toFixed(3)).join(' / ')}（天空罩紫紅、回退色綠）`,
+  );
   check(
     far[2] > far[1] * 3,
     `水面反射的是天空罩不是回退色 —— 藍 ${far[2].toFixed(3)} 遠高於綠 ${far[1].toFixed(3)}`,

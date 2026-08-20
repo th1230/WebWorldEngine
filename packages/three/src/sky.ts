@@ -192,7 +192,7 @@ export class SkyAtmosphere {
 
   private async buildNode(): Promise<void> {
     try {
-      const webgpu = (await import("three/webgpu")) as unknown as {
+      const webgpu = (await import('three/webgpu')) as unknown as {
         CubeRenderTarget: new (
           size: number,
           options?: unknown,
@@ -221,7 +221,7 @@ export class SkyAtmosphere {
       this.nodeFailed = true;
       // 大聲說出來。靜靜失敗的症狀是「WebGPU 上天空是黑的」，而那看起來
       // 像場景沒設定好，不像功能沒接上。
-      console.error("WW.SkyAtmosphere: node 材質那條路建不起來，WebGPU 上不會有天空。", error);
+      console.error('WW.SkyAtmosphere: node 材質那條路建不起來，WebGPU 上不會有天空。', error);
     }
   }
 

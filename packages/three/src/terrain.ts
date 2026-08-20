@@ -93,7 +93,9 @@ export function buildTerrain(options: TerrainOptions): TerrainTiles {
     );
   }
   if (tiles < 1 || segments < 2) {
-    throw new Error(`WW.buildTerrain: tiles 至少 1、segments 至少 2，收到 ${tiles} / ${segments}。`);
+    throw new Error(
+      `WW.buildTerrain: tiles 至少 1、segments 至少 2，收到 ${tiles} / ${segments}。`,
+    );
   }
 
   const maxLevels = Math.log2(segments); // 降到剩 2 格為止

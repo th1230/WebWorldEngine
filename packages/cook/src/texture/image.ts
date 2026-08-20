@@ -221,10 +221,14 @@ export function heightToNormal(size: number, seed: number, strength = 3): Image 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const dx =
-        at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1) -
+        at(x + 1, y - 1) +
+        2 * at(x + 1, y) +
+        at(x + 1, y + 1) -
         (at(x - 1, y - 1) + 2 * at(x - 1, y) + at(x - 1, y + 1));
       const dy =
-        at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1) -
+        at(x - 1, y + 1) +
+        2 * at(x, y + 1) +
+        at(x + 1, y + 1) -
         (at(x - 1, y - 1) + 2 * at(x, y - 1) + at(x + 1, y - 1));
 
       const nx = -dx * strength;

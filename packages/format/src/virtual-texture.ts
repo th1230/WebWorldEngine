@@ -168,7 +168,13 @@ export class PageTable {
       if (old !== null) this.resident.delete(key(old.level, old.px, old.py));
       this.slots[slot] = { level, px, py, used: this.tick, pinned: false };
       this.resident.set(k, slot);
-      loads.push({ level, px, py, slotX: slot % this.atlasPages, slotY: (slot / this.atlasPages) | 0 });
+      loads.push({
+        level,
+        px,
+        py,
+        slotX: slot % this.atlasPages,
+        slotY: (slot / this.atlasPages) | 0,
+      });
       // 只重算這兩頁蓋住的範圍 —— 搬進來的那一頁，以及被踢掉的那一頁。
       if (old !== null) {
         const oldSpan = 1 << old.level;

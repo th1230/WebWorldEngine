@@ -112,11 +112,16 @@ describe('宣告式擺放', () => {
 
     const treesOnly = run(onlyTrees, 2, 2);
     const treePositions: Array<[number, number, number]> = [];
-    both(2, 2, (m, matrix) => {
-      if (m === trees) {
-        treePositions.push([matrix.elements[12]!, matrix.elements[13]!, matrix.elements[14]!]);
-      }
-    }, 100);
+    both(
+      2,
+      2,
+      (m, matrix) => {
+        if (m === trees) {
+          treePositions.push([matrix.elements[12]!, matrix.elements[13]!, matrix.elements[14]!]);
+        }
+      },
+      100,
+    );
 
     expect(treePositions).toEqual(treesOnly);
   });
@@ -127,10 +132,15 @@ describe('宣告式擺放', () => {
     const read = (): number[] => {
       const out: number[] = [];
       const m = new Matrix4();
-      fn(7, 7, (_mesh, matrix) => {
-        m.copy(matrix);
-        out.push(...m.elements);
-      }, 100);
+      fn(
+        7,
+        7,
+        (_mesh, matrix) => {
+          m.copy(matrix);
+          out.push(...m.elements);
+        },
+        100,
+      );
       return out;
     };
     expect(read()).toEqual(read());

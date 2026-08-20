@@ -30,9 +30,12 @@ const server = createServer((req, res) => {
     (b) => {
       res.writeHead(200, {
         'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
+          {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.json': 'application/json',
+            '.wasm': 'application/wasm',
+          }[extname(file)] ?? 'application/octet-stream',
       });
       res.end(b);
     },
@@ -46,14 +49,21 @@ const DISTANCES = [300, 700, 1500, 3000, 6000];
 const SPREAD = 900;
 
 console.log('Impostor 對真幾何：同樣數量、同樣位置、同樣相機\n');
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 let failed = 0;
 
 async function measure(page, distance, impostor) {
-  await page.goto(`${base}/?trees=${COUNT}&spread=${SPREAD}&treeDist=${distance}${impostor ? '&impostor=1' : ''}`, {
-    waitUntil: 'load',
-  });
+  await page.goto(
+    `${base}/?trees=${COUNT}&spread=${SPREAD}&treeDist=${distance}${impostor ? '&impostor=1' : ''}`,
+    {
+      waitUntil: 'load',
+    },
+  );
   await page.waitForFunction(() => window.__ww?.totalFrames > 40, undefined, { timeout: 240000 });
   return page.evaluate(async () => {
     const gpu = await window.__ww.measureGpuMs(0, 1200, 15);
@@ -96,8 +106,12 @@ try {
     const total = real.pixels.length / 4;
 
     console.log(`  相機距離 ${distance}`);
-    console.log(`    真幾何    GPU ${real.gpu} ms，${real.calls} 次繪製，${real.drawn.toLocaleString('en-US')} 三角形`);
-    console.log(`    impostor  GPU ${fake.gpu} ms，${fake.calls} 次繪製，${fake.drawn.toLocaleString('en-US')} 三角形`);
+    console.log(
+      `    真幾何    GPU ${real.gpu} ms，${real.calls} 次繪製，${real.drawn.toLocaleString('en-US')} 三角形`,
+    );
+    console.log(
+      `    impostor  GPU ${fake.gpu} ms，${fake.calls} 次繪製，${fake.drawn.toLocaleString('en-US')} 三角形`,
+    );
     const savedPct = ((real.gpu - fake.gpu) / real.gpu) * 100;
     const diffPct = (differ / total) * 100;
     console.log(`    **省 ${savedPct.toFixed(1)}%**，畫面差異 ${diffPct.toFixed(2)}%`);

@@ -203,7 +203,8 @@ export class ContactShadows {
   }
 
   private ensureTarget(width: number, height: number): void {
-    if (this.target !== null && this.target.width === width && this.target.height === height) return;
+    if (this.target !== null && this.target.width === width && this.target.height === height)
+      return;
     this.target?.dispose();
     // ## 八位元就夠，而且讀得回來
     //

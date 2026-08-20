@@ -27,10 +27,21 @@ assertDistFresh(root);
 const DIST = join(root, 'apps/example/dist');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
   const file = join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
+            extname(file)
+          ] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -43,13 +54,19 @@ const check = (ok, message) => {
   if (!ok) failed++;
 };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 
 const run = async (query) => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
   page.on('pageerror', (e) => errors.push(String(e)));
   page.setDefaultNavigationTimeout(240000);
   await page.goto(`${base}/?${query}&verify=1`, { waitUntil: 'load' });
@@ -81,9 +98,15 @@ try {
   const inherited = await run('shadowlod=offscreen&shadowcull=0');
 
   const ratio = (r) => r.spot.brightness / Math.max(r.spot.control, 1e-6);
-  console.log(`  影子該落的點在畫面的 (${culled.spot.u.toFixed(3)}, ${culled.spot.v.toFixed(3)})，控制點在 (${culled.spot.controlU.toFixed(3)}, ${culled.spot.controlV.toFixed(3)})`);
-  console.log(`  自己剔除：影子處 ${culled.spot.brightness.toFixed(3)}、控制點 ${culled.spot.control.toFixed(3)}（${(ratio(culled) * 100).toFixed(0)}%），主畫面 ${culled.counts.visible} 個、陰影 ${culled.counts.shadow} 個`);
-  console.log(`  沿用相機：影子處 ${inherited.spot.brightness.toFixed(3)}、控制點 ${inherited.spot.control.toFixed(3)}（${(ratio(inherited) * 100).toFixed(0)}%），主畫面 ${inherited.counts.visible} 個、陰影 ${inherited.counts.shadow} 個`);
+  console.log(
+    `  影子該落的點在畫面的 (${culled.spot.u.toFixed(3)}, ${culled.spot.v.toFixed(3)})，控制點在 (${culled.spot.controlU.toFixed(3)}, ${culled.spot.controlV.toFixed(3)})`,
+  );
+  console.log(
+    `  自己剔除：影子處 ${culled.spot.brightness.toFixed(3)}、控制點 ${culled.spot.control.toFixed(3)}（${(ratio(culled) * 100).toFixed(0)}%），主畫面 ${culled.counts.visible} 個、陰影 ${culled.counts.shadow} 個`,
+  );
+  console.log(
+    `  沿用相機：影子處 ${inherited.spot.brightness.toFixed(3)}、控制點 ${inherited.spot.control.toFixed(3)}（${(ratio(inherited) * 100).toFixed(0)}%），主畫面 ${inherited.counts.visible} 個、陰影 ${inherited.counts.shadow} 個`,
+  );
 
   check(
     culled.spot.u > 0.02 && culled.spot.u < 0.98 && culled.spot.v > 0.02 && culled.spot.v < 0.98,
@@ -117,10 +140,18 @@ try {
   const coarse = await run('shadowlod=field');
 
   const drop = 1 - coarse.triangles / Math.max(fine.triangles, 1);
-  console.log(`  陰影 pass 的三角形：一樣細 ${fine.triangles.toLocaleString()}，粗三倍 ${coarse.triangles.toLocaleString()}（少 ${(drop * 100).toFixed(1)}%）`);
-  console.log(`  陰影 pass 的 instance：一樣細 ${fine.counts.shadow}，粗三倍 ${coarse.counts.shadow}（兩邊該一樣多 —— 差的是階不是數量）`);
-  console.log(`  主畫面的階分布：一樣細 [${fine.counts.levels.join(', ')}]，粗三倍 [${coarse.counts.levels.join(', ')}]`);
-  console.log(`  陰影 pass 的階分布：一樣細 [${fine.counts.shadowLevels.join(', ')}]，粗三倍 [${coarse.counts.shadowLevels.join(', ')}]`);
+  console.log(
+    `  陰影 pass 的三角形：一樣細 ${fine.triangles.toLocaleString()}，粗三倍 ${coarse.triangles.toLocaleString()}（少 ${(drop * 100).toFixed(1)}%）`,
+  );
+  console.log(
+    `  陰影 pass 的 instance：一樣細 ${fine.counts.shadow}，粗三倍 ${coarse.counts.shadow}（兩邊該一樣多 —— 差的是階不是數量）`,
+  );
+  console.log(
+    `  主畫面的階分布：一樣細 [${fine.counts.levels.join(', ')}]，粗三倍 [${coarse.counts.levels.join(', ')}]`,
+  );
+  console.log(
+    `  陰影 pass 的階分布：一樣細 [${fine.counts.shadowLevels.join(', ')}]，粗三倍 [${coarse.counts.shadowLevels.join(', ')}]`,
+  );
 
   // ## 正交投影下，選階不能看距離
   //
@@ -138,7 +169,9 @@ try {
     return level;
   };
   const chosen = (c) => c.counts.shadowLevels.findIndex((n) => n > 0);
-  console.log(`  契約：ppu ${fine.contract.ppu.toFixed(2)}、半徑 ${fine.contract.radius} → 一樣細該用第 ${expectedLevel(fine)} 階（實際 ${chosen(fine)}），粗三倍該用第 ${expectedLevel(coarse)} 階（實際 ${chosen(coarse)}）`);
+  console.log(
+    `  契約：ppu ${fine.contract.ppu.toFixed(2)}、半徑 ${fine.contract.radius} → 一樣細該用第 ${expectedLevel(fine)} 階（實際 ${chosen(fine)}），粗三倍該用第 ${expectedLevel(coarse)} 階（實際 ${chosen(coarse)}）`,
+  );
 
   // ## 判準是「契約算出來該用第幾階」，不是「只用了一階」
   //
@@ -163,7 +196,9 @@ try {
   // 正交那條式子，陰影 pass 的數量就會一幀一幀往下掉，而且兩次跑不一樣。
   // 那種東西量不出任何事情 —— 先確定它是穩的，後面的數字才有意義。
   const drifting = (c) => new Set(c.stability).size > 1;
-  console.log(`  連續六次的陰影 instance：一樣細 [${fine.stability.join(', ')}]，粗三倍 [${coarse.stability.join(', ')}]`);
+  console.log(
+    `  連續六次的陰影 instance：一樣細 [${fine.stability.join(', ')}]，粗三倍 [${coarse.stability.join(', ')}]`,
+  );
   check(
     !drifting(fine) && !drifting(coarse),
     `連續量六次答案不會飄 —— [${fine.stability.join(', ')}] / [${coarse.stability.join(', ')}]`,
@@ -183,17 +218,16 @@ try {
   //
   // 這與第一項是同一類的錯（把相機的結論套到光源上），只是換一種剔除。
   const occ = await run('shadowlod=occluded');
-  console.log(`  遮蔽場：主畫面 ${occ.counts.visible} 個、剔掉 ${occ.counts.occluded} 個，陰影 pass ${occ.counts.shadow}/${occ.counts.total} 個`);
+  console.log(
+    `  遮蔽場：主畫面 ${occ.counts.visible} 個、剔掉 ${occ.counts.occluded} 個，陰影 pass ${occ.counts.shadow}/${occ.counts.total} 個`,
+  );
   console.log(`  連續六次的陰影 instance：[${occ.stability.join(', ')}]`);
 
   check(
     occ.counts.occluded > occ.counts.total * 0.8,
     `遮蔽剔除真的有作用 —— 主畫面剔掉 ${occ.counts.occluded}/${occ.counts.total} 個`,
   );
-  check(
-    occ.counts.visible < 5,
-    `主畫面幾乎只剩那顆擋路的大球 —— ${occ.counts.visible} 個`,
-  );
+  check(occ.counts.visible < 5, `主畫面幾乎只剩那顆擋路的大球 —— ${occ.counts.visible} 個`);
   check(
     occ.counts.shadow === occ.counts.total,
     `被擋住的照樣投影 —— 陰影 pass 畫了 ${occ.counts.shadow}/${occ.counts.total} 個`,

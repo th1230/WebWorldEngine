@@ -16,12 +16,7 @@ import { AssetFormatError } from './decode.ts';
  * 只有 BC 系列：本引擎只支援桌機，而桌機一律回報 `texture-compression-bc`。
  */
 export type CompressedFormat =
-  | 'bc1-rgb'
-  | 'bc1-rgb-srgb'
-  | 'bc4-r'
-  | 'bc5-rg'
-  | 'bc7-rgba'
-  | 'bc7-rgba-srgb';
+  'bc1-rgb' | 'bc1-rgb-srgb' | 'bc4-r' | 'bc5-rg' | 'bc7-rgba' | 'bc7-rgba-srgb';
 
 export interface TextureLevel {
   level: number;

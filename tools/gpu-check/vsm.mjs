@@ -25,10 +25,21 @@ assertDistFresh(root);
 const DIST = join(root, 'apps/example/dist');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
   const file = join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
+            extname(file)
+          ] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -41,13 +52,19 @@ const check = (ok, message) => {
   if (!ok) failed++;
 };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 
 const run = async (pagesPerSide) => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
   page.on('pageerror', (e) => errors.push(String(e)));
   page.setDefaultNavigationTimeout(240000);
   await page.goto(`${base}/?vsm=${pagesPerSide}&verify=1`, { waitUntil: 'load' });
@@ -59,7 +76,7 @@ const run = async (pagesPerSide) => {
   try {
     await page.waitForFunction(() => window.__ww?.vsm != null, undefined, { timeout: 60000 });
   } catch {
-    const why = errors.length > 0 ? errors[0].slice(0, 300) : "（頁面沒有丟出任何錯誤）";
+    const why = errors.length > 0 ? errors[0].slice(0, 300) : '（頁面沒有丟出任何錯誤）';
     throw new Error(`場景沒有建起來：${why}`);
   }
   const out = await page.evaluate(() => {
@@ -79,7 +96,19 @@ const run = async (pagesPerSide) => {
     const diffCentre = api.maskStats().centre;
     api.resolve(0);
     const map = api.maskMap();
-    return { map, diffMap, diffCentre, uvDepth, stored, entry, atlasUv, drawn, columns: api.edgeColumns(), info: api.info(), mask: api.maskStats() };
+    return {
+      map,
+      diffMap,
+      diffCentre,
+      uvDepth,
+      stored,
+      entry,
+      atlasUv,
+      drawn,
+      columns: api.edgeColumns(),
+      info: api.info(),
+      mask: api.maskStats(),
+    };
   });
   await page.close();
   return { ...out, errors };
@@ -95,27 +124,57 @@ try {
   const fine = await run(512);
 
   const found = (c) => c.columns.filter((x) => x >= 0).length;
-  console.log(`  粗（虛擬 ${coarse.info.virtualSize}，圖集 ${coarse.info.atlasSize}）：畫了 ${coarse.drawn} 頁，抓到邊界 ${found(coarse)}/96 列，落在 ${distinct(coarse.columns)} 個不同位置`);
-  console.log(`  細（虛擬 ${fine.info.virtualSize}，圖集 ${fine.info.atlasSize}）：畫了 ${fine.drawn} 頁，抓到邊界 ${found(fine)}/96 列，落在 ${distinct(fine.columns)} 個不同位置`);
-  console.log(`  中心像素：細 uv+depth ${fine.uvDepth} 圖集深度 ${fine.stored}，頁表 ${fine.entry}，圖集 uv ${fine.atlasUv}`);
-  const draw = (m) => { for (let r = 8; r >= 0; r--) { console.log("    " + m.slice(r*16,(r+1)*16).map((v)=>v>200?"#":v>128?"+":v>40?".":" ").join("")); } };
-  console.log("  粗的遮罩："); draw(coarse.map);
-  console.log("  細的遮罩："); draw(fine.map);
-  console.log(`  stored − depth（0.5 = 相等，每格 0.05）：中心 ${fine.diffCentre[0]/255}`); draw(fine.diffMap);
-  console.log(`  遮罩：粗 暗 ${(coarse.mask.dark * 100).toFixed(1)}% 平均 ${coarse.mask.mean.toFixed(3)}，細 暗 ${(fine.mask.dark * 100).toFixed(1)}% 平均 ${fine.mask.mean.toFixed(3)}`);
+  console.log(
+    `  粗（虛擬 ${coarse.info.virtualSize}，圖集 ${coarse.info.atlasSize}）：畫了 ${coarse.drawn} 頁，抓到邊界 ${found(coarse)}/96 列，落在 ${distinct(coarse.columns)} 個不同位置`,
+  );
+  console.log(
+    `  細（虛擬 ${fine.info.virtualSize}，圖集 ${fine.info.atlasSize}）：畫了 ${fine.drawn} 頁，抓到邊界 ${found(fine)}/96 列，落在 ${distinct(fine.columns)} 個不同位置`,
+  );
+  console.log(
+    `  中心像素：細 uv+depth ${fine.uvDepth} 圖集深度 ${fine.stored}，頁表 ${fine.entry}，圖集 uv ${fine.atlasUv}`,
+  );
+  const draw = (m) => {
+    for (let r = 8; r >= 0; r--) {
+      console.log(
+        '    ' +
+          m
+            .slice(r * 16, (r + 1) * 16)
+            .map((v) => (v > 200 ? '#' : v > 128 ? '+' : v > 40 ? '.' : ' '))
+            .join(''),
+      );
+    }
+  };
+  console.log('  粗的遮罩：');
+  draw(coarse.map);
+  console.log('  細的遮罩：');
+  draw(fine.map);
+  console.log(`  stored − depth（0.5 = 相等，每格 0.05）：中心 ${fine.diffCentre[0] / 255}`);
+  draw(fine.diffMap);
+  console.log(
+    `  遮罩：粗 暗 ${(coarse.mask.dark * 100).toFixed(1)}% 平均 ${coarse.mask.mean.toFixed(3)}，細 暗 ${(fine.mask.dark * 100).toFixed(1)}% 平均 ${fine.mask.mean.toFixed(3)}`,
+  );
   console.log(`  這台機器的 maxTextureSize：${fine.info.maxTextureSize}\n`);
 
   check(
     fine.info.virtualSize > fine.info.maxTextureSize,
     `假裝出來的比硬體上限大 —— ${fine.info.virtualSize} > ${fine.info.maxTextureSize}`,
   );
-  check(fine.info.atlasSize <= fine.info.maxTextureSize, `真正配置的在上限內 —— ${fine.info.atlasSize}`);
-  check(found(coarse) > 60 && found(fine) > 60, `兩邊都抓得到陰影邊界 —— ${found(coarse)} / ${found(fine)} 列`);
+  check(
+    fine.info.atlasSize <= fine.info.maxTextureSize,
+    `真正配置的在上限內 —— ${fine.info.atlasSize}`,
+  );
+  check(
+    found(coarse) > 60 && found(fine) > 60,
+    `兩邊都抓得到陰影邊界 —— ${found(coarse)} / ${found(fine)} 列`,
+  );
   check(
     distinct(fine.columns) > distinct(coarse.columns) * 1.8,
     `細的那一份邊界平滑得多 —— ${distinct(coarse.columns)} → ${distinct(fine.columns)} 個不同位置`,
   );
-  check(fine.errors.length === 0, `沒有主控台錯誤${fine.errors.length > 0 ? '：' + fine.errors[0].slice(0, 140) : ''}`);
+  check(
+    fine.errors.length === 0,
+    `沒有主控台錯誤${fine.errors.length > 0 ? '：' + fine.errors[0].slice(0, 140) : ''}`,
+  );
 } catch (e) {
   console.log('失敗：' + String(e).split(String.fromCharCode(10))[0].slice(0, 240));
   failed++;

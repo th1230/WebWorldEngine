@@ -277,10 +277,11 @@ async function runCase(
     pass.setBindGroup(0, bindGroup);
     pass.draw(3);
     pass.end();
-    encoder.copyTextureToBuffer({ texture: target }, { buffer: readback, bytesPerRow: BYTES_PER_ROW }, [
-      SIZE,
-      SIZE,
-    ]);
+    encoder.copyTextureToBuffer(
+      { texture: target },
+      { buffer: readback, bytesPerRow: BYTES_PER_ROW },
+      [SIZE, SIZE],
+    );
     device.queue.submit([encoder.finish()]);
 
     await readback.mapAsync(GPUMapMode.READ);
@@ -342,9 +343,7 @@ export const textureConformanceScene: SceneDefinition = {
       const wanted: GPUFeatureName[] = ['texture-compression-bc'];
       const available = wanted.filter((f) => adapter.features.has(f));
       notes.push(
-        available.length > 0
-          ? `裝置支援：${available.join('、')}`
-          : '裝置不支援任何壓縮貼圖格式',
+        available.length > 0 ? `裝置支援：${available.join('、')}` : '裝置不支援任何壓縮貼圖格式',
       );
 
       device = await adapter.requestDevice({ requiredFeatures: available });
@@ -418,7 +417,9 @@ export const textureConformanceScene: SceneDefinition = {
           };
         }
         const skippedNote =
-          skipped.length > 0 ? `；${skipped.length} 個格式因裝置不支援而未驗證（${skipped.map((s) => s.id).join('、')}）` : '';
+          skipped.length > 0
+            ? `；${skipped.length} 個格式因裝置不支援而未驗證（${skipped.map((s) => s.id).join('、')}）`
+            : '';
         return {
           ok: true,
           detail:

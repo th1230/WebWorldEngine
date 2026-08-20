@@ -81,7 +81,8 @@ export function splitGeometry(
 ): SplitPiece[] {
   const wanted = Math.max(1, Math.floor(options.chunks ?? 64));
   const minTriangles = Math.max(1, Math.floor(options.minTriangles ?? 64));
-  const triangleCount = indices !== null ? Math.floor(indices.length / 3) : Math.floor(positions.length / 9);
+  const triangleCount =
+    indices !== null ? Math.floor(indices.length / 3) : Math.floor(positions.length / 9);
 
   if (wanted <= 1 || triangleCount <= minTriangles) {
     return [wholePiece(positions, indices, triangleCount)];

@@ -27,10 +27,7 @@ import type { BufferGeometry } from 'three';
  * @param radius 這些多面體內接的球半徑。
  * @returns 每一階相對 index 0 的誤差，世界單位。`[0]` 一定是 0。
  */
-export function sphericalLodErrors(
-  geometries: readonly BufferGeometry[],
-  radius = 1,
-): number[] {
+export function sphericalLodErrors(geometries: readonly BufferGeometry[], radius = 1): number[] {
   const sagittae = geometries.map((geometry) => maxSagitta(geometry, radius));
   const finest = sagittae[0] ?? 0;
   return sagittae.map((s, i) => (i === 0 ? 0 : Math.max(s - finest, 0)));

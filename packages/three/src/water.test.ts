@@ -13,7 +13,11 @@ import { DEFAULT_WAVES, Water } from './water.ts';
 describe('水面的波形', () => {
   it('平的水：沒有波的時候處處等於水位', () => {
     const water = new Water({ level: 3, waves: [] });
-    for (const [x, z] of [[0, 0], [100, -50], [-7.5, 12.25]]) {
+    for (const [x, z] of [
+      [0, 0],
+      [100, -50],
+      [-7.5, 12.25],
+    ]) {
       expect(water.heightAt(x!, z!, 1.5)).toBeCloseTo(3, 9);
     }
   });
@@ -66,7 +70,10 @@ describe('水面的波形', () => {
   it('同一個時間點問兩次，答案完全一樣', () => {
     // 決定性是浮力能不能穩定的前提 —— 每幀抖一點的水面會讓物體一直震。
     const water = new Water();
-    for (const [x, z, t] of [[1, 2, 3], [-40.5, 17.25, 0.125]]) {
+    for (const [x, z, t] of [
+      [1, 2, 3],
+      [-40.5, 17.25, 0.125],
+    ]) {
       expect(water.heightAt(x!, z!, t!)).toBe(water.heightAt(x!, z!, t!));
     }
   });
@@ -159,7 +166,12 @@ describe('浮力', () => {
     const expected = volume * 1000 * 9.81;
 
     for (const mass of [1, 500]) {
-      const [f] = computeBuoyancy(flat, [{ id: 1, x: 0, y: -10, z: 0, radius, mass }], 0, unclamped);
+      const [f] = computeBuoyancy(
+        flat,
+        [{ id: 1, x: 0, y: -10, z: 0, radius, mass }],
+        0,
+        unclamped,
+      );
       expect(f!.submerged).toBe(1);
       expect(f!.y).toBeCloseTo(expected, 3);
     }

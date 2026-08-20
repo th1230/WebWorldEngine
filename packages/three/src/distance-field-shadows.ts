@@ -178,11 +178,16 @@ export class DistanceFieldShadows {
         .catch((error: unknown) => {
           // **大聲說出來。** 靜靜失敗的症狀是「WebGPU 上這個效果完全沒有」，
           // 而那看起來像場景沒設定好，不像材質建不起來。
-          console.error('WW.DistanceFieldShadows：node 材質建不起來，WebGPU 上不會有距離場陰影。', error);
+          console.error(
+            'WW.DistanceFieldShadows：node 材質建不起來，WebGPU 上不會有距離場陰影。',
+            error,
+          );
         });
       return null;
     }
-    this.projectionInverse.copy((camera as { projectionMatrix: Matrix4 }).projectionMatrix).invert();
+    this.projectionInverse
+      .copy((camera as { projectionMatrix: Matrix4 }).projectionMatrix)
+      .invert();
     this.node.setTextures(depth, normal, field.texture);
     this.node.setMatrices(this.projectionInverse, camera.matrixWorld);
     this.node.setField(field.min, field.extent, field.extent / field.resolution);
@@ -204,10 +209,14 @@ export class DistanceFieldShadows {
   }
 
   private ensureTarget(width: number, height: number): void {
-    if (this.target !== null && this.target.width === width && this.target.height === height) return;
+    if (this.target !== null && this.target.width === width && this.target.height === height)
+      return;
     this.target?.dispose();
     // 八位元：這是遮蔽遮罩，而且讀得回來（見 ContactShadows 的同一段）。
-    this.target = new WebGLRenderTarget(width, height, { colorSpace: NoColorSpace, depthBuffer: false });
+    this.target = new WebGLRenderTarget(width, height, {
+      colorSpace: NoColorSpace,
+      depthBuffer: false,
+    });
   }
 
   dispose(): void {

@@ -301,7 +301,6 @@ export class CellVisibility {
   }
 }
 
-
 /**
  * 走訪用的區段清單。
  *

@@ -33,9 +33,7 @@ export async function probeCapabilities(options: ProbeOptions = {}): Promise<Cap
 
 // ── WebGPU ────────────────────────────────────────────────────────────────
 
-async function probeWebGPU(
-  powerPreference: GPUPowerPreference,
-): Promise<CapabilityProfile | null> {
+async function probeWebGPU(powerPreference: GPUPowerPreference): Promise<CapabilityProfile | null> {
   if (typeof navigator === 'undefined' || navigator.gpu === undefined) return null;
 
   let adapter: GPUAdapter | null = null;
@@ -152,7 +150,8 @@ function probeWebGL2(forced: boolean): CapabilityProfile | null {
       multiview: has('OVR_multiview2'),
       adapter: {
         ...UNKNOWN_ADAPTER,
-        vendor: debugInfo !== null ? String(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) ?? '') : '',
+        vendor:
+          debugInfo !== null ? String(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) ?? '') : '',
         device: rendererString,
         description: rendererString,
         isFallbackAdapter: /swiftshader|software|llvmpipe|basic render/i.test(rendererString),

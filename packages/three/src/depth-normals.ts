@@ -114,7 +114,10 @@ export class SceneDepthNormals {
         .catch((error: unknown) => {
           // **大聲說出來。** 靜靜失敗的症狀是「WebGPU 上這個效果完全沒有」，
           // 而那看起來像場景沒設定好，不像材質建不起來。
-          console.error('WW.SceneDepthNormals：node 材質建不起來，WebGPU 上不會有深度法線。', error);
+          console.error(
+            'WW.SceneDepthNormals：node 材質建不起來，WebGPU 上不會有深度法線。',
+            error,
+          );
         });
     }
     scene.overrideMaterial = (this.nodeMaterial ?? this.material) as never;
@@ -151,7 +154,8 @@ export class SceneDepthNormals {
   }
 
   private ensureTarget(width: number, height: number): void {
-    if (this.target !== null && this.target.width === width && this.target.height === height) return;
+    if (this.target !== null && this.target.width === width && this.target.height === height)
+      return;
     this.target?.dispose();
     const depth = new DepthTexture(width, height, UnsignedShortType);
     this.target = new WebGLRenderTarget(width, height, {

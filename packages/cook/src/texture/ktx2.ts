@@ -227,11 +227,7 @@ export function encodeTexture(
 }
 
 /** 一個 mip level 的壓縮後大小，供預算估算。 */
-export function compressedLevelBytes(
-  width: number,
-  height: number,
-  blockBytes: number,
-): number {
+export function compressedLevelBytes(width: number, height: number, blockBytes: number): number {
   const blocks = blocksFor(width, height);
   return blocks.x * blocks.y * blockBytes;
 }

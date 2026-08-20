@@ -74,7 +74,10 @@ export function makeReflectionScene(): ReflectionScene {
   //
   // 位置是算過的 —— 從相機看鏡子上那一點，反射出去的射線正好打到它。
   const boxGeometry = new THREE.BoxGeometry(18, 18, 18);
-  const box = new THREE.Mesh(boxGeometry, new THREE.MeshStandardMaterial({ color: 0xff1010, roughness: 1 }));
+  const box = new THREE.Mesh(
+    boxGeometry,
+    new THREE.MeshStandardMaterial({ color: 0xff1010, roughness: 1 }),
+  );
   box.position.set(34, 9, -48);
   box.updateMatrixWorld(true);
   root.add(box);
@@ -197,7 +200,13 @@ export function makeReflectionScene(): ReflectionScene {
     sample: (renderer, point) => {
       const target = targetOf(reflections);
       projected.copy(point).project(camera);
-      if (projected.x < -1 || projected.x > 1 || projected.y < -1 || projected.y > 1 || projected.z > 1) {
+      if (
+        projected.x < -1 ||
+        projected.x > 1 ||
+        projected.y < -1 ||
+        projected.y > 1 ||
+        projected.z > 1
+      ) {
         return [Number.NaN, Number.NaN, Number.NaN, Number.NaN];
       }
       const x = Math.round(((projected.x + 1) / 2) * target.width);

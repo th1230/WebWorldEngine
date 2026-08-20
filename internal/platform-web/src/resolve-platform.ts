@@ -64,7 +64,11 @@ export async function resolvePlatformProfile(
     }
   }
 
-  const decision = classifyTier({ profile: capabilities, micro, engineVersion: options.engineVersion });
+  const decision = classifyTier({
+    profile: capabilities,
+    micro,
+    engineVersion: options.engineVersion,
+  });
 
   return {
     capabilities,

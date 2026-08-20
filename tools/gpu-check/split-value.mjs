@@ -50,14 +50,19 @@ const server = createServer((req, res) => {
     res.writeHead(204).end();
     return;
   }
-  const file = path.startsWith('/cooked') ? join(COOKED, path) : join(DIST, path === '/' ? 'index.html' : path);
+  const file = path.startsWith('/cooked')
+    ? join(COOKED, path)
+    : join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
     (b) => {
       res.writeHead(200, {
         'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
+          {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.json': 'application/json',
+            '.wasm': 'application/wasm',
+          }[extname(file)] ?? 'application/octet-stream',
       });
       res.end(b);
     },
@@ -74,8 +79,14 @@ const CONFIGS = [
   ['切成 1024 塊', 1024],
 ];
 
-console.log(`一份 ${SEGMENTS}x${SEGMENTS} 段的地面（約 ${((SEGMENTS * SEGMENTS * 2) / 1e6).toFixed(1)}M 三角形）\n`);
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+console.log(
+  `一份 ${SEGMENTS}x${SEGMENTS} 段的地面（約 ${((SEGMENTS * SEGMENTS * 2) / 1e6).toFixed(1)}M 三角形）\n`,
+);
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 const results = [];
 let failed = 0;
@@ -145,7 +156,9 @@ try {
   const baseline = results[0][1].gpu;
   console.log('');
   for (const [label, out] of results.slice(1)) {
-    console.log(`  ${label}：對整片一份省 ${(((baseline - out.gpu) / baseline) * 100).toFixed(1)}%`);
+    console.log(
+      `  ${label}：對整片一份省 ${(((baseline - out.gpu) / baseline) * 100).toFixed(1)}%`,
+    );
   }
 } catch (e) {
   console.log('失敗：' + String(e).split('\n')[0].slice(0, 160));

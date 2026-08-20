@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { bakeSurfaceCache } from './surface-cache.ts';
 
 /** 一個佔滿 [-5,5]³ 其中一面的方形（兩個三角形），可以指定每個頂點的顏色。 */
-function quad(z: number, color: [number, number, number]): {
+function quad(
+  z: number,
+  color: [number, number, number],
+): {
   positions: number[];
   indices: number[];
   colors: number[];
@@ -46,10 +49,7 @@ describe('表面快取：追蹤打到的時候那是什麼顏色', () => {
     // 幾何重新匯出一次顏色就變了。
     // 兩個三角形**重疊在同一個位置** —— 稍微錯開是不行的：外框是貼著幾何
     // 算的，錯開 0.01 而整份場只有 0.01 深的話那就是整整一格。
-    const positions = [
-      -1, -1, 0, 1, -1, 0, 0, 1, 0,
-      -1, -1, 0, 1, -1, 0, 0, 1, 0,
-    ];
+    const positions = [-1, -1, 0, 1, -1, 0, 0, 1, 0, -1, -1, 0, 1, -1, 0, 0, 1, 0];
     const colors = [1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1];
     const cache = bakeSurfaceCache(positions, null, colors, { resolution: 4 });
     // 查三角形的重心 —— 顏色刷進去的就是那一格。
@@ -61,7 +61,10 @@ describe('表面快取：追蹤打到的時候那是什麼顏色', () => {
 
   it('沒有頂點顏色的時候用 flat 給的那一個', () => {
     const { positions, indices } = quad(0, [0, 0, 0]);
-    const cache = bakeSurfaceCache(positions, indices, null, { resolution: 8, flat: [0.2, 0.8, 0.4] });
+    const cache = bakeSurfaceCache(positions, indices, null, {
+      resolution: 8,
+      flat: [0.2, 0.8, 0.4],
+    });
     const [r, g, b] = cellAt(cache, 0, 0, 0);
     expect(r).toBeCloseTo(0.2, 5);
     expect(g).toBeCloseTo(0.8, 5);

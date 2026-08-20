@@ -9,9 +9,10 @@ import { PhysicsScheduler, type PhysicsSchedulerOptions } from './physics-schedu
  * 所以測試驗的是「誰在裡面」，不是「有沒有跑完」。
  */
 
-function make(
-  options: Partial<PhysicsSchedulerOptions> = {},
-): { scheduler: PhysicsScheduler; live: Set<number> } {
+function make(options: Partial<PhysicsSchedulerOptions> = {}): {
+  scheduler: PhysicsScheduler;
+  live: Set<number>;
+} {
   const live = new Set<number>();
   const scheduler = new PhysicsScheduler({
     activeRadius: 100,

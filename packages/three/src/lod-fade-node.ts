@@ -138,7 +138,10 @@ export async function applyLodFadeNode(
     const fade = float(-1).toVar();
     const half = float(0).toVar();
     If(uCount.greaterThan(0).and(id.greaterThanEqual(uFineStart)), () => {
-      const slot = id.lessThan(uCoarseStart).select(id.sub(uFineStart), id.sub(uCoarseStart)).toVar();
+      const slot = id
+        .lessThan(uCoarseStart)
+        .select(id.sub(uFineStart), id.sub(uCoarseStart))
+        .toVar();
       If(slot.greaterThanEqual(0).and(slot.lessThan(uCount)), () => {
         fade.assign(uAmount.element(slot));
         half.assign(id.lessThan(uCoarseStart).select(float(0), float(1)));

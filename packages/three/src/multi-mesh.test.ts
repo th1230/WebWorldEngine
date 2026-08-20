@@ -46,7 +46,14 @@ function makeCamera(): PerspectiveCamera {
 function draw(mesh: MultiMesh, camera: PerspectiveCamera): void {
   mesh.updateMatrixWorld(true);
   // 第六個參數是 `group`，只有多材質的 Mesh 才會非 null。
-  mesh.onBeforeRender(renderer, new Scene(), camera, mesh.geometry, mesh.material as never, null as never);
+  mesh.onBeforeRender(
+    renderer,
+    new Scene(),
+    camera,
+    mesh.geometry,
+    mesh.material as never,
+    null as never,
+  );
 }
 
 /** 三階的方塊鏈。三階的幾何一樣，差別只在宣告的誤差 —— 選階只看誤差。 */

@@ -66,7 +66,10 @@ export async function applyVertexAnimationNode(
   // 每個 instance 自己的相位。`instanceIndex` 在批次下就是這個 instance 的
   // 編號 —— 與 WebGL 那份用 `getIndirectIndex( gl_DrawID )` 是同一個東西。
   const seed = float(instanceIndex).mul(12.9898).sin().mul(43758.5453).fract();
-  const phase = time.div(duration).add(seed.mul(float(options.phaseSpread))).fract();
+  const phase = time
+    .div(duration)
+    .add(seed.mul(float(options.phaseSpread)))
+    .fract();
 
   const position = phase.mul(frames.sub(1));
   const frameA = position.floor();

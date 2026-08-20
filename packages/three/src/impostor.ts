@@ -219,10 +219,7 @@ export class ImpostorBatch extends ThreeInstancedMesh {
     //
     // 角落改用 uv 推：`uv * 2 - 1` 就是 (−1,−1)…(1,1)。而 uv 本來就要留給
     // 圖集查表用，兩邊都用得上。
-    geometry.setAttribute(
-      'position',
-      new BufferAttribute(new Float32Array(12), 3),
-    );
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(12), 3));
     geometry.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
     geometry.setIndex(new BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1));
 

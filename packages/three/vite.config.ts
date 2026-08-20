@@ -36,7 +36,7 @@ export default defineConfig({
   // 預設的 `/` 會讓 worker 被寫成 `new URL("/assets/lod-worker-….js", …)`，
   // 那在使用者的網站上解析到**站台根目錄** —— 那裡沒有那個檔案，於是
   // 自動 LOD 靜靜地退回主執行緒。
-  base: "./",
+  base: './',
   build: {
     // 每次建置都清空。上一次建置留下的 chunk 不會被任何東西引用，但
     // `files: ["dist"]` 是整個目錄，所以它們**照樣會被發布出去** ——

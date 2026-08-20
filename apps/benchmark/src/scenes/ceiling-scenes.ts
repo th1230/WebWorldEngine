@@ -290,7 +290,10 @@ export const gpuDrawCallCeilingScene: SceneDefinition = {
     const indices = geometry.getIndex()!.count;
 
     // 兩種送法**共用同一段擺放**：位置不同的話比的就不是送法了。
-    const place = (target: { setMatrixAt(i: number, m: Matrix4): unknown }, id: (i: number) => number): void => {
+    const place = (
+      target: { setMatrixAt(i: number, m: Matrix4): unknown },
+      id: (i: number) => number,
+    ): void => {
       const rng = createRng(DEFAULT_SEED);
       const dummy = new Object3D();
       const matrix = new Matrix4();

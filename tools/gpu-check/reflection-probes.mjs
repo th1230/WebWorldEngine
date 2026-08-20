@@ -30,10 +30,21 @@ assertDistFresh(root);
 const DIST = join(root, 'apps/example/dist');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
   const file = join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
+            extname(file)
+          ] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -46,11 +57,17 @@ const check = (ok, message) => {
   if (!ok) failed++;
 };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+page.on('console', (m) => {
+  if (m.type() === 'error') errors.push(m.text());
+});
 page.on('pageerror', (e) => errors.push(String(e)));
 page.setDefaultNavigationTimeout(240000);
 
@@ -132,16 +149,24 @@ try {
     };
   });
 
-  console.log(`  探針 ${out.info.probes} 顆，烘了 ${out.baked} 顆，圖塊寫了 ${out.info.written} 塊`);
-  console.log(`  取樣點在畫面的 右 (${out.screen.right.map((v) => v.toFixed(2)).join(', ')})、左 (${out.screen.left.map((v) => v.toFixed(2)).join(', ')})、前 (${out.screen.front.map((v) => v.toFixed(2)).join(', ')})`);
+  console.log(
+    `  探針 ${out.info.probes} 顆，烘了 ${out.baked} 顆，圖塊寫了 ${out.info.written} 塊`,
+  );
+  console.log(
+    `  取樣點在畫面的 右 (${out.screen.right.map((v) => v.toFixed(2)).join(', ')})、左 (${out.screen.left.map((v) => v.toFixed(2)).join(', ')})、前 (${out.screen.front.map((v) => v.toFixed(2)).join(', ')})`,
+  );
   console.log(`  開探針：右 ${show(out.withProbes.right)}、左 ${show(out.withProbes.left)}`);
-  console.log(`  開探針：後 ${show(out.withProbes.back)}（該是黃色 —— 這一點的反射方向 z 為負，走的是八面體的折疊分支）`);
+  console.log(
+    `  開探針：後 ${show(out.withProbes.back)}（該是黃色 —— 這一點的反射方向 z 為負，走的是八面體的折疊分支）`,
+  );
   console.log(`  關探針：右 ${show(out.without.right)}、左 ${show(out.without.left)}`);
 
   const inFrame = (uv) => uv[0] > 0.02 && uv[0] < 0.98 && uv[1] > 0.02 && uv[1] < 0.98;
   check(
     Object.values(out.screen).every(inFrame),
-    `四個取樣點都在畫面裡 —— ${Object.entries(out.screen).map(([k, v]) => k + ' (' + v.map((n) => n.toFixed(2)).join(', ') + ')').join('、')}`,
+    `四個取樣點都在畫面裡 —— ${Object.entries(out.screen)
+      .map(([k, v]) => k + ' (' + v.map((n) => n.toFixed(2)).join(', ') + ')')
+      .join('、')}`,
   );
   check(
     out.info.written === out.info.probes,
@@ -150,14 +175,22 @@ try {
 
   const right = dominant(out.withProbes.right);
   const left = dominant(out.withProbes.left);
-  console.log(`  主導通道：右 ${right.channel}（比第二強的高 ${right.ratio.toFixed(1)} 倍）、左 ${left.channel}（${left.ratio.toFixed(1)} 倍）`);
+  console.log(
+    `  主導通道：右 ${right.channel}（比第二強的高 ${right.ratio.toFixed(1)} 倍）、左 ${left.channel}（${left.ratio.toFixed(1)} 倍）`,
+  );
 
   // ## 判準是「哪個通道最強」，不是絕對亮度
   //
   // 絕對值取決於牆佔了那顆探針多少立體角、八面體圖塊多大、有沒有混到地板 ——
   // 全都不是這裡要測的。要測的是**方向對不對**。
-  check(right.channel === 'R' && right.ratio > 3, `地板偏 +x 那一塊照出紅牆 —— ${show(out.withProbes.right)}`);
-  check(left.channel === 'B' && left.ratio > 3, `地板偏 −x 那一塊照出藍牆 —— ${show(out.withProbes.left)}`);
+  check(
+    right.channel === 'R' && right.ratio > 3,
+    `地板偏 +x 那一塊照出紅牆 —— ${show(out.withProbes.right)}`,
+  );
+  check(
+    left.channel === 'B' && left.ratio > 3,
+    `地板偏 −x 那一塊照出藍牆 —— ${show(out.withProbes.left)}`,
+  );
 
   // 黃 = 紅綠都亮、藍很暗。`dominant` 只答得出單一通道，而黃色的紅綠是
   // 平手的，所以這一條自己判。
@@ -174,7 +207,9 @@ try {
   );
 
   // ---- 串流 ----
-  console.log(`  串流：牆現身但不通知 → ${show(out.revealedNoInvalidate)}（過期 ${out.staleAfterReveal} 顆）`);
+  console.log(
+    `  串流：牆現身但不通知 → ${show(out.revealedNoInvalidate)}（過期 ${out.staleAfterReveal} 顆）`,
+  );
   console.log(`  串流：通知 ${out.marked} 顆並重烘 → ${show(out.revealedInvalidated)}`);
 
   check(

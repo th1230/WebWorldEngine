@@ -21,10 +21,26 @@ const DIST = join(root, 'apps/example/dist');
 const COOKED = join(root, 'apps/benchmark/public');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
-  const file = path.startsWith('/cooked') ? join(COOKED, path) : join(DIST, path === '/' ? 'index.html' : path);
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
+  const file = path.startsWith('/cooked')
+    ? join(COOKED, path)
+    : join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.json': 'application/json',
+            '.wasm': 'application/wasm',
+          }[extname(file)] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -38,7 +54,11 @@ const SCENES = [
 ];
 
 console.log('遮蔽剔除：GPU 省下的，扣掉 CPU 多花的\n');
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 
 /** 開一頁量 GPU 與 CPU。 */
@@ -78,7 +98,9 @@ try {
       const on = await measure(page, `${query}&occlusion=1`);
       await page.close();
       rows.push([off, on]);
-      console.log(`    第 ${round + 1} 輪  關 GPU ${off.gpu} / CPU ${off.cpu}  開 GPU ${on.gpu} / CPU ${on.cpu}`);
+      console.log(
+        `    第 ${round + 1} 輪  關 GPU ${off.gpu} / CPU ${off.cpu}  開 GPU ${on.gpu} / CPU ${on.cpu}`,
+      );
     }
     const mid = (a) => a.slice().sort((x, y) => x - y)[a.length >> 1];
     const offGpu = mid(rows.map((r) => r[0].gpu));
@@ -86,10 +108,12 @@ try {
     const offCpu = mid(rows.map((r) => r[0].cpu));
     const onCpu = mid(rows.map((r) => r[1].cpu));
     const last = rows[rows.length - 1][1];
-    console.log(`    剔掉 ${last.occluded.toLocaleString('en-US')} 個，剩 ${last.visible.toLocaleString('en-US')} 個，遮蔽本身花 ${last.occlusionMs} ms`);
+    console.log(
+      `    剔掉 ${last.occluded.toLocaleString('en-US')} 個，剩 ${last.visible.toLocaleString('en-US')} 個，遮蔽本身花 ${last.occlusionMs} ms`,
+    );
     console.log(`    GPU ${offGpu} → ${onGpu} ms（省 ${(offGpu - onGpu).toFixed(2)}）`);
     console.log(`    CPU ${offCpu} → ${onCpu} ms（多 ${(onCpu - offCpu).toFixed(2)}）`);
-    const net = (offGpu - onGpu) - (onCpu - offCpu);
+    const net = offGpu - onGpu - (onCpu - offCpu);
     console.log(`    **淨 ${net >= 0 ? '賺' : '賠'} ${Math.abs(net).toFixed(2)} ms**\n`);
   }
 } catch (e) {

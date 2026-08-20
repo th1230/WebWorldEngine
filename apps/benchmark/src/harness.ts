@@ -54,7 +54,10 @@ export function createHarnessState(sceneId: string): HarnessState {
  * 首次資源上傳、以及瀏覽器自己的暖身排除在數字之外 —— 除非場景明確表示
  * 它要量的就是那段成本（`overrideWarmupFrames: 0`）。
  */
-export function runHarness(options: HarnessOptions, state: HarnessState): Promise<BenchmarkReport | null> {
+export function runHarness(
+  options: HarnessOptions,
+  state: HarnessState,
+): Promise<BenchmarkReport | null> {
   const { backend, profiler, overlay, scene, warmupFrames, measureFrames, autorun } = options;
 
   const totalWarmup = scene.overrideWarmupFrames ?? warmupFrames;

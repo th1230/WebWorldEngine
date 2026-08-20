@@ -156,7 +156,15 @@ export function makeReflectionProbeScene(): ReflectionProbeScene {
     renderer.render(scene, camera);
     renderer.setRenderTarget(null);
     gbuffer.update(renderer, scene, camera);
-    reflections.render(renderer, camera, gbuffer, colorTarget.texture, null, null, useProbes ? probes : null);
+    reflections.render(
+      renderer,
+      camera,
+      gbuffer,
+      colorTarget.texture,
+      null,
+      null,
+      useProbes ? probes : null,
+    );
   };
 
   return {

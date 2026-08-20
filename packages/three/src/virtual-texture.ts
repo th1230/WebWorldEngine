@@ -1,4 +1,11 @@
-import { ClampToEdgeWrapping, DataTexture, LinearFilter, NearestFilter, RGBAFormat, UnsignedByteType } from 'three';
+import {
+  ClampToEdgeWrapping,
+  DataTexture,
+  LinearFilter,
+  NearestFilter,
+  RGBAFormat,
+  UnsignedByteType,
+} from 'three';
 import { PageTable, type PageLoad, type VirtualTextureLayout } from '@webworld/format';
 import type { Material, WebGLProgramParametersWithUniforms } from 'three';
 
@@ -92,7 +99,13 @@ export class VirtualTexture {
 
     this.atlasSize = this.table.pageSize * this.table.atlasPages;
     this.atlasData = new Uint8Array(this.atlasSize * this.atlasSize * 4);
-    const atlas = new DataTexture(this.atlasData, this.atlasSize, this.atlasSize, RGBAFormat, UnsignedByteType);
+    const atlas = new DataTexture(
+      this.atlasData,
+      this.atlasSize,
+      this.atlasSize,
+      RGBAFormat,
+      UnsignedByteType,
+    );
     atlas.minFilter = LinearFilter;
     atlas.magFilter = LinearFilter;
     // ## 圖集不做 mipmap

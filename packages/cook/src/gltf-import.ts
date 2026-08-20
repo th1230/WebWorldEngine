@@ -196,7 +196,8 @@ async function readDocument(
    */
   const map: Record<string, Uint8Array<ArrayBuffer>> = {};
   for (const [uri, data] of resources ?? []) {
-    map[uri] = data.buffer instanceof ArrayBuffer ? (data as Uint8Array<ArrayBuffer>) : new Uint8Array(data);
+    map[uri] =
+      data.buffer instanceof ArrayBuffer ? (data as Uint8Array<ArrayBuffer>) : new Uint8Array(data);
   }
 
   const missing = referencedUris(json).filter((uri) => map[uri] === undefined);
@@ -232,7 +233,6 @@ const DROPPED_ATTRIBUTES: ReadonlyArray<[string, string]> = [
   ['TEXCOORD_1', '第二組 UV 消失，lightmap 與 AO 貼圖會取樣到錯的位置'],
 ];
 
-
 /**
  * 讀出檔案裡**所有** primitive。
  *
@@ -258,11 +258,7 @@ export async function importGltf(
 
   const animations = document.getRoot().listAnimations().length;
   if (animations > 0) {
-    warn(
-      sourceName,
-      `${animations} 段動畫`,
-      '匯入的是靜態幾何，動畫資料不會進入 manifest',
-    );
+    warn(sourceName, `${animations} 段動畫`, '匯入的是靜態幾何，動畫資料不會進入 manifest');
   }
   if (document.getRoot().listSkins().length > 0) {
     warn(sourceName, 'skin（骨架）', '骨架階層消失，蒙皮網格會停在 bind pose');
@@ -279,11 +275,7 @@ export async function importGltf(
       const name = `${sourceName}:${mesh.getName() || 'mesh'}#${index}`;
       const converted = convert(primitive, world);
       if (converted === null) {
-        warn(
-          name,
-          '非索引幾何',
-          'primitive 被整個跳過，該部位不會出現在畫面上',
-        );
+        warn(name, '非索引幾何', 'primitive 被整個跳過，該部位不會出現在畫面上');
         continue;
       }
 
@@ -300,7 +292,10 @@ export async function importGltf(
       out.push({
         name,
         mesh: converted,
-        material: convertMaterial(material, material === null ? -1 : materialIndex(document, material)),
+        material: convertMaterial(
+          material,
+          material === null ? -1 : materialIndex(document, material),
+        ),
       });
     }
   }
@@ -335,11 +330,7 @@ function reportMaterialGaps(
     warn(source, 'emissiveFactor', '自發光強度消失，該部位不會發亮');
   }
   if (material.getAlphaMode() !== 'OPAQUE') {
-    warn(
-      source,
-      `alphaMode=${material.getAlphaMode()}`,
-      '一律當成不透明，鏤空與半透明會變成實心',
-    );
+    warn(source, `alphaMode=${material.getAlphaMode()}`, '一律當成不透明，鏤空與半透明會變成實心');
   }
   if (material.getDoubleSided()) {
     warn(source, 'doubleSided', '背面會被剔除，單面幾何從背面看會消失');
@@ -425,7 +416,17 @@ function convert(primitive: Primitive, world: readonly number[]): RawMesh | null
   const tangent = primitive.getAttribute('TANGENT');
   const count = position.getCount();
 
-  const linear = [world[0]!, world[1]!, world[2]!, world[4]!, world[5]!, world[6]!, world[8]!, world[9]!, world[10]!];
+  const linear = [
+    world[0]!,
+    world[1]!,
+    world[2]!,
+    world[4]!,
+    world[5]!,
+    world[6]!,
+    world[8]!,
+    world[9]!,
+    world[10]!,
+  ];
   const determinant =
     linear[0]! * (linear[4]! * linear[8]! - linear[5]! * linear[7]!) -
     linear[3]! * (linear[1]! * linear[8]! - linear[2]! * linear[7]!) +

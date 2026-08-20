@@ -10,12 +10,7 @@
  */
 
 export type DeviceLifecycleState =
-  | 'running'
-  | 'lost'
-  | 'reacquiring'
-  | 'rebuilding'
-  | 'restoring'
-  | 'failed';
+  'running' | 'lost' | 'reacquiring' | 'rebuilding' | 'restoring' | 'failed';
 
 export interface DeviceResourceOwner {
   readonly id: string;

@@ -165,7 +165,6 @@ describe('cubemap 重取樣進八面體圖', () => {
     expect(checked).toBeGreaterThan(tileSize * tileSize * 0.3);
   });
 
-
   it('邊界那一圈照八面體的接法填，而且填滿了', () => {
     const faceSize = 16;
     const tileSize = 16;

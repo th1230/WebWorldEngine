@@ -7,7 +7,14 @@ import { OcclusionBuffer } from './occlusion.ts';
  * 這裡直接給「螢幕上的方形 + 距離」，不經過真的投影矩陣 —— 要驗的是緩衝的
  * 邏輯，不是矩陣乘法。x/y 用 −1..1 的 NDC，乘上 w 還原成裁剪空間。
  */
-function corners(ndcMinX: number, ndcMaxX: number, ndcMinY: number, ndcMaxY: number, near: number, far = near): Float32Array {
+function corners(
+  ndcMinX: number,
+  ndcMaxX: number,
+  ndcMinY: number,
+  ndcMaxY: number,
+  near: number,
+  far = near,
+): Float32Array {
   const out = new Float32Array(32);
   let i = 0;
   for (const w of [near, far]) {
@@ -206,9 +213,12 @@ describe('球體測試（真的用一個透視矩陣）', () => {
   /** 把一個世界空間的軸對齊盒子轉成裁剪空間的 8 個角。 */
   function boxCorners(
     matrix: Float64Array,
-    minX: number, maxX: number,
-    minY: number, maxY: number,
-    minZ: number, maxZ: number,
+    minX: number,
+    maxX: number,
+    minY: number,
+    maxY: number,
+    minZ: number,
+    maxZ: number,
   ): Float32Array {
     const out = new Float32Array(32);
     let i = 0;

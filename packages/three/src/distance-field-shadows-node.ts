@@ -35,7 +35,8 @@ export interface DistanceFieldShadowsNodeHandle {
 export async function createDistanceFieldShadowsNodeMaterial(): Promise<DistanceFieldShadowsNodeHandle> {
   const tsl = await loadTsl();
   const webgpu = await loadWebGPU();
-  const { Fn, Loop, If, Break, float, vec3, vec4, uniform, uv, texture, normalize, dot, mat4 } = tsl;
+  const { Fn, Loop, If, Break, float, vec3, vec4, uniform, uv, texture, normalize, dot, mat4 } =
+    tsl;
 
   const field = createFieldNodes(tsl, webgpu);
   const convention = createDepthConvention(tsl);
@@ -65,9 +66,7 @@ export async function createDistanceFieldShadowsNodeMaterial(): Promise<Distance
       ).toVar();
       const worldPosition = uCameraMatrix.mul(vec4(viewPosition, 1)).xyz.toVar();
 
-      const viewNormal = normalize(
-        tNormal.sample(flipV(tsl, screenUv)).xyz.mul(2).sub(1),
-      ).toVar();
+      const viewNormal = normalize(tNormal.sample(flipV(tsl, screenUv)).xyz.mul(2).sub(1)).toVar();
       // `mat3( uCameraMatrix ) * viewNormal` —— 只要旋轉，不要平移。
       const worldNormal = normalize(uCameraMatrix.mul(vec4(viewNormal, 0)).xyz).toVar();
       const toLight = normalize(uLightDirection.negate()).toVar();

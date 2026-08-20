@@ -121,7 +121,7 @@ export function makeShadowLodScene(options: ShadowLodOptions): ShadowLodScene {
   //
   // 放 260 的話最近與最遠只差 1.6 倍，兩種算法都會擠在同一階 —— 那時
   // 這個關卡問不出任何事情。
-  sun.position.copy(LIGHT).multiplyScalar(options.mode === "field" ? -120 : -260);
+  sun.position.copy(LIGHT).multiplyScalar(options.mode === 'field' ? -120 : -260);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   // ## 光源相機的範圍決定陰影圖的像素/單位，而那正是選階的依據
@@ -138,7 +138,7 @@ export function makeShadowLodScene(options: ShadowLodOptions): ShadowLodScene {
   // 階正是遠景合併的觸發條件 —— 於是數字會隨著烘焙進度一直掉（實測
   // 485 → 170 → 79）。那是合併**正確**的行為，但它讓這個場景沒辦法乾淨地
   // 只回答「被擋住的東西有沒有投影」這一個問題。
-  const shadowExtent = options.mode === "offscreen" ? 220 : 70;
+  const shadowExtent = options.mode === 'offscreen' ? 220 : 70;
   const shadowCamera = sun.shadow.camera;
   shadowCamera.left = -shadowExtent;
   shadowCamera.right = shadowExtent;
@@ -182,7 +182,7 @@ export function makeShadowLodScene(options: ShadowLodOptions): ShadowLodScene {
     // 錨點放在光線的下游（−x 更遠處），它們的影子不會落到取樣點上。
     positions.push(new THREE.Vector3(-40, 7, 26));
     positions.push(new THREE.Vector3(-46, 7, -30));
-  } else if (options.mode === "occluded") {
+  } else if (options.mode === 'occluded') {
     // ## 一顆巨大的球擋住後面一整叢
     //
     // 遮蔽緩衝是拿場上夠大的 instance 當遮蔽物、把其他人投上去測的。所以
@@ -211,7 +211,7 @@ export function makeShadowLodScene(options: ShadowLodOptions): ShadowLodScene {
 
   const mesh = new WW.InstancedMesh(geometry, material, positions.length, {
     shadowCulling: options.shadowCulling,
-    occlusion: options.mode === "occluded",
+    occlusion: options.mode === 'occluded',
     ...(options.shadowErrorPixels === undefined
       ? {}
       : { shadowErrorPixels: options.shadowErrorPixels }),
@@ -256,7 +256,7 @@ export function makeShadowLodScene(options: ShadowLodOptions): ShadowLodScene {
     // 的夾角約 58 度，而視錐的半對角約 34 度。差得夠遠，不必擔心邊界情況。
     camera.position.set(spot.x, 55, 35);
     camera.lookAt(spot.x, 0, 0);
-  } else if (options.mode === "occluded") {
+  } else if (options.mode === 'occluded') {
     // 站在那顆大球後面一點，讓它剛好罩住後面那一叢。
     camera.position.set(0, 34, 130);
     camera.lookAt(0, 12, 0);
@@ -341,7 +341,7 @@ export function makeShadowLodScene(options: ShadowLodOptions): ShadowLodScene {
     contract: () => ({
       // 正交：像素/單位 = 陰影圖邊長 ÷ 視野邊長。與距離無關。
       ppu: sun.shadow.mapSize.x / (shadowExtent * 2),
-      radius: options.mode === "field" ? 2.5 : 5,
+      radius: options.mode === 'field' ? 2.5 : 5,
       errors: LOD_ERRORS,
       errorPixels: options.shadowErrorPixels ?? 6,
     }),

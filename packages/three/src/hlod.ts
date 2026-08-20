@@ -233,7 +233,8 @@ export function mergeInstances(
         outTangent[o4] = rx / len;
         outTangent[o4 + 1] = ry / len;
         outTangent[o4 + 2] = rz / len;
-        outTangent[o4 + 3] = tangent.getW(v) * (determinant3(m0, m1, m2, m4, m5, m6, m8, m9, m10) < 0 ? -1 : 1);
+        outTangent[o4 + 3] =
+          tangent.getW(v) * (determinant3(m0, m1, m2, m4, m5, m6, m8, m9, m10) < 0 ? -1 : 1);
       }
     }
 
@@ -264,9 +265,15 @@ export function mergeInstances(
 
 /** 3×3 的逆轉置，用來變換法線。回傳 column-major 的九個值。 */
 function inverseTranspose3(
-  m0: number, m1: number, m2: number,
-  m4: number, m5: number, m6: number,
-  m8: number, m9: number, m10: number,
+  m0: number,
+  m1: number,
+  m2: number,
+  m4: number,
+  m5: number,
+  m6: number,
+  m8: number,
+  m9: number,
+  m10: number,
 ): Float64Array {
   const c00 = m5 * m10 - m6 * m9;
   const c01 = m6 * m8 - m4 * m10;
@@ -293,9 +300,15 @@ function inverseTranspose3(
 }
 
 function determinant3(
-  m0: number, m1: number, m2: number,
-  m4: number, m5: number, m6: number,
-  m8: number, m9: number, m10: number,
+  m0: number,
+  m1: number,
+  m2: number,
+  m4: number,
+  m5: number,
+  m6: number,
+  m8: number,
+  m9: number,
+  m10: number,
 ): number {
   return m0 * (m5 * m10 - m6 * m9) + m1 * (m6 * m8 - m4 * m10) + m2 * (m4 * m9 - m5 * m8);
 }

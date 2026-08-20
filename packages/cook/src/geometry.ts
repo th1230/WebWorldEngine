@@ -432,10 +432,7 @@ export async function optimizeLodChain(lods: LodResult[]): Promise<LodResult[]> 
  *
  * 真正的凸包分解（V-HACD 之類）留待接上物理引擎時再評估。
  */
-export async function generateCollision(
-  mesh: RawMesh,
-  targetRatio = 0.15,
-): Promise<RawMesh> {
+export async function generateCollision(mesh: RawMesh, targetRatio = 0.15): Promise<RawMesh> {
   await MeshoptSimplifier.ready;
 
   const positions = extractPositions(mesh);

@@ -150,7 +150,9 @@ describe('authored attributes survive the glTF round trip', () => {
 
   it('reports which attributes the source actually had', async () => {
     // 沒有這兩個旗標，cooker 沒有任何辦法區分「來源沒給」與「來源給了全零」
-    const plain = await readSourceGltf(await writeSourceGltf({ material: 'material:rock', id: 'x', mesh: icosphere(1) }));
+    const plain = await readSourceGltf(
+      await writeSourceGltf({ material: 'material:rock', id: 'x', mesh: icosphere(1) }),
+    );
     expect(plain.hasNormals).toBe(false);
     expect(plain.hasTangents).toBe(false);
 
@@ -194,7 +196,9 @@ describe('authored attributes survive the glTF round trip', () => {
   });
 
   it('still generates tangents when the source lacks them', async () => {
-    const imported = await readSourceGltf(await writeSourceGltf({ material: 'material:rock', id: 'x', mesh: icosphere(2) }));
+    const imported = await readSourceGltf(
+      await writeSourceGltf({ material: 'material:rock', id: 'x', mesh: icosphere(2) }),
+    );
     const { asset } = await cookMesh('mesh:plain', imported, { collision: false });
     const cooked = new Float32Array(
       asset.bytes.buffer,
@@ -247,7 +251,10 @@ describe('glTF import limits are explicit', () => {
             .setBuffer(buffer),
         );
 
-    const mesh = document.createMesh('two').addPrimitive(makePrimitive()).addPrimitive(makePrimitive());
+    const mesh = document
+      .createMesh('two')
+      .addPrimitive(makePrimitive())
+      .addPrimitive(makePrimitive());
     document.createScene().addChild(document.createNode('n').setMesh(mesh));
 
     await expect(readSourceGltf(await new NodeIO().writeBinary(document))).rejects.toThrow(
@@ -279,12 +286,13 @@ describe('glTF import produces correct geometry, not just plausible geometry', (
     const mesh = await readPrimitive((d, b) => {
       const primitive = d
         .createPrimitive()
-        .setAttribute(
-          'POSITION',
-          d.createAccessor().setType('VEC3').setArray(TRI).setBuffer(b),
-        )
+        .setAttribute('POSITION', d.createAccessor().setType('VEC3').setArray(TRI).setBuffer(b))
         .setIndices(
-          d.createAccessor().setType('SCALAR').setArray(new Uint32Array([0, 1, 2])).setBuffer(b),
+          d
+            .createAccessor()
+            .setType('SCALAR')
+            .setArray(new Uint32Array([0, 1, 2]))
+            .setBuffer(b),
         );
       d.createScene().addChild(
         d
@@ -304,14 +312,17 @@ describe('glTF import produces correct geometry, not just plausible geometry', (
     const mesh = await readPrimitive((d, b) => {
       const primitive = d
         .createPrimitive()
-        .setAttribute(
-          'POSITION',
-          d.createAccessor().setType('VEC3').setArray(TRI).setBuffer(b),
-        )
+        .setAttribute('POSITION', d.createAccessor().setType('VEC3').setArray(TRI).setBuffer(b))
         .setIndices(
-          d.createAccessor().setType('SCALAR').setArray(new Uint32Array([0, 1, 2])).setBuffer(b),
+          d
+            .createAccessor()
+            .setType('SCALAR')
+            .setArray(new Uint32Array([0, 1, 2]))
+            .setBuffer(b),
         );
-      d.createScene().addChild(d.createNode('n').setMesh(d.createMesh('m').addPrimitive(primitive)));
+      d.createScene().addChild(
+        d.createNode('n').setMesh(d.createMesh('m').addPrimitive(primitive)),
+      );
     });
     expect(mesh.vertices[VERTEX_FLOATS]).toBe(1);
   });
@@ -332,9 +343,15 @@ describe('glTF import produces correct geometry, not just plausible geometry', (
             .setBuffer(b),
         )
         .setIndices(
-          d.createAccessor().setType('SCALAR').setArray(new Uint32Array([0, 1, 2])).setBuffer(b),
+          d
+            .createAccessor()
+            .setType('SCALAR')
+            .setArray(new Uint32Array([0, 1, 2]))
+            .setBuffer(b),
         );
-      d.createScene().addChild(d.createNode('n').setMesh(d.createMesh('m').addPrimitive(primitive)));
+      d.createScene().addChild(
+        d.createNode('n').setMesh(d.createMesh('m').addPrimitive(primitive)),
+      );
     });
     expect(mesh.vertices[VERTEX_FLOATS]).toBeCloseTo(1, 4);
   });
@@ -343,14 +360,17 @@ describe('glTF import produces correct geometry, not just plausible geometry', (
     const mesh = await readPrimitive((d, b) => {
       const primitive = d
         .createPrimitive()
-        .setAttribute(
-          'POSITION',
-          d.createAccessor().setType('VEC3').setArray(TRI).setBuffer(b),
-        )
+        .setAttribute('POSITION', d.createAccessor().setType('VEC3').setArray(TRI).setBuffer(b))
         .setIndices(
-          d.createAccessor().setType('SCALAR').setArray(new Uint16Array([0, 1, 2])).setBuffer(b),
+          d
+            .createAccessor()
+            .setType('SCALAR')
+            .setArray(new Uint16Array([0, 1, 2]))
+            .setBuffer(b),
         );
-      d.createScene().addChild(d.createNode('n').setMesh(d.createMesh('m').addPrimitive(primitive)));
+      d.createScene().addChild(
+        d.createNode('n').setMesh(d.createMesh('m').addPrimitive(primitive)),
+      );
     });
     expect(mesh.indices).toBeInstanceOf(Uint32Array);
     expect(Array.from(mesh.indices)).toEqual([0, 1, 2]);

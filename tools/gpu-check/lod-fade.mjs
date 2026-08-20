@@ -36,10 +36,26 @@ const DIST = join(root, 'apps/example/dist');
 const COOKED = join(root, 'apps/benchmark/public');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') { res.writeHead(204).end(); return; }
-  const file = path.startsWith('/cooked') ? join(COOKED, path) : join(DIST, path === '/' ? 'index.html' : path);
+  if (path === '/favicon.ico') {
+    res.writeHead(204).end();
+    return;
+  }
+  const file = path.startsWith('/cooked')
+    ? join(COOKED, path)
+    : join(DIST, path === '/' ? 'index.html' : path);
   readFile(file).then(
-    (b) => { res.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }[extname(file)] ?? 'application/octet-stream' }); res.end(b); },
+    (b) => {
+      res.writeHead(200, {
+        'content-type':
+          {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.json': 'application/json',
+            '.wasm': 'application/wasm',
+          }[extname(file)] ?? 'application/octet-stream',
+      });
+      res.end(b);
+    },
     () => res.writeHead(404).end(),
   );
 });
@@ -52,19 +68,31 @@ const check = (ok, message) => {
   if (!ok) failed++;
 };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--enable-unsafe-webgpu'] });
+const browser = await chromium.launch({
+  channel: 'chrome',
+  headless: false,
+  args: ['--enable-unsafe-webgpu'],
+});
 const base = `http://localhost:${server.address().port}`;
 
 const run = async (band) => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
   page.on('pageerror', (e) => errors.push(String(e)));
   page.setDefaultNavigationTimeout(240000);
-  await page.goto(`${base}/?count=600&spread=60&hlod=0&verify=1&lodFade=${band}`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__ww?.fadeCoverage != null && window.__ww.totalFrames > 30, undefined, {
-    timeout: 240000,
+  await page.goto(`${base}/?count=600&spread=60&hlod=0&verify=1&lodFade=${band}`, {
+    waitUntil: 'load',
   });
+  await page.waitForFunction(
+    () => window.__ww?.fadeCoverage != null && window.__ww.totalFrames > 30,
+    undefined,
+    {
+      timeout: 240000,
+    },
+  );
   // 掃一段距離，挑「過渡中最多」的那一個位置來比覆蓋率。
   const out = await page.evaluate(() => {
     // 先找過渡中最多的那個距離，再在那裡取縮圖。
@@ -105,7 +133,10 @@ try {
     relative < 0.004,
     `淡入之後畫面幾乎沒變，沒有紗窗 —— 差 ${(relative * 100).toFixed(2)}%（正確約 0.05%，抖動不互補會到 1.27%）`,
   );
-  check(on.errors.length === 0, `著色器編譯得起來，沒有主控台錯誤${on.errors.length > 0 ? "：" + on.errors[0].slice(0, 140) : ""}`);
+  check(
+    on.errors.length === 0,
+    `著色器編譯得起來，沒有主控台錯誤${on.errors.length > 0 ? '：' + on.errors[0].slice(0, 140) : ''}`,
+  );
 } catch (e) {
   console.log('失敗：' + String(e).split(String.fromCharCode(10))[0].slice(0, 240));
   failed++;

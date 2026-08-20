@@ -62,12 +62,10 @@ export function spearmanTrend(values: readonly number[]): number {
   const n = values.length;
   if (n < 3) return 0;
 
-  const ranked = values
-    .map((value, index) => ({ value, index }))
-    .sort((a, b) => a.value - b.value);
+  const ranked = values.map((value, index) => ({ value, index })).sort((a, b) => a.value - b.value);
 
   const ranks = new Array<number>(n);
-  for (let i = 0; i < n; ) {
+  for (let i = 0; i < n;) {
     // 相同數值取平均等級，否則並列會讓 ρ 失真
     let j = i;
     while (j + 1 < n && ranked[j + 1]!.value === ranked[i]!.value) j++;
@@ -128,8 +126,7 @@ export function analyzeVariance(runs: readonly (readonly BenchmarkReport[])[]): 
       // 低於噪音下限的指標不參與推導：它們的百分比只是計時器量化誤差
       if (median < metric.minAbsolute) continue;
 
-      const maxDeviationPct =
-        Math.max(...values.map((v) => Math.abs(v - median))) / median * 100;
+      const maxDeviationPct = (Math.max(...values.map((v) => Math.abs(v - median))) / median) * 100;
       const trend = spearmanTrend(values);
       // 只有夠大的偏離才值得標成漂移；1% 的單調變化沒有實務意義
       const drifting = Math.abs(trend) >= DRIFT_RHO && maxDeviationPct >= 5;
@@ -184,7 +181,10 @@ export function formatVariance(report: VarianceReport, currentThresholdPct: numb
     lines.push('');
     lines.push('■ 系統性漂移 —— 數值隨時間單調變化，不是雜訊');
     lines.push(
-      padDisplay('場景', 30) + padDisplay('指標', 20) + padDisplay('變化', 10) + '樣本值（舊 → 新）',
+      padDisplay('場景', 30) +
+        padDisplay('指標', 20) +
+        padDisplay('變化', 10) +
+        '樣本值（舊 → 新）',
     );
     lines.push('-'.repeat(94));
     for (const row of report.drifting) {
@@ -203,9 +203,7 @@ export function formatVariance(report: VarianceReport, currentThresholdPct: numb
 
   lines.push('');
   lines.push('■ 隨機散布 —— 可用來推導門檻');
-  lines.push(
-    padDisplay('場景', 30) + padDisplay('指標', 20) + padDisplay('偏離', 10) + '樣本值',
-  );
+  lines.push(padDisplay('場景', 30) + padDisplay('指標', 20) + padDisplay('偏離', 10) + '樣本值');
   lines.push('-'.repeat(94));
 
   // 只列出雜訊較大的；其餘都在門檻附近沒有參考價值

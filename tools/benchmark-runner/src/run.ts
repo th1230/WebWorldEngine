@@ -113,7 +113,10 @@ export const DEFAULT_RUNS: readonly SceneRun[] = [
     warmup: 0,
     frames: 200,
     params: { precompile: '0' },
-    smoke: { frames: 30, params: { precompile: '0', count: '12', minChain: '8', chainSpread: '8' } },
+    smoke: {
+      frames: 30,
+      params: { precompile: '0', count: '12', minChain: '8', chainSpread: '8' },
+    },
   },
   {
     id: 'shader-compile',
@@ -290,7 +293,9 @@ export const DEFAULT_RUNS: readonly SceneRun[] = [
 
 /** 依 profile 套用對應的工作量。 */
 export function runsForProfile(runs: readonly SceneRun[], profile: RunProfile): SceneRun[] {
-  const applicable = runs.filter((run) => run.profiles === undefined || run.profiles.includes(profile.id));
+  const applicable = runs.filter(
+    (run) => run.profiles === undefined || run.profiles.includes(profile.id),
+  );
   if (profile.performanceMeaningful) return applicable.map((run) => ({ ...run }));
   return applicable.map((run) => ({
     ...run,
@@ -396,7 +401,9 @@ export async function runBenchmarks(options: RunOptions): Promise<RunOutcome> {
       } catch (error) {
         // 預熱失敗不該讓整輪驗收停下來，但要說出來 —— 少了預熱的數字
         // 與有預熱的不可比較。
-        log(`  ⚠ 預熱失敗，數字可能偏樂觀：${error instanceof Error ? error.message : String(error)}`);
+        log(
+          `  ⚠ 預熱失敗，數字可能偏樂觀：${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
 
@@ -504,7 +511,9 @@ async function launchBrowser(profile: RunProfile): Promise<Browser> {
         ...(attempt.channel !== undefined ? { channel: attempt.channel } : {}),
       });
     } catch (error) {
-      errors.push(`${attempt.label}: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`);
+      errors.push(
+        `${attempt.label}: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`,
+      );
     }
   }
 
@@ -538,7 +547,9 @@ async function runOne(
 
     if (state.phase === 'failed' || state.report === null) {
       const reason = state.error ?? '沒有產生報告';
-      throw new Error(`${reason}${consoleErrors.length > 0 ? `\n    ${consoleErrors.join('\n    ')}` : ''}`);
+      throw new Error(
+        `${reason}${consoleErrors.length > 0 ? `\n    ${consoleErrors.join('\n    ')}` : ''}`,
+      );
     }
 
     // 頁面錯誤不會讓量測失敗，但一定要說出來 —— 靜默的錯誤最危險

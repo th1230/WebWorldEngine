@@ -30,11 +30,12 @@ const identity = (v: number): number => v;
 const options = { faceSize: FACE, flip: -1, decode: identity };
 
 /** 用 SH 求輻照度，常數與 shader 那一份相同。 */
-function irradianceAt(sh: { coefficients: { x: number; y: number; z: number }[] }, n: [number, number, number]): number {
+function irradianceAt(
+  sh: { coefficients: { x: number; y: number; z: number }[] },
+  n: [number, number, number],
+): number {
   const c = sh.coefficients;
-  return (
-    c[0]!.x * 0.886227 + 1.023328 * (c[1]!.x * n[1] + c[2]!.x * n[2] + c[3]!.x * n[0])
-  );
+  return c[0]!.x * 0.886227 + 1.023328 * (c[1]!.x * n[1] + c[2]!.x * n[2] + c[3]!.x * n[0]);
 }
 
 describe('cubemap → SH', () => {
@@ -98,7 +99,9 @@ describe('cubemap → SH', () => {
     const flipped = projectCubeToSH(faces, { ...options, flip: 1 });
     const plusFlipped = irradianceAt(flipped, [1, 0, 0]);
     // 翻轉之後左右對調。
-    expect(Math.sign(plus - minus)).toBe(-Math.sign(plusFlipped - irradianceAt(flipped, [-1, 0, 0])));
+    expect(Math.sign(plus - minus)).toBe(
+      -Math.sign(plusFlipped - irradianceAt(flipped, [-1, 0, 0])),
+    );
   });
 
   it('decode 會被用到 —— 半精度那條路靠它', () => {

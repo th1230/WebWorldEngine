@@ -246,8 +246,10 @@ export function compareReports(
      */
     const machineDrift = referenceDrift(base, report);
     if (machineDrift !== null) {
-      warnings.push(`場景 ${report.scene}：機器狀態與基準不同（${machineDrift}）。` +
-        '這通常是持續負載造成的降檔 —— 讓機器閒置幾分鐘後重跑，或重新產生基準。');
+      warnings.push(
+        `場景 ${report.scene}：機器狀態與基準不同（${machineDrift}）。` +
+          '這通常是持續負載造成的降檔 —— 讓機器閒置幾分鐘後重跑，或重新產生基準。',
+      );
       continue;
     }
 
@@ -304,7 +306,14 @@ export function compareReports(
             ? 'improved'
             : 'ok';
 
-      rows.push({ scene: report.scene, metric: metric.name, baseline: baseValue, current: currentValue, deltaPct, status });
+      rows.push({
+        scene: report.scene,
+        metric: metric.name,
+        baseline: baseValue,
+        current: currentValue,
+        deltaPct,
+        status,
+      });
     }
   }
 
@@ -368,7 +377,12 @@ export function formatComparison(result: ComparisonResult, thresholdPct: number)
         pad(row.metric, 18) +
         pad(row.baseline === null ? '-' : row.baseline.toFixed(3), 12) +
         pad(row.current === null ? '-' : row.current.toFixed(3), 12) +
-        pad(row.deltaPct === null ? '-' : `${row.deltaPct >= 0 ? '+' : ''}${row.deltaPct.toFixed(1)}%`, 10) +
+        pad(
+          row.deltaPct === null
+            ? '-'
+            : `${row.deltaPct >= 0 ? '+' : ''}${row.deltaPct.toFixed(1)}%`,
+          10,
+        ) +
         symbol,
     );
   }
@@ -434,12 +448,7 @@ function refreshIntervalOf(reports: readonly BenchmarkReport[]): number {
 function referenceDrift(base: BenchmarkReport, current: BenchmarkReport): string | null {
   const checks: Array<[string, number, number, number]> = [
     ['CPU 參考', base.cpuReferenceMs, current.cpuReferenceMs, CPU_REFERENCE_TOLERANCE],
-    [
-      '記憶體參考',
-      base.memoryReferenceMs,
-      current.memoryReferenceMs,
-      MEMORY_REFERENCE_TOLERANCE,
-    ],
+    ['記憶體參考', base.memoryReferenceMs, current.memoryReferenceMs, MEMORY_REFERENCE_TOLERANCE],
   ];
 
   for (const [label, from, to, tolerance] of checks) {

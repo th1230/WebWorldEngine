@@ -14,8 +14,13 @@ export function createFrustum(): Frustum {
   return { planes: new Float32Array(6 * 4) };
 }
 
-
-import { Frustum as ThreeFrustum, Matrix4, type Camera, type Matrix4 as Mat4, type Vector3 } from 'three';
+import {
+  Frustum as ThreeFrustum,
+  Matrix4,
+  type Camera,
+  type Matrix4 as Mat4,
+  type Vector3,
+} from 'three';
 
 const clip = new Matrix4();
 const source = new ThreeFrustum();
@@ -75,5 +80,3 @@ export function frustumFromCamera(
     planes[i * 4 + 3] = plane.constant + n.dot(viewPoint);
   }
 }
-
-

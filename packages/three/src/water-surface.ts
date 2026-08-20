@@ -326,7 +326,8 @@ export class WaterSurface {
   }
 
   private ensureTarget(width: number, height: number): void {
-    if (this.target !== null && this.target.width === width && this.target.height === height) return;
+    if (this.target !== null && this.target.width === width && this.target.height === height)
+      return;
     this.target?.dispose();
     // 位元數不是折射取樣誤差的來源 —— 換成 `UnsignedIntType` 重建重測，
     // 水底深度是 440.011 對 440.006，等於沒動。也就是說這個型別根本沒被

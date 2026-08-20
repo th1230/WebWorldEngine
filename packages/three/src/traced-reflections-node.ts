@@ -30,11 +30,7 @@ import type { ReflectionProbes } from './reflection-probes.ts';
 export interface TracedReflectionsNodeHandle {
   material: unknown;
   setTextures: (color: Texture, depth: Texture, normal: Texture) => void;
-  setMatrices: (
-    projection: Matrix4,
-    projectionInverse: Matrix4,
-    cameraMatrix: Matrix4,
-  ) => void;
+  setMatrices: (projection: Matrix4, projectionInverse: Matrix4, cameraMatrix: Matrix4) => void;
   setField: (field: GlobalDistanceField | null, range: number) => void;
   setIrradiance: (volume: IrradianceVolume | null) => void;
   setProbes: (probes: ReflectionProbes | null) => void;
@@ -52,8 +48,22 @@ export interface TracedReflectionsNodeHandle {
 export async function createTracedReflectionsNodeMaterial(): Promise<TracedReflectionsNodeHandle> {
   const tsl = await loadTsl();
   const webgpu = await loadWebGPU();
-  const { Fn, Loop, If, Break, float, vec3, vec4, uniform, uv, texture, normalize, reflect, mat4, mix } =
-    tsl;
+  const {
+    Fn,
+    Loop,
+    If,
+    Break,
+    float,
+    vec3,
+    vec4,
+    uniform,
+    uv,
+    texture,
+    normalize,
+    reflect,
+    mat4,
+    mix,
+  } = tsl;
 
   const field = createFieldNodes(tsl, webgpu);
   const irradiance = createIrradianceSampler(tsl, webgpu);

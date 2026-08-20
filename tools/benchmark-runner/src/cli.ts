@@ -106,7 +106,9 @@ async function doRun(args: Args, defaultRepeat: number): Promise<ResultFile> {
   console.log(`profile: ${profile.id} — ${profile.description}\n`);
 
   if (!profile.performanceMeaningful) {
-    console.log('⚠ 這個 profile 使用軟體 adapter。結果只用於判斷「有沒有壞掉」，不可當效能基準。\n');
+    console.log(
+      '⚠ 這個 profile 使用軟體 adapter。結果只用於判斷「有沒有壞掉」，不可當效能基準。\n',
+    );
   }
 
   // --scene 只是篩選，不是另一組設定：沿用該場景既有的幀數與 smoke 縮放，
@@ -117,7 +119,10 @@ async function doRun(args: Args, defaultRepeat: number): Promise<ResultFile> {
   // 若照使用者打字的順序排，`--scene b,a` 就會把配對的兩個拆開。
   let selected: readonly SceneRun[] | null = null;
   if (args.scene !== null) {
-    const wanted = args.scene.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+    const wanted = args.scene
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
     const matches = DEFAULT_RUNS.filter(
       (run) => wanted.includes(run.label ?? run.id) || wanted.includes(run.id),
     );
@@ -135,7 +140,9 @@ async function doRun(args: Args, defaultRepeat: number): Promise<ResultFile> {
   // 覆寫參數是**臨時實驗**用的。它會改變場景的行為，所以帶著它跑出來的
   // 結果不該被當成基準 —— 明確警告，而不是讓人事後才發現數字對不起來。
   if (Object.keys(args.params).length > 0) {
-    const applied = Object.entries(args.params).map(([k, v]) => `${k}=${v}`).join(' ');
+    const applied = Object.entries(args.params)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(' ');
     console.log(`⚠ 覆寫參數：${applied}。這組數字與 baseline 不可比較。
 `);
     const source = selected ?? DEFAULT_RUNS;
@@ -153,7 +160,10 @@ async function doRun(args: Args, defaultRepeat: number): Promise<ResultFile> {
   if (args.ab !== null) {
     const eq = args.ab.indexOf('=');
     const key = eq > 0 ? args.ab.slice(0, eq) : '';
-    const [a, b] = args.ab.slice(eq + 1).split(',').map((v) => v.trim());
+    const [a, b] = args.ab
+      .slice(eq + 1)
+      .split(',')
+      .map((v) => v.trim());
     if (key.length === 0 || a === undefined || b === undefined) {
       throw new Error(`--ab 的格式是 key=a,b（例如 hlod=1,0），收到 "${args.ab}"`);
     }
