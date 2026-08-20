@@ -33,6 +33,16 @@ import type { Material, Object3D } from 'three';
  * 這裡的做法是**在蓋掉之前先接住**：把原本那個記下來，包進新的一起呼叫。
  * 於是順序不再重要，而「順序」正是最不該讓使用者記住的那種知識。
  *
+ * ## 坑三：node 材質上 `setupMaterial` 什麼都不會做
+ *
+ * `CSM.setupMaterial` 是**直接指派** `onBeforeCompile`，而 `WebGPURenderer`
+ * 整條編譯路徑不經過那個鉤子。所以拿 node 材質餵它的話：接了、沒報錯、
+ * 而那些材質上一點陰影都不會有。
+ *
+ * Three 自己對 WebGPU 那條路的答案是另一個東西 —— `CSMShadowNode`（接在
+ * 光源的 `shadowNode` 上，不碰材質）。所以這裡不轉寫一份，只在偵測得到的
+ * 時候把話講出來：**node 材質配上 `CSM`，是接不上的組合。**
+ *
  * ## 成本（實測，2,000 個 instance）
  *
  * | | GPU | 繪製 | 三角形 |
@@ -81,6 +91,22 @@ export function applyShadows(csm: CascadedShadows, root: Object3D): number {
       setupPreservingHook(csm, one);
     }
   });
+
+  // ## node 材質接不上 —— 而那沒有任何錯誤訊息
+  //
+  // 判斷得出來的理由是 `setupMaterial` 走的是 `onBeforeCompile`，而 node
+  // 材質那條路根本不看它。所以「材質是 node 材質」就足以斷定接不上，不必
+  // 知道用的是哪個 renderer。
+  const nodeMaterials = [...seen].filter(
+    (one) => (one as { isNodeMaterial?: boolean }).isNodeMaterial === true,
+  ).length;
+  if (nodeMaterials > 0) {
+    console.warn(
+      `WW.applyShadows: ${nodeMaterials} 個材質是 node 材質，而 CSM.setupMaterial 走的是\n` +
+        'onBeforeCompile —— WebGPURenderer 不看那個鉤子，所以那些材質上不會有陰影。\n' +
+        'WebGPU 那條路要用 three/addons 的 CSMShadowNode（接在光源上，不碰材質）。',
+    );
+  }
 
   if (seen.size === 0) {
     // 靜靜地什麼都沒接的症狀是「整個場景都沒有陰影」，而那看起來像 CSM

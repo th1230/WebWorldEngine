@@ -183,7 +183,7 @@ export class Water {
   /**
    * 給 vertex shader 的那一段 GLSL —— **與 `heightAt` 是同一組參數**。
    *
-   * 用法是把它插進材質的 `onBeforeCompile`（或用 `WW.applyWater`）：
+   * 用法是把它插進材質的 `onBeforeCompile`：
    *
    * ```glsl
    * transformed += wwWaterDisplace( transformed.xz, wwWaterTime );
@@ -191,6 +191,9 @@ export class Water {
    *
    * 產生的是常數展開的式子，不是迴圈讀 uniform —— 波的數量在建構時就固定了，
    * 而展開之後 shader 編譯器可以把它整段最佳化掉。
+   *
+   * WebGPU 那條路用 `displacementNode()`，見下面 —— `onBeforeCompile` 在
+   * `WebGPURenderer` 上完全不會被呼叫。
    */
   displacementGLSL(functionName = 'wwWaterDisplace'): string {
     const lines: string[] = [

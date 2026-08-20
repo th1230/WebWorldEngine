@@ -443,6 +443,29 @@ surface.setParams({ refraction: 0.12 });            // 不要去戳 material.uni
 上沒反應」—— 看起來像效果本身壞了。跨後端關卡現在守著這件事：折射推大六倍，
 兩邊的顏色都要真的動。
 
+### WebGPU 上「普通材質」不是 node 材質
+
+這件事會咬人，而且不報錯：
+
+```js
+const material = new THREE.MeshStandardMaterial({ color: 0x808080 });
+material.isNodeMaterial   // false，**在 WebGPU 上也是**
+```
+
+`WebGPURenderer` 是在**內部**把它換成對應的 node 材質的 —— 呼叫端手上那個
+物件從頭到尾都不是。
+
+所以套件裡任何「往使用者的材質上加東西」的功能（換階淡入、頂點動畫、間接光、
+CSM），在 WebGPU 上都需要呼叫端**自己給 node 材質**：
+
+```js
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+const material = new MeshStandardNodeMaterial({ color: 0x808080 });
+```
+
+沒給的話那些功能會靜靜地什麼都不做。套件在第一次繪製時會在主控台講出來 ——
+那是唯一問得出 renderer 的時機，建構時還不知道。
+
 ---
 
 ## 十一、還沒決定的事

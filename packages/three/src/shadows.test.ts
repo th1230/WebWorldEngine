@@ -81,4 +81,36 @@ describe('把 CSM 接上整個場景', () => {
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
+
+  /**
+   * ## node 材質配上 CSM 是接不上的組合
+   *
+   * `setupMaterial` 走的是 `onBeforeCompile`，而 `WebGPURenderer` 不看那個
+   * 鉤子。接了、沒報錯、那些材質上一點陰影都不會有 —— 而那看起來像 CSM
+   * 的參數設錯了。
+   *
+   * 所以判準是「有沒有把話講出來」，不是「有沒有跑完」。
+   */
+  it('材質是 node 材質時大聲說接不上', () => {
+    const scene = new Scene();
+    const material = new MeshBasicMaterial();
+    (material as unknown as { isNodeMaterial: boolean }).isNodeMaterial = true;
+    scene.add(new Mesh(new BoxGeometry(1, 1, 1), material));
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    applyShadows(fakeCsm(), scene);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('CSMShadowNode');
+    warn.mockRestore();
+  });
+
+  it('普通材質不要亂叫 —— 會叫的警告很快就沒人看', () => {
+    const scene = new Scene();
+    scene.add(new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial()));
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    applyShadows(fakeCsm(), scene);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
 });
