@@ -466,6 +466,29 @@ const material = new MeshStandardNodeMaterial({ color: 0x808080 });
 沒給的話那些功能會靜靜地什麼都不做。套件在第一次繪製時會在主控台講出來 ——
 那是唯一問得出 renderer 的時機，建構時還不知道。
 
+### 兩個後端各有一份實作的東西
+
+下面每一項在兩條路上都有實作，而「兩份算出同一組數字」由
+`pnpm cross-check` 逐項量。
+
+| 功能 | WebGL | WebGPU | 呼叫端要做什麼 |
+| --- | --- | --- | --- |
+| 天空、接觸陰影、距離場陰影、體積霧、追蹤反射、反射探針、水面、虛擬陰影圖 | `ShaderMaterial` | TSL node 材質 | 什麼都不用 —— 材質是套件自己的 |
+| Impostor | `onBeforeCompile` | TSL node 材質 | 什麼都不用 |
+| 間接光、頂點動畫、換階淡入、虛擬貼圖 | `onBeforeCompile` | node 材質的 `colorNode` / `positionNode` / `maskNode` | **要給 node 材質** |
+| CSM | Three 的 `CSM` addon | Three 的 `CSMShadowNode` | 換一個類別，不必呼叫 `applyShadows` |
+
+第三列那幾個是唯一需要呼叫端配合的：它們往**你的**材質上加東西，而 node
+那條路只加得上 node 材質。給錯的話套件會在主控台講。
+
+第四列不一樣 —— CSM 那份是 Three 自己的，而 Three 對 node 那條路的答案是
+另一個類別（接在光源上，不碰材質）。這裡不重寫一份「數學上也對但跟別人
+不一致」的 CSM，理由與簡化器用 meshoptimizer 相同。
+
+**非同步**：node 那條路是動態 `import` 的（`three/tsl` 只有 WebGPU 用得到，
+靜態拉進來的話只用 WebGL 的人也要下載它）。所以接上去要等一兩幀 —— 每個
+效果都有一支 `nodeReady`，測試靠它拿到「現在可以量了」的確定時點。
+
 ---
 
 ## 十一、還沒決定的事

@@ -112,6 +112,97 @@ const EFFECTS = [
     },
   },
   {
+    name: '虛擬貼圖',
+    key: 'vtLook',
+    glUrl: '/?vtlook=1&verify=1',
+    gpuUrl: '/webgpu.html?vtlook=1',
+    labels: [
+      '粗 左下 R', '粗 左下 G', '粗 左下 B',
+      '粗 中間 R', '粗 中間 G', '粗 中間 B',
+      '粗 右上 R', '粗 右上 G', '粗 右上 B',
+      '細 頁內左下 R', '細 頁內左下 G', '細 頁內左下 B',
+      '細 頁內右上 R', '細 頁內右上 G', '細 頁內右上 B',
+      '細 隔壁頁 R', '細 隔壁頁 G', '細 隔壁頁 B',
+    ],
+    floor: 1 / 255,
+    /**
+     * ## 頁的顏色本身就編碼了「哪一階、哪一頁」
+     *
+     * 場景的 `page()` 用階數與頁座標算顏色，而且**右上那一象限把 G 與 B 對調**
+     * ——那是為了驗頁**裡面**的 UV：純色的頁取樣到哪一點都一樣，所以把階數
+     * 縮放寫死成 1.0（等於算錯頁內座標）也照樣全綠。那個坑 `vt-check` 記著。
+     *
+     * 所以這裡量兩件事：
+     *
+     * | 量的是什麼 | 錯了會怎樣 |
+     * | --- | --- |
+     * | 不同位置拿到不同的頁色 | 頁表查錯 → 整片同一色，或拿到別頁 |
+     * | 同一頁裡左下與右上不同 | 頁內 UV 算錯 → 兩處一樣（G/B 沒對調）|
+     *
+     * ## 兩張貼圖都是 `DataTexture`，所以不翻 V
+     *
+     * TSL 只對 render target 與深度貼圖自動翻 V。impostor 那邊圖集是 render
+     * target，漏了翻轉的症狀是顏色差 6% 而覆蓋率完全相同 —— 兩種都要記著。
+     */
+    tolerance: 0.02,
+    measure: async (api) => {
+      const out = [];
+      // 粗階：只要根那一頁，整片都拿得到東西。
+      api.render();
+      for (const [u, v] of [
+        [0.2, 0.2],
+        [0.5, 0.5],
+        [0.8, 0.8],
+      ]) {
+        out.push(...(await api.windowAsync(u, v, 24)));
+      }
+
+      // 細階：要一塊下來，然後量同一頁裡的兩個角落。
+      // 頁的右上象限 G 與 B 是對調的，所以兩個角落的顏色必須不同。
+      const level = 3;
+      const side = api.sideAt(level);
+      const px = Math.floor(side * 0.5);
+      const py = Math.floor(side * 0.5);
+      api.request(level, px, py);
+      api.request(level, px + 1, py);
+      for (let i = 0; i < 40; i++) api.update();
+      api.render();
+      const u0 = (px + 0.25) / side;
+      const v0 = (py + 0.25) / side;
+      const u1 = (px + 0.75) / side;
+      const v1 = (py + 0.75) / side;
+      out.push(...(await api.windowAsync(u0, v0, 8)));
+      out.push(...(await api.windowAsync(u1, v1, 8)));
+      out.push(...(await api.windowAsync((px + 1.5) / side, (py + 0.5) / side, 8)));
+      return out;
+    },
+    /**
+     * 兩份一起錯的話「兩邊一致」照樣是綠的。這裡問兩件不看對方的事 ——
+     * 兩件都是 `vt-check` 上量過的形狀：
+     *
+     * 一、**不同位置拿到不同的頁色**。頁表查錯的症狀是整片同一個顏色。
+     *
+     * 二、**同一頁裡左下與右上不同**。頁內 UV 算錯的症狀是整頁同一色，而
+     * 那在「不同位置不同色」那一條底下照樣是綠的。
+     */
+    absolute: (get) => {
+      const spread = (a, b) =>
+        Math.abs(get(`${a} R`) - get(`${b} R`)) +
+        Math.abs(get(`${a} G`) - get(`${b} G`)) +
+        Math.abs(get(`${a} B`) - get(`${b} B`));
+      const inPage = spread('細 頁內左下', '細 頁內右上');
+      const acrossPage = spread('細 頁內右上', '細 隔壁頁');
+      return [
+        [acrossPage > 0.02, `不同的頁拿到不同的顏色 —— 差 ${acrossPage.toFixed(3)}`],
+        [inPage > 0.02, `同一頁裡的兩個角落不同 —— 差 ${inPage.toFixed(3)}`],
+        [
+          get('粗 左下 R') + get('粗 左下 G') + get('粗 左下 B') > 0.05,
+          `粗階真的畫出東西 —— ${(get('粗 左下 R') + get('粗 左下 G') + get('粗 左下 B')).toFixed(3)}`,
+        ],
+      ];
+    },
+  },
+  {
     name: 'Impostor 看板',
     key: 'impostorLook',
     glUrl: '/?impostorlook=1&verify=1',

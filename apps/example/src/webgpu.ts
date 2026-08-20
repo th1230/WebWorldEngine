@@ -15,6 +15,7 @@ import { makeWaterLookScene, type WaterLookScene } from './water-look-scene.ts';
 import { makeVsmScene, type VsmScene } from './vsm-scene.ts';
 import { makeLodFadeScene, type LodFadeScene } from './lod-fade-scene.ts';
 import { makeImpostorScene, type ImpostorScene } from './impostor-scene.ts';
+import { makeVirtualTextureScene } from './virtual-texture-scene.ts';
 
 /**
  * `WW.AnimatedInstancedMesh` 在 **WebGPU** 上的驗證頁。
@@ -79,6 +80,8 @@ const VSM = params.has('vsm') ? Math.max(1, Number(params.get('vsm'))) : 0;
 const LOD_FADE = params.get('lodfade') === '1';
 /** `?impostorlook=1` 換成 impostor 的跨後端比對場景。 */
 const IMPOSTOR_LOOK = params.get('impostorlook') === '1';
+/** `?vtlook=1` 換成虛擬貼圖的跨後端比對場景。 */
+const VT_LOOK = params.get('vtlook') === '1';
 
 const renderer = new WebGPURenderer({ canvas, antialias: true });
 renderer.setSize(innerWidth, innerHeight, false);
@@ -108,6 +111,15 @@ if (GI) {
   // 前幾幀還沒有間接光，而量測會剛好落在那幾幀裡。
   await WW.irradianceNodeReady();
 
+}
+
+let vtLookScene: ReturnType<typeof makeVirtualTextureScene> | null = null;
+if (VT_LOOK) {
+  scene.remove(...scene.children.filter((o) => (o as { isLight?: boolean }).isLight === true));
+  // node 材質 —— WebGPU 上取樣接的是它的 `colorNode`。
+  vtLookScene = makeVirtualTextureScene(512, 64, MeshBasicNodeMaterial as never);
+  // 這個場景有自己的私有 scene —— 不要把 root 加進來。
+  await vtLookScene.nodeReady(renderer);
 }
 
 let impostorScene: ImpostorScene | null = null;
@@ -227,7 +239,8 @@ if (
   waterLookScene === null &&
   vsmScene === null &&
   lodFadeScene === null &&
-  impostorScene === null
+  impostorScene === null &&
+  vtLookScene === null
 ) {
   scene.add(mesh);
 }
@@ -255,6 +268,18 @@ renderer.setAnimationLoop(() => {
 
 Object.assign(window, {
   __wwgpu: {
+    vtLook:
+      vtLookScene === null
+        ? null
+        : {
+            render: (): void => vtLookScene.render(renderer),
+            windowAsync: (u: number, v: number, size: number): Promise<number[]> =>
+              vtLookScene.windowAsync(renderer, u, v, size),
+            request: (level: number, px: number, py: number): void =>
+              vtLookScene.vt.request(level, px, py),
+            update: (): number => vtLookScene.vt.update(),
+            sideAt: (level: number): number => vtLookScene.sideAt(level),
+          },
     impostorLook:
       impostorScene === null
         ? null

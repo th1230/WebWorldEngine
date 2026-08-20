@@ -479,6 +479,12 @@ if (physicsScene !== null) {
  * scene 就空了。
  */
 const IMPOSTOR_LOOK = params.get('impostorlook') === '1';
+/** `?vtlook=1` 是虛擬貼圖的**跨後端比對**模式，與 `?vt=1` 那個功能測試不同。 */
+const VT_LOOK = params.get('vtlook') === '1';
+const vtLookScene = VT_LOOK
+  ? (await import('./virtual-texture-scene.ts')).makeVirtualTextureScene(512, 64)
+  : null;
+
 const impostorScene: ImpostorScene | null =
   TREES > 0 || IMPOSTOR_LOOK
     ? makeImpostorScene(renderer, IMPOSTOR_LOOK ? 300 : TREES, IMPOSTOR_LOOK ? 300 : SPREAD, IMPOSTOR_LOOK ? true : USE_IMPOSTOR)
@@ -1909,6 +1915,18 @@ Object.assign(window, {
               height?: number,
             ): Promise<number[]> => lodFadeScene.windowAsync(renderer, u, v, width, height),
             statsAsync: (): Promise<number[]> => lodFadeScene.statsAsync(renderer),
+          },
+    vtLook:
+      vtLookScene === null
+        ? null
+        : {
+            render: (): void => vtLookScene.render(renderer),
+            windowAsync: (u: number, v: number, size: number): Promise<number[]> =>
+              vtLookScene.windowAsync(renderer, u, v, size),
+            request: (level: number, px: number, py: number): void =>
+              vtLookScene.vt.request(level, px, py),
+            update: (): number => vtLookScene.vt.update(),
+            sideAt: (level: number): number => vtLookScene.sideAt(level),
           },
     impostorLook:
       impostorScene === null || !IMPOSTOR_LOOK

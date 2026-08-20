@@ -1,5 +1,17 @@
 import * as WW from '@webworld/three';
-import { DataTexture, Mesh, MeshBasicMaterial, PlaneGeometry, RGBAFormat, UnsignedByteType } from 'three';
+import {
+  DataTexture,
+  Mesh,
+  MeshBasicMaterial,
+  NoColorSpace,
+  OrthographicCamera,
+  PlaneGeometry,
+  RGBAFormat,
+  Scene,
+  UnsignedByteType,
+  WebGLRenderTarget,
+} from 'three';
+import { readPixelsAsync } from './readback.ts';
 import type { Group, Object3D } from 'three';
 import { Group as ThreeGroup } from 'three';
 
@@ -35,9 +47,27 @@ export interface VirtualTextureScene {
   virtualSize: number;
   /** 這一階一邊幾頁。測試要靠它算螢幕位置。 */
   sideAt: (level: number) => number;
+  /** 把整片地形畫進自己的 render target —— 兩個後端才量得到同一塊畫面。 */
+  render: (renderer: unknown) => void;
+  /** 某個 UV 附近一小塊的平均顏色，非同步。 */
+  windowAsync: (renderer: unknown, u: number, v: number, size: number) => Promise<number[]>;
+  /** 等 WebGPU 那條路建好。 */
+  nodeReady: (renderer: unknown) => Promise<void>;
 }
 
-export function makeVirtualTextureScene(pagesPerSide = 512, pageSize = 64): VirtualTextureScene {
+/**
+ * 材質的建構子由呼叫端給。
+ *
+ * WebGPU 上取樣接的是 node 材質的 `colorNode`，而 `MeshBasicMaterial` 在
+ * WebGPU 上**也不是** node 材質 —— 換掉是 `WebGPURenderer` 內部做的。
+ *
+ * 參數在這裡給，一模一樣 —— 兩邊各寫一份會分岔。
+ */
+export function makeVirtualTextureScene(
+  pagesPerSide = 512,
+  pageSize = 64,
+  MaterialClass: new (params: { map: DataTexture }) => MeshBasicMaterial = MeshBasicMaterial,
+): VirtualTextureScene {
   const border = 4;
 
   const vt = new WW.VirtualTexture({
@@ -79,17 +109,56 @@ export function makeVirtualTextureScene(pagesPerSide = 512, pageSize = 64): Virt
   const placeholder = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat, UnsignedByteType);
   placeholder.needsUpdate = true;
 
-  const material = new MeshBasicMaterial({ map: placeholder });
+  const material = new MaterialClass({ map: placeholder });
   vt.apply(material);
 
   const mesh = new Mesh(new PlaneGeometry(2, 2), material);
   const root: Group = new ThreeGroup();
   root.add(mesh as Object3D);
 
+  // ## 自己的相機與 target
+  //
+  // 平面是 2×2、正交相機剛好框住它，所以畫面的 UV 就是貼圖的 UV —— 量到
+  // 的顏色與「這一格該是什麼顏色」對得起來，不必再換算。
+  const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+  camera.position.set(0, 0, 2);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  const scene = new Scene();
+  scene.add(root);
+  const target = new WebGLRenderTarget(1024, 1024, { colorSpace: NoColorSpace });
+
+  const draw = (r: unknown): void => {
+    const gl = r as { getRenderTarget: () => unknown; setRenderTarget: (t: unknown) => void; render: (s: unknown, c: unknown) => void };
+    const previous = gl.getRenderTarget();
+    gl.setRenderTarget(target);
+    gl.render(scene, camera);
+    gl.setRenderTarget(previous);
+  };
+
   return {
     root,
     vt,
     virtualSize: vt.virtualSize,
     sideAt: (level: number) => Math.max(1, pagesPerSide >> level),
+    render: draw,
+    windowAsync: async (r, u, v, size) => {
+      const x = Math.min(target.width - size, Math.max(0, Math.round(u * target.width) - (size >> 1)));
+      const y = Math.min(target.height - size, Math.max(0, Math.round(v * target.height) - (size >> 1)));
+      const data = await readPixelsAsync(r, target, x, y, size, size, (n) => new Uint8Array(n));
+      const sum = [0, 0, 0];
+      for (let i = 0; i < size * size; i++) {
+        for (let c = 0; c < 3; c++) sum[c]! += data[i * 4 + c] ?? 0;
+      }
+      return sum.map((value) => value / (size * size) / 255);
+    },
+    nodeReady: async (r) => {
+      // node 材質是動態 import 進來的 —— 要等**真的時間**，microtask 不夠。
+      await vt.nodeReady;
+      for (let i = 0; i < 20; i++) {
+        draw(r);
+        await new Promise((resolve) => setTimeout(resolve, 8));
+      }
+    },
   };
 }

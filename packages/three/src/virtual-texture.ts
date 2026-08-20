@@ -250,6 +250,26 @@ export class VirtualTexture {
       },
     };
 
+    // ## node 材質走另一份
+    //
+    // `onBeforeCompile` 是 WebGL 那條路的鉤子，`WebGPURenderer` 整條編譯路徑
+    // **不經過它**。只做一邊的症狀是整片地形是那張 1×1 的佔位貼圖 —— 一片
+    // 純白，看起來像「貼圖沒載到」。
+    //
+    // 那份是動態 import 的（`three/tsl` 只有 WebGPU 用得到），所以接上去是
+    // 非同步的。`nodeReady` 讓測試等得到它。
+    if ((material as { isNodeMaterial?: boolean }).isNodeMaterial === true) {
+      this.nodeReady = import('./virtual-texture-node.ts').then((m) =>
+        m.applyVirtualTextureNode(material as never, this.atlas, this.indirection, {
+          pagesPerSide: this.table.pagesPerSide,
+          atlasPages: this.table.atlasPages,
+          pageSize: this.table.pageSize,
+          border: this.border,
+        }),
+      );
+      return;
+    }
+
     const previous = material.onBeforeCompile.bind(material);
     material.onBeforeCompile = (parameters: WebGLProgramParametersWithUniforms, renderer): void => {
       previous(parameters, renderer);
@@ -293,6 +313,13 @@ export class VirtualTexture {
     };
     material.needsUpdate = true;
   }
+
+  /**
+   * node 材質那條路接好了沒。WebGL 上一直是 `null`（那條路是同步的）。
+   *
+   * 存在的理由與其他幾個一樣：關卡需要一個「現在可以量了」的確定時點。
+   */
+  nodeReady: Promise<void> | null = null;
 
   dispose(): void {
     this.disposed = true;
