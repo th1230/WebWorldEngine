@@ -31,7 +31,7 @@ jobs:
       # npm 的 trusted publishing 要它；用 NPM_TOKEN 的話沒有影響。
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
