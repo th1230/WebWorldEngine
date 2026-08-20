@@ -1,32 +1,16 @@
 name: CI
 
-# ## `main` 上不跑 —— 那會是第三次跑同一棵樹
+# ## 只在 PR 上跑
 #
-# GitHub 的 `pull_request` 事件測的是**合併後的樹**（PR head 與 base 的
-# merge preview），所以 PR 上那一次已經驗過合併結果了。base 沒動的話，
-# 合併之後的 commit 與那棵樹完全一樣 —— 再跑一次沒有新資訊。
+# GitHub 的 `pull_request` 事件測的是**合併後的樹**，所以 PR 那一次驗的就是
+# 真正要合併進去的東西。
 #
-# 而合併到 `main` 會同時啟動 `release.yml`，那份從頭跑一遍完整驗證
-# （typecheck、lint、format、test、metadata、docs、publish-shape、
-# bundle、package-check）才發布。所以「發布前在真的那個 commit 上驗過」
-# 這件事是 release 自己保證的，不需要 CI 再陪跑一次。
-#
-# 先前兩個都掛在 `main` 上，於是一次合併會**同時**開兩個 job，各自
-# install、cook、typecheck、lint、test 一遍。
+# `develop` 的每次 push 不跑：那是工作中的狀態，本機有 `pnpm verify:all`，
+# 而 CI 的職責是「這棵樹能不能合併」。合併到 `main` 會觸發發布，所以那道
+# 檢查擋在 PR 上就夠了。
 on:
-  push:
-    branches: [develop]
   pull_request:
     branches: [main, develop]
-  # ## 沒有排程
-  #
-  # 曾經加過每週一跑一次，理由寫的是「Three 改內部的話這裡會靜靜地畫不出
-  # 東西，排程跑是偵測器」。**那個理由不成立**：CI 跑的是
-  # `pnpm install --frozen-lockfile`，相依全部鎖死 —— 同一份程式碼、同一份
-  # lockfile，每週跑出同一個結果。它看不到上游動了。
-  #
-  # 真正會發現的是 Dependabot：新版落在範圍外時它開 PR，而**那個 PR 的 CI**
-  # 才是「這一版還能不能用」的答案。
   workflow_dispatch:
 
 # 這個 workflow 只讀。沒有這一段的話拿到的是 repo 的預設值，而新 repo
