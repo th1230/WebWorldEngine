@@ -24,7 +24,8 @@
  * **驗不到的**：runner 上有沒有那個瀏覽器、secret 設了沒、action 的版本存
  * 不存在。那些只有真的推上去才知道 —— 所以第一次 push 還是要去看一眼。
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { parse } from 'yaml';
 import { ROOT } from '../lib/repo-root.mjs';
@@ -32,8 +33,15 @@ import { startReport } from '../lib/report.mjs';
 
 const { check, note, finish } = startReport('沒被執行過的那幾份：workflow 與 dependabot');
 
-const scripts = new Set(
-  Object.keys(JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts ?? {}),
+const allScripts = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts ?? {};
+const scripts = new Set(Object.keys(allScripts));
+
+/** git 追蹤的頂層項目。乾淨簽出的 repo 上只有這些。 */
+const tracked = new Set(
+  execFileSync('git', ['ls-files', '--', ':/'], { cwd: ROOT, encoding: 'utf8' })
+    .split(String.fromCharCode(10))
+    .map((line) => line.split('/')[0])
+    .filter(Boolean),
 );
 note(`package.json 有 ${scripts.size} 個 script`);
 
@@ -63,6 +71,7 @@ for (const name of [
 // 改名一個 script 而忘了改 workflow，在這裡完全沒有徵兆 —— CI 會跑到那一步
 // 才失敗，而前面十分鐘的瀏覽器關卡已經白跑了。
 const unknown = [];
+const used = new Set();
 let calls = 0;
 for (const [shown, doc] of parsed) {
   if (doc?.jobs === undefined) continue;
@@ -75,12 +84,39 @@ for (const [shown, doc] of parsed) {
         if (['install', 'exec', 'pack', 'publish', 'add', 'dlx', 'run'].includes(name)) continue;
         calls++;
         if (!scripts.has(name)) unknown.push(`${shown} → pnpm ${name}`);
+        else used.add(name);
       }
     }
   }
 }
 note(`workflow 裡呼叫了 ${calls} 次 pnpm script`);
 check(unknown.length === 0, '每個 pnpm script 都存在', unknown.join('、') || undefined);
+
+// ## CI 跑的 script 不可以指名沒進版控的路徑
+//
+// **這一條是被一條真的紅線逼出來的。** 第一次 push 之後 CI 就掛在
+// `pnpm cook -- --verify`：那個 script 寫死了 `assets/source`，而那個目錄是
+// Khronos 的第三方樣本、在 `.gitignore` 裡。runner 上根本沒有它。
+//
+// 上面那條「script 存在」是綠的 —— 它存在，只是在乾淨簽出的 repo 上跑不動。
+// 而那件事在開發機上永遠看不到，因為開發機上那個目錄是有的。
+const missing = [];
+for (const name of used) {
+  const command = allScripts[name];
+  for (const hit of command.matchAll(/(?:^|\s)((?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.*-]*)/g)) {
+    const candidate = hit[1].replace(/\/$/, '');
+    // 只看真的存在於磁碟、但 git 不追蹤的 —— 打錯字的路徑兩邊都沒有，
+    // 那是另一種錯，會在別的地方紅。
+    if (!existsSync(join(ROOT, candidate))) continue;
+    if (tracked.has(candidate.split('/')[0])) continue;
+    missing.push(`pnpm ${name} → ${candidate}`);
+  }
+}
+check(
+  missing.length === 0,
+  'CI 跑的 script 沒有指名沒進版控的路徑',
+  missing.join('、') || undefined,
+);
 
 // ## 發布之前必須驗過
 //

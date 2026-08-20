@@ -69,7 +69,8 @@
     "version:set": "node tools/release/version.mjs",
     "docs-check": "node tools/docs-check/verify.mjs",
     "publish-check": "node tools/package-check/publish-shape.mjs",
-    "ci-check": "node tools/ci-check/verify.mjs"
+    "ci-check": "node tools/ci-check/verify.mjs",
+    "cook:builtins": "tsx packages/cook/src/cli.ts --builtins --out apps/benchmark/public/cooked"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",

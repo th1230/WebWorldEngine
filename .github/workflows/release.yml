@@ -62,7 +62,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "三個套件都是 $VERSION"
 
-      - run: pnpm cook -- --verify
+      - run: pnpm cook:builtins -- --verify
 
       - run: pnpm typecheck
       - run: pnpm lint

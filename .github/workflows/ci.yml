@@ -47,7 +47,12 @@ jobs:
 
       # cooked 資產是 build 與 benchmark 的輸入，必須先產生。
       # --verify 同時驗證可重現性：相同輸入必須得到相同雜湊。
-      - run: pnpm cook -- --verify
+      #
+      # 只烘**內建的**程序化資產：`assets/source/` 是 Khronos 的第三方樣本，
+      # 沒有進版控（見 .gitignore），所以 runner 上根本沒有那個目錄。
+      # 而 CLI 對「指名了一個不存在的來源目錄」是直接停 —— 那是對的，
+      # 靜靜跑出一個空的 manifest 才糟。
+      - run: pnpm cook:builtins -- --verify
 
       - run: pnpm typecheck
       - run: pnpm lint
@@ -113,7 +118,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm cook
+      - run: pnpm cook:builtins
 
       - run: pnpm exec playwright install --with-deps chromium
 
