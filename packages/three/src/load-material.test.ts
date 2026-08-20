@@ -1,6 +1,7 @@
 import type { AssetManifest, MaterialEntry, TextureEntry } from '@webworld/format';
 import { createDefaultContainer, write } from 'ktx-parse';
 import {
+  MeshStandardMaterial,
   NoColorSpace,
   RED_GREEN_RGTC2_Format,
   RGBA_BPTC_Format,
@@ -266,6 +267,48 @@ describe('WW.loadTexture / WW.loadMaterial', () => {
     });
 
     it('沒被快取過的回 false，不會炸', () => {
+      expect(releaseMaterial(MANIFEST_URL, 'material:rock')).toBe(false);
+    });
+  });
+
+  describe('給哪一種材質類別', () => {
+    /**
+     * ## 為什麼要能換類別
+     *
+     * WebGPU 上 `MeshStandardMaterial` **不是 node 材質**（換掉是
+     * `WebGPURenderer` 內部做的）。而套件裡往呼叫端材質上加東西的功能
+     * 只加得上 node 材質 —— 沒有這個口的話，照文件走的人一用
+     * `loadMaterial` 就再也接不上那四個，而症狀是靜靜地什麼都沒發生。
+     */
+    it('用得到給進去的那一個', async () => {
+      class Fake extends MeshStandardMaterial {}
+      const material = await loadMaterial(MANIFEST_URL, 'material:rock', {
+        MaterialClass: Fake,
+      });
+      expect(material).toBeInstanceOf(Fake);
+      // 貼圖與參數照樣接上 —— 換的只有類別。
+      expect(material.roughness).toBeGreaterThan(0);
+    });
+
+    /**
+     * 快取的鍵要帶著類別。不帶的話第二次會拿到第一次那一份 —— 而那正是
+     * 這個參數本來要解決的事（「WebGPU 上接不上」）。
+     */
+    it('兩種類別各拿到自己那一份', async () => {
+      class Fake extends MeshStandardMaterial {}
+      const plain = await loadMaterial(MANIFEST_URL, 'material:rock');
+      const fake = await loadMaterial(MANIFEST_URL, 'material:rock', { MaterialClass: Fake });
+      expect(plain).not.toBe(fake);
+      expect(fake).toBeInstanceOf(Fake);
+      expect(plain).not.toBeInstanceOf(Fake);
+    });
+
+    /** 放掉一個 id 要把它的每一種變體都放掉，不然剩下那份還掛著貼圖。 */
+    it('releaseMaterial 放掉所有變體', async () => {
+      class Fake extends MeshStandardMaterial {}
+      await loadMaterial(MANIFEST_URL, 'material:rock');
+      await loadMaterial(MANIFEST_URL, 'material:rock', { MaterialClass: Fake });
+      expect(releaseMaterial(MANIFEST_URL, 'material:rock')).toBe(true);
       expect(releaseMaterial(MANIFEST_URL, 'material:rock')).toBe(false);
     });
   });

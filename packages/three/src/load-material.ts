@@ -1,5 +1,9 @@
-import type { AssetManifest, TextureEntry } from '@webworld/format';
-import { decodeTexture, validateTexture, type DecodedTexture } from '@ww/assets-runtime';
+import type { AssetManifest, TextureEntry } from "@webworld/format";
+import {
+  decodeTexture,
+  validateTexture,
+  type DecodedTexture,
+} from "@ww/assets-runtime";
 import {
   CompressedTexture,
   LinearMipmapLinearFilter,
@@ -12,8 +16,13 @@ import {
   RepeatWrapping,
   SRGBColorSpace,
   type Texture,
-} from 'three';
-import { loadManifest, onClearAssetCache, pick, resolveAssetUrl } from './manifest.ts';
+} from "three";
+import {
+  loadManifest,
+  onClearAssetCache,
+  pick,
+  resolveAssetUrl,
+} from "./manifest.ts";
 
 /**
  * 載入 cook 過的貼圖與材質。
@@ -83,13 +92,13 @@ function supportsBlockCompression(): boolean {
 
 /** Vulkan 那一側的格式 → Three 的常數。 */
 const THREE_FORMAT = {
-  'bc1-rgb': RGB_S3TC_DXT1_Format,
-  'bc1-rgb-srgb': RGB_S3TC_DXT1_Format,
-  'bc4-r': RED_RGTC1_Format,
-  'bc5-rg': RED_GREEN_RGTC2_Format,
-  'bc7-rgba': RGBA_BPTC_Format,
-  'bc7-rgba-srgb': RGBA_BPTC_Format,
-} as const satisfies Record<DecodedTexture['format'], number>;
+  "bc1-rgb": RGB_S3TC_DXT1_Format,
+  "bc1-rgb-srgb": RGB_S3TC_DXT1_Format,
+  "bc4-r": RED_RGTC1_Format,
+  "bc5-rg": RED_GREEN_RGTC2_Format,
+  "bc7-rgba": RGBA_BPTC_Format,
+  "bc7-rgba-srgb": RGBA_BPTC_Format,
+} as const satisfies Record<DecodedTexture["format"], number>;
 
 const textures = new Map<string, Promise<CompressedTexture>>();
 const materials = new Map<string, Promise<MeshStandardMaterial>>();
@@ -115,8 +124,10 @@ onClearAssetCache(() => {
   // 測試都過（實測 688 條全過但 exit code 非零）。
   //
   // 而且載失敗的東西本來就沒有 GPU 資源要放。
-  for (const pending of textures.values()) void pending.then((texture) => texture.dispose(), noop);
-  for (const pending of materials.values()) void pending.then((material) => material.dispose(), noop);
+  for (const pending of textures.values())
+    void pending.then((texture) => texture.dispose(), noop);
+  for (const pending of materials.values())
+    void pending.then((material) => material.dispose(), noop);
   textures.clear();
   materials.clear();
 });
@@ -138,20 +149,33 @@ function noop(): void {}
  * @returns 有沒有真的放掉。沒被快取過就回 false。
  */
 export function releaseMaterial(manifestUrl: string, id: string): boolean {
-  const key = `${manifestUrl}#${id}`;
-  const pending = materials.get(key);
-  if (pending === undefined) return false;
-  materials.delete(key);
-  void pending.then((material) => {
-    // 貼圖也要放 —— 只放材質的話那幾張貼圖還掛在 GPU 上，而它們才是大頭。
-    for (const slot of [material.map, material.normalMap, material.roughnessMap, material.metalnessMap]) {
-      if (slot === null) continue;
-      const url = (slot as { userData?: { wwUrl?: string } }).userData?.wwUrl;
-      if (url !== undefined) textures.delete(url);
-      slot.dispose();
-    }
-    material.dispose();
-  }, noop);
+  // ## 一個 id 可能有**好幾份**
+  //
+  // 快取的鍵帶著材質類別（同一個 id 用 `MeshStandardMaterial` 與
+  // `MeshStandardNodeMaterial` 各要一份），所以放掉的時候要把那個 id 的
+  // 每一種都放掉 —— 只放一種的話剩下那份還掛著貼圖，而貼圖才是大頭。
+  const prefix = `${manifestUrl}#${id}#`;
+  const keys = [...materials.keys()].filter((k) => k.startsWith(prefix));
+  if (keys.length === 0) return false;
+  for (const key of keys) {
+    const pending = materials.get(key)!;
+    materials.delete(key);
+    void pending.then((material) => {
+      // 貼圖也要放 —— 只放材質的話那幾張貼圖還掛在 GPU 上，而它們才是大頭。
+      for (const slot of [
+        material.map,
+        material.normalMap,
+        material.roughnessMap,
+        material.metalnessMap,
+      ]) {
+        if (slot === null) continue;
+        const url = (slot as { userData?: { wwUrl?: string } }).userData?.wwUrl;
+        if (url !== undefined) textures.delete(url);
+        slot.dispose();
+      }
+      material.dispose();
+    }, noop);
+  }
   return true;
 }
 
@@ -165,10 +189,13 @@ export function releaseMaterial(manifestUrl: string, id: string): boolean {
  * 所以不要對回傳值呼叫 `dispose()`，除非確定沒有別的東西在用它。要整批放掉
  * 用 `clearAssetCache()`。
  */
-export async function loadTexture(manifestUrl: string, textureId: string): Promise<Texture> {
+export async function loadTexture(
+  manifestUrl: string,
+  textureId: string,
+): Promise<Texture> {
   const base = resolveAssetUrl(manifestUrl);
   const manifest = await loadManifest(base);
-  const entry = pick(manifest.textures, textureId, '貼圖', manifestUrl);
+  const entry = pick(manifest.textures, textureId, "貼圖", manifestUrl);
 
   const url = resolveAssetUrl(entry.file, base);
   const cached = textures.get(url);
@@ -195,34 +222,78 @@ export async function loadTexture(manifestUrl: string, textureId: string): Promi
  * 缺哪一張貼圖就不接哪一張 —— cook 時沒有法線貼圖的材質拿到的就是一個
  * 沒有 `normalMap` 的 `MeshStandardMaterial`，不是錯誤。
  */
+/**
+ * 要建哪一種材質。
+ *
+ * ## 為什麼要開這個口
+ *
+ * 預設回傳 `MeshStandardMaterial` —— 那正是不用這個套件時會自己寫的東西。
+ *
+ * 但在 WebGPU 上它**不是 node 材質**（換掉是 `WebGPURenderer` 內部做的，
+ * 呼叫端手上那個物件的 `isNodeMaterial` 一直是 false）。而套件裡凡是往
+ * 呼叫端的材質上加東西的功能 —— 間接光、頂點動畫、換階淡入、虛擬貼圖 ——
+ * 在 node 那條路上都只加得上 node 材質。
+ *
+ * 沒有這個口的話，照文件走的人一用 `loadMaterial` 就再也接不上那四個。
+ * 而症狀是靜靜地什麼都沒發生（套件會在主控台講，但那已經是繞了一圈）。
+ *
+ * ```js
+ * import { MeshStandardNodeMaterial } from 'three/webgpu';
+ * const material = await WW.loadMaterial(url, id, { MaterialClass: MeshStandardNodeMaterial });
+ * ```
+ */
+export interface LoadMaterialOptions {
+  /** 預設 `MeshStandardMaterial`。WebGPU 上給 `MeshStandardNodeMaterial`。 */
+  MaterialClass?: new (params?: {
+    roughness?: number;
+    metalness?: number;
+  }) => MeshStandardMaterial;
+}
+
 export async function loadMaterial(
   manifestUrl: string,
   id: string,
+  options: LoadMaterialOptions = {},
 ): Promise<MeshStandardMaterial> {
   const base = resolveAssetUrl(manifestUrl);
   const manifest = await loadManifest(base);
 
   const materialId = resolveMaterialId(manifest, id, manifestUrl);
-  const entry = pick(manifest.materials, materialId, '材質', manifestUrl);
+  const entry = pick(manifest.materials, materialId, "材質", manifestUrl);
 
-  const key = `${base}#${materialId}`;
+  // ## 快取的鍵要帶上材質類別
+  //
+  // 同一個 id 用兩種類別各要一份。不帶的話第二次會拿到第一次那個 ——
+  // 而症狀是「WebGPU 上那些功能接不上」，也就是這個參數本來要解決的事。
+  const MaterialClass = options.MaterialClass ?? MeshStandardMaterial;
+  const key = `${base}#${materialId}#${MaterialClass.name}`;
   const cached = materials.get(key);
   if (cached !== undefined) return cached;
 
   const pending = (async (): Promise<MeshStandardMaterial> => {
     const [map, normalMap, ormMap] = await Promise.all([
-      entry.baseColorTexture === null ? null : loadTexture(manifestUrl, entry.baseColorTexture),
-      entry.normalTexture === null ? null : loadTexture(manifestUrl, entry.normalTexture),
-      entry.roughnessAoTexture === null ? null : loadTexture(manifestUrl, entry.roughnessAoTexture),
+      entry.baseColorTexture === null
+        ? null
+        : loadTexture(manifestUrl, entry.baseColorTexture),
+      entry.normalTexture === null
+        ? null
+        : loadTexture(manifestUrl, entry.normalTexture),
+      entry.roughnessAoTexture === null
+        ? null
+        : loadTexture(manifestUrl, entry.roughnessAoTexture),
     ]);
 
-    const material = new MeshStandardMaterial({
+    const material = new MaterialClass({
       roughness: entry.roughness,
       metalness: entry.metalness,
     });
     // baseColor 是**線性**的（glTF 這樣定義）。走 `new Color(r, g, b)` 會被
     // 當成 sRGB 再轉一次，顏色整體偏暗，而且暗得很像「燈光沒調好」。
-    material.color.setRGB(entry.baseColor[0], entry.baseColor[1], entry.baseColor[2]);
+    material.color.setRGB(
+      entry.baseColor[0],
+      entry.baseColor[1],
+      entry.baseColor[2],
+    );
     // baseColor 的 alpha 目前只在完全不透明時才是有效的 —— cook 丟棄
     // alphaMode，透明度沒有被匯入（見 gltf-import.ts 的 ImportWarning）。
     if (map !== null) material.map = map;
@@ -242,7 +313,11 @@ export async function loadMaterial(
 }
 
 /** 網格 id → 它的材質 id；本來就是材質 id 的話原樣回傳。 */
-function resolveMaterialId(manifest: AssetManifest, id: string, manifestUrl: string): string {
+function resolveMaterialId(
+  manifest: AssetManifest,
+  id: string,
+  manifestUrl: string,
+): string {
   if (manifest.materials?.[id] !== undefined) return id;
 
   const mesh = manifest.meshes?.[id];
@@ -253,7 +328,7 @@ function resolveMaterialId(manifest: AssetManifest, id: string, manifestUrl: str
     // 起來像正常結果 —— 說出來，讓呼叫端自己決定要用什麼。
     throw new Error(
       `WW.loadMaterial: ${manifestUrl} 裡的 "${id}" 沒有材質。\n` +
-        '（來源檔沒有指定材質，或它是程序化資產）',
+        "（來源檔沒有指定材質，或它是程序化資產）",
     );
   }
   return mesh.material;
@@ -268,19 +343,28 @@ async function fetchTexture(
   if (!response.ok) {
     throw new Error(`WW.loadTexture: 抓不到 ${url}（HTTP ${response.status}）`);
   }
-  const decoded = decodeTexture(new Uint8Array(await response.arrayBuffer()), entry);
+  const decoded = decodeTexture(
+    new Uint8Array(await response.arrayBuffer()),
+    entry,
+  );
 
   // 解碼成功不等於資料是對的。尺寸與 mip 數對不上時，畫面會出現一張
   // 「看起來只是比較模糊」的貼圖 —— 那種錯誤不會有人回報。
   const problems = validateTexture(decoded, textureId);
   if (problems.length > 0) {
-    throw new Error(`WW.loadTexture: ${textureId} 的資料不一致\n  ${problems.join('\n  ')}`);
+    throw new Error(
+      `WW.loadTexture: ${textureId} 的資料不一致\n  ${problems.join("\n  ")}`,
+    );
   }
 
   if (!supportsBlockCompression()) {
     throw new Error(
       [
-        "WW.loadTexture: 這台裝置看起來不支援 BC 壓縮貼圖（" + textureId + " 是 " + decoded.format + "）。",
+        "WW.loadTexture: 這台裝置看起來不支援 BC 壓縮貼圖（" +
+          textureId +
+          " 是 " +
+          decoded.format +
+          "）。",
         "cook 目前只產 BC 系列，那是宣告過的範圍：桌機。行動裝置要的 ETC2/ASTC 還沒有產生。",
         "在那之前，這些裝置上請走未壓縮的貼圖路徑（自己 load 一張 PNG 給 material）——",
         "其餘的 LOD、剔除、串流完全不受影響。",

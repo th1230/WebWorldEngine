@@ -463,6 +463,17 @@ import { MeshStandardNodeMaterial } from 'three/webgpu';
 const material = new MeshStandardNodeMaterial({ color: 0x808080 });
 ```
 
+`loadMaterial` 也吃得到它 —— 不然照這份文件走的人一用它就再也接不上那四個：
+
+```js
+const material = await WW.loadMaterial(url, id, {
+  MaterialClass: MeshStandardNodeMaterial,
+});
+```
+
+快取的鍵帶著類別，所以同一個 id 兩種類別各一份；`releaseMaterial` 會把那個
+id 的每一種都放掉。
+
 沒給的話那些功能會靜靜地什麼都不做。套件在第一次繪製時會在主控台講出來 ——
 那是唯一問得出 renderer 的時機，建構時還不知道。
 
