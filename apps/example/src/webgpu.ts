@@ -1,5 +1,5 @@
 import * as WW from '@webworld/three';
-import { MeshStandardNodeMaterial, PerspectiveCamera, Scene, WebGPURenderer } from 'three/webgpu';
+import { MeshBasicNodeMaterial, MeshStandardNodeMaterial, PerspectiveCamera, Scene, WebGPURenderer } from 'three/webgpu';
 import { HemisphereLight, DirectionalLight, Color, Matrix4, Vector3 } from 'three/webgpu';
 import { makeSkinnedRig } from './skinned.ts';
 import { makeGiScene, type GiScene } from './gi-scene.ts';
@@ -13,6 +13,7 @@ import {
 } from './reflection-probe-scene.ts';
 import { makeWaterLookScene, type WaterLookScene } from './water-look-scene.ts';
 import { makeVsmScene, type VsmScene } from './vsm-scene.ts';
+import { makeLodFadeScene, type LodFadeScene } from './lod-fade-scene.ts';
 
 /**
  * `WW.AnimatedInstancedMesh` 在 **WebGPU** 上的驗證頁。
@@ -73,6 +74,8 @@ const REFL_PROBE = params.get('reflprobe') === '1';
 const WATER_LOOK = params.get('waterlook') === '1';
 /** `?vsm=N` 換成虛擬陰影圖場景，N 是虛擬邊長的倍數。 */
 const VSM = params.has('vsm') ? Math.max(1, Number(params.get('vsm'))) : 0;
+/** `?lodfade=1` 換成換階淡入的場景。 */
+const LOD_FADE = params.get('lodfade') === '1';
 
 const renderer = new WebGPURenderer({ canvas, antialias: true });
 renderer.setSize(innerWidth, innerHeight, false);
@@ -102,6 +105,16 @@ if (GI) {
   // 前幾幀還沒有間接光，而量測會剛好落在那幾幀裡。
   await WW.irradianceNodeReady();
 
+}
+
+let lodFadeScene: LodFadeScene | null = null;
+if (LOD_FADE) {
+  scene.remove(...scene.children.filter((o) => (o as { isLight?: boolean }).isLight === true));
+  // node 材質 —— WebGPU 上淡入接的是它的 `maskNode`。給普通材質的話套件會
+  // 在主控台大聲說「接不上」，而關卡把主控台的錯誤也當成失敗。
+  lodFadeScene = makeLodFadeScene(MeshBasicNodeMaterial as never);
+  // 這個場景有自己的私有 scene —— 不要把 root 加進來。
+  await lodFadeScene.nodeReady(renderer);
 }
 
 let vsmScene: VsmScene | null = null;
@@ -201,7 +214,8 @@ if (
   fogScene === null &&
   reflectionProbeScene === null &&
   waterLookScene === null &&
-  vsmScene === null
+  vsmScene === null &&
+  lodFadeScene === null
 ) {
   scene.add(mesh);
 }
@@ -229,6 +243,20 @@ renderer.setAnimationLoop(() => {
 
 Object.assign(window, {
   __wwgpu: {
+    lodFade:
+      lodFadeScene === null
+        ? null
+        : {
+            render: (distance: number): number =>
+              lodFadeScene.render(renderer as never, distance),
+            windowAsync: (
+              u: number,
+              v: number,
+              width: number,
+              height?: number,
+            ): Promise<number[]> => lodFadeScene.windowAsync(renderer, u, v, width, height),
+            statsAsync: (): Promise<number[]> => lodFadeScene.statsAsync(renderer),
+          },
     vsm:
       vsmScene === null
         ? null

@@ -602,6 +602,25 @@ export class InstancedMesh extends BatchedMesh {
   private readonly fadeLevels = new Int32Array(LOD_FADE_CAPACITY);
   private readonly fadeAmounts = new Float32Array(LOD_FADE_CAPACITY);
   /** 著色器的 uniform 物件。**建一次就不換** —— 換了之後改值不會生效。 */
+  /**
+   * node 材質那條路接好了沒。WebGL 上是 `null`（那條路是同步的）。
+   *
+   * 存在的理由與 `AnimatedInstancedMesh.nodeReady` 一樣：關卡需要一個
+   * 「現在可以量了」的確定時點。
+   */
+  lodFadeNodeReady: Promise<void> | null = null;
+
+  /**
+   * node 那條路每幀要推的那幾個 uniform。
+   *
+   * `uniform( 5 )` 包的是那個**數字**，不是那個物件 —— 不推的話進度會停在
+   * 建材質那一刻，而畫面上淡入看起來仍然是在動的。見 `lod-fade-node.ts`。
+   */
+  private readonly lodFadeNodeHandles: { update: () => void }[] = [];
+
+  /** 那句「WebGPU 上這份材質接不到淡入」只講一次。 */
+  private warnedLodFadeNotNode = false;
+
   private readonly fadeUniforms = {
     wwFadeFineStart: { value: 0 },
     wwFadeCoarseStart: { value: 0 },
@@ -1097,10 +1116,57 @@ export class InstancedMesh extends BatchedMesh {
    * 把淡入的著色器接到材質上。
    *
    * 走 `onBeforeCompile`，與 CSM、間接光同一類 —— 不換渲染器，只加幾行。
+   *
+   * ## node 材質走另一份
+   *
+   * `onBeforeCompile` 是 WebGL 那條路的鉤子，`WebGPURenderer` 整條編譯路徑
+   * **不經過它**。只做一邊的症狀是 WebGPU 上換階變回硬跳 —— 而那看起來像
+   * 「淡入沒開」，不像有一半的實作沒接上。VAT 那邊踩過同一個坑。
+   *
+   * 那份是**動態 import** 的（`three/tsl` 只有 WebGPU 用得到），所以接上去
+   * 是非同步的。`lodFadeNodeReady` 讓測試等得到它 —— 不然「接上了」與
+   * 「靜靜失敗了」在外面看起來一模一樣。
    */
+  /**
+   * WebGPU 上、開了淡入、而材質不是 node 材質 —— 那三件事同時成立的話，
+   * 淡入**什麼都不會發生**。這裡把它講出來。
+   *
+   * ## 為什麼建構時判斷不了
+   *
+   * 接淡入是在建構時做的，而那時還不知道會用哪個 renderer。而
+   * `MeshBasicMaterial` 這類材質在 WebGPU 上**也不是** node 材質 ——
+   * `WebGPURenderer` 是在內部才把它換掉的，呼叫端手上那個物件的
+   * `isNodeMaterial` 一直是 false。
+   *
+   * 所以只有第一次畫的時候才問得出來，而那正是這裡。
+   *
+   * 症狀是換階變回硬跳 —— 看起來像「這個距離本來就會跳一下」。實測跨後端
+   * 關卡上這件事的樣子是：兩邊都有兩階的顏色混在一起（因為兩階本來就都
+   * 畫了），只是比例差 17%。**不像壞掉，像實作不一樣。**
+   */
+  private warnIfLodFadeCannotWork(renderer: WebGLRenderer, material: Material | Material[]): void {
+    if (this.warnedLodFadeNotNode || this.lodFadeBand <= 0) return;
+    if ((renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer !== true) return;
+    const list = Array.isArray(material) ? material : [material];
+    if (list.every((one) => (one as { isNodeMaterial?: boolean }).isNodeMaterial === true)) return;
+    this.warnedLodFadeNotNode = true;
+    console.warn(
+      'WW.InstancedMesh: WebGPU 上換階淡入需要 node 材質（例如 MeshStandardNodeMaterial），\n' +
+        '而這個 mesh 的材質不是 —— 淡入不會發生，換階會直接跳。\n' +
+        'WebGL 那條路不受影響。',
+    );
+  }
+
   private installLodFade(material: Material | Material[]): void {
     const list = Array.isArray(material) ? material : [material];
     for (const one of list) {
+      if ((one as { isNodeMaterial?: boolean }).isNodeMaterial === true) {
+        this.lodFadeNodeReady = (this.lodFadeNodeReady ?? Promise.resolve()).then(async () => {
+          const m = await import('./lod-fade-node.ts');
+          this.lodFadeNodeHandles.push(await m.applyLodFadeNode(one as never, this.fadeUniforms));
+        });
+        continue;
+      }
       const previous = one.onBeforeCompile.bind(one);
       one.onBeforeCompile = (parameters, renderer): void => {
         previous(parameters, renderer);
@@ -1139,6 +1205,9 @@ export class InstancedMesh extends BatchedMesh {
     const uniforms = this.fadeUniforms;
     if (count <= 0 || drawCount + count * 2 > starts.length) {
       uniforms.wwFadeCount.value = 0;
+      // 這一條也要推 —— 不推的話 node 那邊會停在上一幀的 count，於是明明
+      // 沒有東西在過渡，畫面上還在抖。
+      for (const handle of this.lodFadeNodeHandles) handle.update();
       return drawCount;
     }
     const ranges = this.lodRanges;
@@ -1162,6 +1231,7 @@ export class InstancedMesh extends BatchedMesh {
     const amounts = uniforms.wwFadeAmount.value;
     for (let i = 0; i < count; i++) amounts[i] = this.fadeAmounts[i]!;
     uniforms.wwFadeCount.value = count;
+    for (const handle of this.lodFadeNodeHandles) handle.update();
     return drawCount;
   }
 
@@ -1460,6 +1530,8 @@ export class InstancedMesh extends BatchedMesh {
     // （前者要更少的走訪，後者要更少的繪製呼叫），把它們加在一起看
     // 會導致修錯地方 —— 那個錯誤犯過一次了（`admit` 的 0.984 ms 有 98%
     // 是呼叫端的）。
+    this.warnIfLodFadeCannotWork(renderer, material);
+
     const started = performance.now();
     // 在最前面加 —— `invalidateInstances` 會蓋這個序號，而 `prepareGrid` 要拿
     // 它判斷「這一幀之前矩陣動過嗎」。

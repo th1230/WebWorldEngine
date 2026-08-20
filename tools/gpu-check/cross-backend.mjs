@@ -112,6 +112,62 @@ const EFFECTS = [
     },
   },
   {
+    name: '換階淡入',
+    key: 'lodFade',
+    glUrl: '/?lodfade=1&verify=1',
+    gpuUrl: '/webgpu.html?lodfade=1',
+    labels: ['d120 過渡數', 'd160 過渡數', 'd200 過渡數', 'd240 過渡數', 'd280 過渡數', 'd320 過渡數', 'd360 過渡數', 'd400 過渡數', 'd120 覆蓋', 'd120 R', 'd120 G', 'd120 B', 'd160 覆蓋', 'd160 R', 'd160 G', 'd160 B', 'd200 覆蓋', 'd200 R', 'd200 G', 'd200 B', 'd240 覆蓋', 'd240 R', 'd240 G', 'd240 B', 'd280 覆蓋', 'd280 R', 'd280 G', 'd280 B', 'd320 覆蓋', 'd320 R', 'd320 G', 'd320 B', 'd360 覆蓋', 'd360 R', 'd360 G', 'd360 B', 'd400 覆蓋', 'd400 R', 'd400 G', 'd400 B'],
+    floor: 1e-4,
+    tolerance: 0.02,
+    measure: async (api) => {
+      const out = [];
+      const D = [120, 160, 200, 240, 280, 320, 360, 400];
+      // ## 兩邊要從同一個狀態出發
+      //
+      // 實測第一幀什麼都沒畫出來（LOD 鏈還沒建好），而 WebGPU 那頁在等 node
+      // 材質時已經先畫了幾十幀 —— 於是兩邊量到的是不同的暖機程度，看起來像
+      // 實作不一樣。淡入的進度本身是**距離的純函數**，沒有歷史。
+      for (let i = 0; i < 30; i++) api.render(400);
+      const fading = [];
+      const stats = [];
+      for (const d of D) {
+        api.render(d);
+        fading.push(api.render(d));
+        stats.push(await api.statsAsync());
+      }
+      out.push(...fading);
+      for (const one of stats) out.push(...one);
+      return out;
+    },
+    /**
+     * ## 單邊的主張
+     *
+     * 「兩邊一致」只證明兩份實作互相一樣。而這一項的兩份**一起沒作用**過：
+     * 覆蓋率對淡入完全免疫（兩半的抖動條件互補，內部像素無論如何都被畫到
+     * 一次），所以最早那一版關卡在「node 那份整個停掉」之下照樣全綠。
+     *
+     * 下面三條各自問一件不看對方的事。
+     */
+    absolute: (get) => [
+      [get('d160 過渡數') > 0, `真的有東西在過渡 —— d160 有 ${get('d160 過渡數')} 個`],
+      [
+        // 藍是第 2 階、黃是第 3 階。過渡中兩個都要在，而且都不是零星。
+        get('d160 B') > 0.1 && get('d160 B') < 0.6,
+        `過渡中畫面是兩階的混色 —— 第 2 階佔 ${(get('d160 B') * 100).toFixed(1)}%`,
+      ],
+      [
+        get('d320 過渡數') === 0 && get('d320 B') < 0.01,
+        `過渡帶外只有一階 —— d320 的第 2 階佔 ${(get('d320 B') * 100).toFixed(2)}%`,
+      ],
+      [
+        [120, 160, 200, 240, 280, 320, 360].every(
+          (d, i) => get(`d${d} 覆蓋`) > get(`d${[160, 200, 240, 280, 320, 360, 400][i]} 覆蓋`),
+        ),
+        `覆蓋率隨距離單調下降 —— 過渡處沒有塌陷`,
+      ],
+    ],
+  },
+  {
     name: '虛擬陰影圖',
     key: 'vsm',
     glUrl: '/?vsm=8&verify=1',
@@ -677,7 +733,7 @@ try {
         worstDiff = d;
         where = label;
       }
-      if (effect.labels !== undefined && effect.labels.length <= 120) {
+      if (effect.labels !== undefined && effect.labels.length <= 130) {
         console.log(
           `  ${effect.labels[i].padEnd(10)} WebGL ${gl.values[i].toFixed(5)}  WebGPU ${gpu.values[pair[i]].toFixed(5)}  差 ${(d * 100).toFixed(3)}%（門檻 ${(tol * 100).toFixed(1)}%）`,
         );

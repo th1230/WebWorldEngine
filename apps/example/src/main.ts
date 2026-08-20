@@ -532,6 +532,11 @@ const shadowLodScene: ShadowLodScene | null = params.has('shadowlod')
   : null;
 if (shadowLodScene !== null) rocks.visible = false;
 
+/** `?lodfade=1` 換成換階淡入的場景（與主場景的 `?lodFade=` 不同，那個是 A/B）。 */
+const lodFadeScene = params.get('lodfade') === '1'
+  ? (await import('./lod-fade-scene.ts')).makeLodFadeScene()
+  : null;
+
 const vsmScene: VsmScene | null = params.has('vsm')
   ? (await import('./vsm-scene.ts')).makeVsmScene(Math.max(1, Number(params.get('vsm'))))
   : null;
@@ -1881,6 +1886,19 @@ Object.assign(window, {
             counts: (): unknown => shadowLodScene.counts(),
             contract: (): unknown => shadowLodScene.contract(),
             stability: (times: number): number[] => shadowLodScene.stability(renderer, times),
+          },
+    lodFade:
+      lodFadeScene === null
+        ? null
+        : {
+            render: (distance: number): number => lodFadeScene.render(renderer, distance),
+            windowAsync: (
+              u: number,
+              v: number,
+              width: number,
+              height?: number,
+            ): Promise<number[]> => lodFadeScene.windowAsync(renderer, u, v, width, height),
+            statsAsync: (): Promise<number[]> => lodFadeScene.statsAsync(renderer),
           },
     vsm:
       vsmScene === null
