@@ -179,7 +179,9 @@ export function encodeTexture(
   quality: TextureQuality = 'compact',
 ): EncodedTexture {
   if (image.width % 4 !== 0 || image.height % 4 !== 0) {
-    throw new Error(`貼圖尺寸 ${image.width}×${image.height} 不是 4 的倍數，BC 需要 4×4 區塊`);
+    throw new Error(
+      `WW.cook: 貼圖尺寸 ${image.width}×${image.height} 不是 4 的倍數，BC 需要 4×4 區塊`,
+    );
   }
 
   const spec = specFor(kind, srgb, quality);

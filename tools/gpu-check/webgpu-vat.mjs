@@ -1,10 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
+import { launchBrowser } from '../lib/browser.mjs';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
 
 /**
  * VAT 在 **WebGPU / node 材質** 那條路上到底有沒有動。
@@ -26,28 +25,24 @@ import { assertDistFresh } from '../lib/dist-fresh.mjs';
  * 同時也收 console error：TSL 那份若組不出來，錯誤只會出現在那裡。
  */
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const COOKED = join(ROOT, 'apps/benchmark/public');
 
 async function main() {
   console.log('建置 example…');
   execFileSync('pnpm', ['--filter', '@ww/example-app', 'build'], {
-    cwd: root,
+    cwd: ROOT,
     stdio: 'pipe',
     shell: process.platform === 'win32',
   });
 
-  const site = await serve(DIST);
+  const site = await serveDist(DIST, { mounts: { '/cooked': COOKED } });
   // 有頭 + `--enable-unsafe-webgpu`：無頭那組拿不到 adapter（實測
   // requestAdapter 回傳 null）。而 `about:blank` 上連 navigator.gpu 都沒有
   // ——WebGPU 需要安全上下文，所以一定要先 goto 到真的 origin。
-  const browser = await chromium.launch({
-    channel: 'chrome',
-    headless: false,
-    args: ['--enable-unsafe-webgpu'],
-  });
+  const browser = await launchBrowser({ webgpu: true });
   let failed = false;
   try {
     const page = await browser.newPage({ viewport: { width: 640, height: 400 } });
@@ -93,41 +88,6 @@ async function main() {
     site.close();
   }
   if (failed) process.exitCode = 1;
-}
-
-async function serve(dir) {
-  const COOKED = join(root, 'apps/benchmark/public');
-  const server = createServer((req, res) => {
-    const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    // 瀏覽器一定會要 favicon，而這台伺服器沒有 —— 那個 404 會被下面
-    // 「有 console error 就不算過」判成失敗。它是這支工具的缺口，不是被測
-    // 程式的問題，所以直接回 204。
-    if (path === '/favicon.ico') {
-      res.writeHead(204).end();
-      return;
-    }
-    const file = path.startsWith('/cooked')
-      ? join(COOKED, path)
-      : path.startsWith('/source-assets')
-        ? join(root, 'assets/source', path.slice('/source-assets/'.length))
-        : join(dir, path === '/' ? 'index.html' : path);
-    readFile(file).then(
-      (bytes) => {
-        const type =
-          {
-            '.html': 'text/html',
-            '.js': 'text/javascript',
-            '.json': 'application/json',
-            '.glb': 'model/gltf-binary',
-          }[extname(file)] ?? 'application/octet-stream';
-        res.writeHead(200, { 'content-type': type });
-        res.end(bytes);
-      },
-      () => res.writeHead(404).end(),
-    );
-  });
-  await listenSafe(server);
-  return { url: `http://localhost:${server.address().port}/`, close: () => server.close() };
 }
 
 await main();

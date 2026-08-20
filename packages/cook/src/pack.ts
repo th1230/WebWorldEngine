@@ -45,7 +45,7 @@ function align4(value: number): number {
  */
 export function packMesh(lods: readonly LodResult[], collision: RawMesh | null): PackedMesh {
   const base = lods[0];
-  if (base === undefined) throw new Error('至少需要一個 LOD');
+  if (base === undefined) throw new Error('WW.cook: 至少需要一個 LOD');
 
   const vertexBytes = base.mesh.vertices.byteLength;
   const vertexCount = base.mesh.vertices.length / (VERTEX_STRIDE_BYTES / 4);

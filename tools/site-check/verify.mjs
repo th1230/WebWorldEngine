@@ -1,9 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
+import { launchBrowser } from '../lib/browser.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
 
 /**
  * 網站的指標（W5）。
@@ -28,9 +27,13 @@ import { listenSafe } from '../lib/listen-safe.mjs';
  * 十幾個場景，那些數字對使用者沒有意義。
  */
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
-const APP = join(root, 'apps/example');
+const APP = join(ROOT, 'apps/example');
 const DIST = join(APP, 'dist');
+// `/cooked*` 從 benchmark 的 public 讀 —— 那是 `pnpm cook` 的輸出，不進版控，
+// 而 example 的 vite 設定只在 dev server 上代理它。建置後的 app 少了這一段
+// 就載不到貼圖，於是 `?cooked=1` 會靜靜退回純色材質 —— **檢查照樣全綠，
+// 只是它驗的內容裡根本沒有貼圖**。
+const COOKED = join(ROOT, 'apps/benchmark/public');
 
 /** 首次可見時間的上限，毫秒。 */
 const FIRST_FRAME_BUDGET_MS = 3000;
@@ -79,19 +82,19 @@ const HEAP_BUDGET_MB = 150;
 async function main() {
   console.log('建置 example app…');
   execFileSync('pnpm', ['--filter', './apps/example', 'build'], {
-    cwd: root,
+    cwd: ROOT,
     stdio: ['ignore', 'pipe', 'inherit'],
     shell: process.platform === 'win32',
   });
 
-  const server = await serve(DIST);
-  const browser = await launch();
+  const site = await serveDist(DIST, { mounts: { '/cooked': COOKED } });
+  const browser = await launchBrowser();
   try {
-    await measureLoad(browser, server.url);
-    await measureCoexistence(browser, server.url);
+    await measureLoad(browser, site.url);
+    await measureCoexistence(browser, site.url);
   } finally {
     await browser.close();
-    server.close();
+    site.close();
   }
 }
 
@@ -284,47 +287,6 @@ async function measureIdleWhenHidden(page, frame) {
         '使用者沒在看的時候還在吃電池',
     );
   }
-}
-
-async function serve(dir) {
-  // `/cooked*` 從 benchmark 的 public 讀 —— 那是 `pnpm cook` 的輸出，不進版控，
-  // 而 example 的 vite 設定只在 dev server 上代理它。建置後的 app 少了這一段
-  // 就載不到貼圖，於是 `?cooked=1` 會靜靜退回純色材質 —— **檢查照樣全綠，
-  // 只是它驗的內容裡根本沒有貼圖**。
-  const COOKED = join(root, 'apps/benchmark/public');
-  const server = createServer((req, res) => {
-    const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    const file = path.startsWith('/cooked')
-      ? join(COOKED, path)
-      : join(dir, path === '/' ? 'index.html' : path);
-    readFile(file).then(
-      (bytes) => {
-        const type =
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
-            extname(file)
-          ] ?? 'application/octet-stream';
-        res.writeHead(200, { 'content-type': type });
-        res.end(bytes);
-      },
-      () => res.writeHead(404).end(),
-    );
-  });
-  await listenSafe(server);
-  return { url: `http://localhost:${server.address().port}/`, close: () => server.close() };
-}
-
-async function launch() {
-  const errors = [];
-  for (const channel of ['chrome', undefined]) {
-    try {
-      // 有頭：無頭沒有真的 GPU，而首次可見時間裡有一大段是建立 GL context
-      // 與編譯 shader —— 那是網站上真實存在的成本。
-      return await chromium.launch(channel === undefined ? {} : { channel });
-    } catch (error) {
-      errors.push(String(error).split('\n')[0]);
-    }
-  }
-  throw new Error(`無法啟動瀏覽器：\n  ${errors.join('\n  ')}`);
 }
 
 await main();

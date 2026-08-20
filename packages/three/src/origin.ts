@@ -183,7 +183,7 @@ export class OriginRebase {
       this.warned = true;
       console.warn(
         [
-          'WW: 原點重定位連續每幀都在觸發，世界會一直往外飄，最後畫面上什麼都不剩。',
+          'WW.OriginRebase: 連續每幀都在觸發，世界會一直往外飄，最後畫面上什麼都不剩。',
           '幾乎可以確定是相機每幀被設回一個**絕對**座標（例如照時間算的軌道路徑）。',
           '相機路徑要減掉目前的原點：',
           '  camera.position.set(x - world.origin.x, y, z - world.origin.z)',

@@ -32,7 +32,7 @@ export async function loadManifest(url: string): Promise<AssetManifest> {
   const pending = (async (): Promise<AssetManifest> => {
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`WW: 抓不到 manifest ${url}（HTTP ${response.status}）`);
+      throw new Error(`WW.load: 抓不到 manifest ${url}（HTTP ${response.status}）`);
     }
     return (await response.json()) as AssetManifest;
   })();
@@ -55,7 +55,7 @@ export function pick<T>(
   // 給出去，答案通常就在裡面。
   const available = Object.keys(table ?? {});
   throw new Error(
-    `WW: ${manifestUrl} 裡沒有${what}"${id}"。\n` +
+    `WW.load: ${manifestUrl} 裡沒有${what}"${id}"。\n` +
       `有的是：${available.length === 0 ? '（一個都沒有）' : available.join(', ')}`,
   );
 }

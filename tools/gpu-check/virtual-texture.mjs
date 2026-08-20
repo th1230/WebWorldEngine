@@ -15,38 +15,17 @@
  * 假裝出來的解析度**必須超過這台機器的 maxTextureSize**。沒超過的話這整個
  * 東西沒有存在的理由（直接配置一張就好），所以那也是一條斷言。
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { startReport } from '../lib/report.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') {
-    res.writeHead(204).end();
-    return;
-  }
-  const file = join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const site = await serveDist(DIST);
 
 /** 與場景裡那一份**必須一致** —— 對不上的話這個關卡驗的是自己，不是引擎。 */
 const pageColor = (level, px, py) => [
@@ -55,18 +34,11 @@ const pageColor = (level, px, py) => [
   30 + ((py * 61 + 40) % 200),
 ];
 
-console.log('虛擬貼圖：假裝出來的比硬體上限大，而且取樣到對的那一頁\n');
-const browser = await chromium.launch({
-  channel: 'chrome',
-  headless: false,
-  args: ['--enable-unsafe-webgpu'],
-});
-const base = `http://localhost:${server.address().port}`;
-let failed = 0;
-const check = (ok, message) => {
-  console.log(`  ${ok ? '✓' : '✗'} ${message}`);
-  if (!ok) failed++;
-};
+const { check, fail, finish } = startReport(
+  '虛擬貼圖：假裝出來的比硬體上限大，而且取樣到對的那一頁\n',
+);
+const browser = await launchBrowser({ webgpu: true });
+const base = site.origin;
 
 try {
   const page = await browser.newPage({ viewport: { width: 512, height: 512 } });
@@ -204,15 +176,10 @@ try {
   );
   await page.close();
 } catch (e) {
-  console.log('失敗：' + String(e).split('\n')[0].slice(0, 200));
-  failed++;
+  fail('關卡跑到一半就掛了', String(e).split('\n')[0].slice(0, 200));
   process.exitCode = 1;
 }
 await browser.close();
-server.close();
+site.close();
 
-if (failed > 0) {
-  console.log(`\n虛擬貼圖關卡：${failed} 項沒過`);
-  process.exit(1);
-}
-console.log('\n虛擬貼圖關卡：全過');
+finish('虛擬貼圖關卡');

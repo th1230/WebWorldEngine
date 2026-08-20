@@ -21,45 +21,19 @@
  * | 折射會扭曲水底 | 同一片水開關折射，水底那條直邊的彎曲程度 |
  * | 反射的是真的環境 | 水面反射出天空罩的紫紅，不是回退的綠 |
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { startReport } from '../lib/report.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') {
-    res.writeHead(204).end();
-    return;
-  }
-  const file = join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const site = await serveDist(DIST);
 
-console.log('水的外觀：每一項都要從水深推得出來');
-let failed = 0;
-const check = (ok, message) => {
-  console.log('  ' + (ok ? '✓' : '✗') + ' ' + message);
-  if (!ok) failed++;
-};
+const { check, finish, fail } = startReport('水的外觀：每一項都要從水深推得出來');
 
 /** 一串數字離「最小平方直線」有多遠。折射的彎曲就是這個殘差。 */
 function residual(values) {
@@ -78,12 +52,8 @@ function residual(values) {
   return { count: n, rms };
 }
 
-const browser = await chromium.launch({
-  channel: 'chrome',
-  headless: false,
-  args: ['--enable-unsafe-webgpu'],
-});
-const base = `http://localhost:${server.address().port}`;
+const browser = await launchBrowser({ webgpu: true });
+const base = site.origin;
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
 page.on('console', (m) => {
@@ -244,12 +214,10 @@ try {
     `水面反射的是天空罩不是回退色 —— 藍 ${far[2].toFixed(3)} 遠高於綠 ${far[1].toFixed(3)}`,
   );
 } catch (error) {
-  console.log('  ✗ ' + String(error?.message ?? error));
-  failed++;
+  fail(String(error?.message ?? error));
 } finally {
   await browser.close();
-  server.close();
+  site.close();
 }
 
-console.log(failed === 0 ? '\n水的外觀關卡：全過\n' : `\n有 ${failed} 項沒過\n`);
-process.exit(failed === 0 ? 0 : 1);
+finish('水的外觀關卡');

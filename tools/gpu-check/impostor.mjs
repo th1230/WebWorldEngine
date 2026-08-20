@@ -8,54 +8,25 @@
  * 還有幾十個三角形而 impostor 是兩個，代理與真東西差一個數量級 —— 所以這裡
  * 兩邊都真的做出來再量。
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { startReport } from '../lib/report.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') {
-    res.writeHead(204).end();
-    return;
-  }
-  const file = join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          {
-            '.html': 'text/html',
-            '.js': 'text/javascript',
-            '.json': 'application/json',
-            '.wasm': 'application/wasm',
-          }[extname(file)] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const site = await serveDist(DIST);
 
 const COUNT = 20000;
 const DISTANCES = [300, 700, 1500, 3000, 6000];
 const SPREAD = 900;
 
-console.log('Impostor 對真幾何：同樣數量、同樣位置、同樣相機\n');
-const browser = await chromium.launch({
-  channel: 'chrome',
-  headless: false,
-  args: ['--enable-unsafe-webgpu'],
-});
-const base = `http://localhost:${server.address().port}`;
-let failed = 0;
+const { markFailed, finish } = startReport('Impostor 對真幾何：同樣數量、同樣位置、同樣相機\n');
+const browser = await launchBrowser({ webgpu: true });
+const base = site.origin;
 
 async function measure(page, distance, impostor) {
   await page.goto(
@@ -125,11 +96,11 @@ try {
     if (distance >= 1500) {
       if (diffPct > 1) {
         console.log(`    ✗ 這個距離應該看不出差別，實際差 ${diffPct.toFixed(2)}%`);
-        failed++;
+        markFailed();
       }
       if (savedPct < 50) {
         console.log(`    ✗ 這個距離應該省很多，實際只省 ${savedPct.toFixed(1)}%`);
-        failed++;
+        markFailed();
       }
     }
     console.log('');
@@ -139,15 +110,7 @@ try {
   process.exitCode = 1;
 }
 await browser.close();
-server.close();
-if (failed > 0) {
-  console.log(`Impostor 關卡：${failed} 項沒過`);
-  process.exit(1);
-}
-// 上面 catch 到例外的話 failed 還是 0 —— 少了這一句就會在整關掛掉之後
-// 印「全過」。而印出來的字才是人會相信的那個。
-if (process.exitCode) {
-  console.log('Impostor 關卡：掛了，沒跑完');
-  process.exit(1);
-}
-console.log('Impostor 關卡：全過');
+site.close();
+// 「掛了也算沒過」那條守衛現在在 report.mjs 裡 —— 它本來是這一支
+// 自己補的，收進去之後每一道關卡都有。
+finish('Impostor 關卡');

@@ -33,48 +33,22 @@
  * 兩種做法都是「同一個場景、同一組相機、同一份著色器，只有強度不同」，所以
  * 問到的是同一件事。
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { startReport } from '../lib/report.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
-const COOKED = join(root, 'apps/benchmark/public');
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const COOKED = join(ROOT, 'apps/benchmark/public');
 
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') {
-    res.writeHead(204).end();
-    return;
-  }
-  const file = path.startsWith('/cooked')
-    ? join(COOKED, path)
-    : join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          {
-            '.html': 'text/html',
-            '.js': 'text/javascript',
-            '.json': 'application/json',
-            '.wasm': 'application/wasm',
-          }[extname(file)] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
+const site = await serveDist(DIST, { mounts: { '/cooked': COOKED } });
 
-console.log('間接光：背光面上的紅色是不是反彈來的');
-const browser = await chromium.launch({ channel: 'chrome' });
+const { check, fail, finish } = startReport('間接光：背光面上的紅色是不是反彈來的');
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 800, height: 480 } });
 const errors = [];
 page.on('console', (m) => {
@@ -82,11 +56,6 @@ page.on('console', (m) => {
 });
 page.on('pageerror', (e) => errors.push('PAGEERROR ' + String(e.message).split('\n')[0]));
 
-let failed = 0;
-const check = (ok, label, detail) => {
-  console.log(`  ${ok ? '✓' : '✗'} ${label}${detail ? ` —— ${detail}` : ''}`);
-  if (!ok) failed++;
-};
 const f = (v) => v.toFixed(1);
 
 /**
@@ -227,7 +196,7 @@ async function runDynamic(url, handle) {
   }, handle);
 }
 
-const base = `http://localhost:${server.address().port}`;
+const base = site.origin;
 try {
   // WebGL：同一頁裡改 uniform 就能關。
   const webgl = await run(`${base}/?gi=1`, '__ww', true);
@@ -299,16 +268,11 @@ try {
 
   check(errors.length === 0, '沒有主控台錯誤', errors.slice(0, 2).join(' | ') || undefined);
 } catch (e) {
-  console.log('  ✗ 失敗：' + String(e).split('\n')[0].slice(0, 140));
-  failed++;
+  fail('關卡跑到一半就掛了', String(e).split('\n')[0].slice(0, 140));
 }
 
 await page.close();
 await browser.close();
-server.close();
+site.close();
 
-if (failed > 0) {
-  console.log(`\n間接光關卡：${failed} 項沒過`);
-  process.exit(1);
-}
-console.log('\n間接光關卡：全過');
+finish('間接光關卡');

@@ -30,8 +30,9 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { ROOT } from '../lib/repo-root.mjs';
+import { startReport } from '../lib/report.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const PACKAGES = ['format', 'three', 'cook'];
 
 /** 每一個都是「少了會有可見後果」，不是風格偏好。 */
@@ -53,15 +54,10 @@ const REQUIRED = [
   'publishConfig',
 ];
 
-console.log('發布出去的那一頁：npm 上看得到的欄位');
-let failed = 0;
-const check = (ok, message) => {
-  console.log('  ' + (ok ? '✓' : '✗') + ' ' + message);
-  if (!ok) failed++;
-};
+const { check, finish } = startReport('發布出去的那一頁：npm 上看得到的欄位');
 
 for (const name of PACKAGES) {
-  const manifest = JSON.parse(readFileSync(join(root, 'packages', name, 'package.json'), 'utf8'));
+  const manifest = JSON.parse(readFileSync(join(ROOT, 'packages', name, 'package.json'), 'utf8'));
   const missing = REQUIRED.filter((key) => manifest[key] === undefined);
   check(
     missing.length === 0,
@@ -95,14 +91,14 @@ for (const name of PACKAGES) {
   // 「runtime 認不得 cook 的產出」，而那是執行期才炸的。
   check(
     manifest.version ===
-      JSON.parse(readFileSync(join(root, 'packages/three/package.json'), 'utf8')).version,
+      JSON.parse(readFileSync(join(ROOT, 'packages/three/package.json'), 'utf8')).version,
     `@webworld/${name} 與 three 同版本 —— ${manifest.version}`,
   );
 }
 
 // three 的 peer 必須存在且有上界。沒有上界的話 Three 一改內部就靜靜地壞掉，
 // 而這個套件用了 BatchedMesh 的內部欄位（見 three-internals.ts）。
-const three = JSON.parse(readFileSync(join(root, 'packages/three/package.json'), 'utf8'));
+const three = JSON.parse(readFileSync(join(ROOT, 'packages/three/package.json'), 'utf8'));
 const peer = three.peerDependencies?.three;
 check(typeof peer === 'string', `@webworld/three 把 three 列為 peer —— ${peer ?? '（沒有）'}`);
 check(
@@ -110,9 +106,4 @@ check(
   `那個範圍有上界 —— ${peer}（沒有上界的話 Three 一改內部就靜靜地壞掉）`,
 );
 
-console.log('');
-if (failed > 0) {
-  console.log(`發布欄位關卡：${failed} 項沒過`);
-  process.exit(1);
-}
-console.log('發布欄位關卡：全過');
+finish('發布欄位關卡');

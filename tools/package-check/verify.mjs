@@ -2,7 +2,9 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { serveDist } from '../lib/serve.mjs';
 
 /**
  * 把每一個會發布的套件打包起來，裝進一個**乾淨的專案**，然後真的用一次。
@@ -29,7 +31,6 @@ import { listenSafe } from '../lib/listen-safe.mjs';
  * peerDependency 也不會自動補上。
  */
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const work = mkdtempSync(join(tmpdir(), 'ww-verify-'));
 
 const run = (cmd, args, cwd) =>
@@ -118,7 +119,7 @@ try {
   const tarballs = [];
   for (const name of PACKAGES) {
     console.log(`打包 @webworld/${name}…`);
-    run('pnpm', ['pack', '--pack-destination', work], join(root, 'packages', name));
+    run('pnpm', ['pack', '--pack-destination', work], join(ROOT, 'packages', name));
   }
   for (const file of readdirSync(work)) {
     if (file.endsWith('.tgz')) tarballs.push(`./${file}`);
@@ -164,10 +165,6 @@ try {
  * import.meta.url)` 這種 worker 寫法的那一個。它過得了，其餘的也會過。
  */
 async function checkInBrowser(dir) {
-  const { chromium } = await import('playwright');
-  const { createServer } = await import('node:http');
-  const { readFile } = await import('node:fs/promises');
-  const { extname } = await import('node:path');
   const { build } = await import('esbuild');
 
   writeFileSync(
@@ -225,45 +222,19 @@ Promise.all([mesh.lodReady, asset]).then(
   // cook 出來的資產也要進產出目錄 —— 真實專案是把它們放進 public/ 的。
   cpSync(join(dir, 'cooked-assets'), join(site, 'cooked'), { recursive: true });
 
-  // 只 serve 打包產出。`node_modules` 在這裡碰不到，就跟部署之後一樣。
-  const server = createServer((req, res) => {
-    const url = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    const file = join(site, url === '/' ? 'index.html' : url);
-    if (!file.startsWith(site)) {
-      res.writeHead(403).end();
-      return;
-    }
-    readFile(file).then(
-      (bytes) => {
-        res.writeHead(200, {
-          'content-type': extname(file) === '.html' ? 'text/html' : 'text/javascript',
-        });
-        res.end(bytes);
-      },
-      () => res.writeHead(404).end(),
-    );
-  });
-  await listenSafe(server);
-  const port = server.address().port;
+  // 只 serve 打包產出。`node_modules` 在這裡碰不到，就跟部署之後一樣 ——
+  // 「出不了根目錄」是共用實作擋的，而那正是這一段要模擬的事。
+  const served = await serveDist(site);
 
-  // 與 benchmark runner 同一條退路：先試系統 Chrome，再試 Playwright 自帶的。
-  // 這裡不在乎用哪一個 —— 要驗的是「worker 起不起得來」，不是效能。
+  // 這裡不在乎用哪一個瀏覽器 —— 要驗的是「worker 起不起得來」，不是效能。
   let browser;
-  const launchErrors = [];
-  for (const channel of ['chrome', undefined]) {
-    try {
-      browser = await chromium.launch(channel === undefined ? {} : { channel });
-      break;
-    } catch (error) {
-      launchErrors.push(String(error).split('\n')[0]);
-    }
-  }
-  if (browser === undefined) {
-    server.close();
-    throw new Error(
-      `無法啟動瀏覽器，worker 這一段沒驗到。\n    ${launchErrors.join('\n    ')}\n` +
-        '    pnpm exec playwright install chromium',
-    );
+  try {
+    browser = await launchBrowser();
+  } catch (error) {
+    served.close();
+    throw new Error('worker 那一段沒驗到。\n    pnpm exec playwright install chromium', {
+      cause: error,
+    });
   }
 
   try {
@@ -281,7 +252,7 @@ Promise.all([mesh.lodReady, asset]).then(
       if (r.status() >= 400) problems.push(`HTTP ${r.status()} ${r.url()}`);
     });
 
-    await page.goto(`http://localhost:${port}/`);
+    await page.goto(`${served.origin}/`);
     const result = await page
       .waitForFunction(() => window.__result, null, { timeout: 30_000 })
       .then((h) => h.jsonValue());
@@ -317,6 +288,6 @@ Promise.all([mesh.lodReady, asset]).then(
     );
   } finally {
     await browser.close();
-    server.close();
+    served.close();
   }
 }

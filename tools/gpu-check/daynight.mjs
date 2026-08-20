@@ -15,51 +15,21 @@
  *
  * 這支工具就是量那個分岔點。先量再決定，不要先猜。
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { startReport } from '../lib/report.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') {
-    res.writeHead(204).end();
-    return;
-  }
-  const file = join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const site = await serveDist(DIST);
 
-console.log('太陽移動的代價：整份探針重烘要多久\n');
-let failed = 0;
-const check = (ok, message) => {
-  console.log('  ' + (ok ? '✓' : '✗') + ' ' + message);
-  if (!ok) failed++;
-};
-const browser = await chromium.launch({
-  channel: 'chrome',
-  headless: false,
-  args: ['--enable-unsafe-webgpu'],
-});
-const base = `http://localhost:${server.address().port}`;
+const { check, fail, finish } = startReport('太陽移動的代價：整份探針重烘要多久\n');
+const browser = await launchBrowser({ webgpu: true });
+const base = site.origin;
 
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -287,21 +257,9 @@ try {
   );
   check(perFrame < 3, `每幀代價遠低於重烘 —— 多付 ${perFrame.toFixed(2)} ms（重烘是 12.1 ms）`);
 } catch (e) {
-  console.log('失敗：' + String(e).split(String.fromCharCode(10))[0].slice(0, 220));
-  process.exitCode = 1;
+  fail('關卡跑到一半就掛了', String(e).split(String.fromCharCode(10))[0].slice(0, 220));
 }
 await browser.close();
-server.close();
+site.close();
 
-if (failed > 0) {
-  console.log(``);
-  console.log(`日夜循環關卡：${failed} 項沒過`);
-  process.exit(1);
-}
-if (process.exitCode) {
-  console.log(``);
-  console.log(`日夜循環關卡：掛了，沒跑完`);
-  process.exit(1);
-}
-console.log(``);
-console.log(`日夜循環關卡：全過`);
+finish('日夜循環關卡');

@@ -26,10 +26,10 @@
  * 名字這一層已經抓得到絕大多數的鏽：改名、刪除、打錯字。簽名改了而名字
  * 沒變的情況（這一輪的效果統一就是）靠 CHANGELOG 與 review。
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
+import { ROOT } from '../lib/repo-root.mjs';
+import { startReport } from '../lib/report.mjs';
 
 /** 掃哪些文件。 */
 const DOCS = [
@@ -44,7 +44,7 @@ const DOCS = [
 
 /** `index.ts` 匯出的每一個名字。 */
 function exportedNames(file) {
-  const source = readFileSync(join(root, file), 'utf8');
+  const source = readFileSync(join(ROOT, file), 'utf8');
   const names = new Set();
   for (const block of source.matchAll(/export\s*\{([^}]*)\}/g)) {
     for (const one of block[1].split(',')) {
@@ -65,25 +65,34 @@ function exportedNames(file) {
   return names;
 }
 
+/** 一個目錄底下所有的 .ts（不含測試）。 */
+function walkTs(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkTs(full));
+    else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) out.push(full);
+  }
+  return out;
+}
+
 const three = exportedNames('packages/three/src/index.ts');
 const format = exportedNames('packages/format/src/index.ts');
 // `@webworld/three` 轉出了一部分 format 的東西，兩邊都算數。
 const known = new Set([...three, ...format]);
 
-console.log('文件裡寫的 API 真的存在嗎');
-console.log(`  公開的名字：three ${three.size} 個、format ${format.size} 個`);
+const { check, note, finish } = startReport('文件裡寫的 API 真的存在嗎');
+note(`公開的名字：three ${three.size} 個、format ${format.size} 個`);
 
-let failed = 0;
 const missing = [];
 let mentions = 0;
 
 for (const doc of DOCS) {
   let text;
   try {
-    text = readFileSync(join(root, doc), 'utf8');
+    text = readFileSync(join(ROOT, doc), 'utf8');
   } catch {
-    console.log(`  ✗ 讀不到 ${doc}`);
-    failed++;
+    check(false, `讀不到 ${doc}`);
     continue;
   }
   // ## 只看程式碼區塊
@@ -100,15 +109,13 @@ for (const doc of DOCS) {
   }
 }
 
-console.log(`  文件裡提到 ${mentions} 次`);
+note(`文件裡提到 ${mentions} 次`);
 const unique = [...new Set(missing)];
-if (unique.length > 0) {
-  failed++;
-  console.log(`  ✗ 有 ${unique.length} 個名字不存在：`);
-  for (const one of unique) console.log(`      ${one}`);
-} else {
-  console.log('  ✓ 每一個都找得到');
-}
+check(
+  unique.length === 0,
+  `文件裡的每一個名字都找得到`,
+  unique.join(String.fromCharCode(10) + `      `) || undefined,
+);
 
 // ## 反過來也要問：有沒有整個功能沒被寫進 README
 //
@@ -116,21 +123,58 @@ if (unique.length > 0) {
 // 100 個公開名字裡有 76 個 README 一次都沒提過，包含每一個螢幕空間效果。
 //
 // 純型別（`FooOptions`、`FooStats`……）不算 —— 那些在編輯器裡自己會出現。
-const readme = readFileSync(join(root, 'packages/three/README.md'), 'utf8');
+const readme = readFileSync(join(ROOT, 'packages/three/README.md'), 'utf8');
 const TYPE_ISH =
   /Options|Stats|Context|Placement|Rule|Chain|Source|Instance$|Target|Fn$|Tiles|Heightfield$|Wave|Body|Force|Rebasable|^Baked|^Cascaded/;
 const undocumented = [...three].filter((n) => !TYPE_ISH.test(n) && !readme.includes(n));
-if (undocumented.length > 0) {
-  failed++;
-  console.log(`  ✗ ${undocumented.length} 個公開的東西 README 沒提過：`);
-  console.log(`      ${undocumented.join(' ')}`);
-} else {
-  console.log('  ✓ 每一個公開的功能 README 都寫到了');
-}
+check(
+  undocumented.length === 0,
+  '每一個公開的功能 README 都寫到了',
+  undocumented.length === 0
+    ? undefined
+    : `少了 ${undocumented.length} 個：${undocumented.join(' ')}`,
+);
 
-console.log('');
-if (failed > 0) {
-  console.log(`文件關卡：${failed} 項沒過`);
-  process.exit(1);
+// ## 主控台訊息認得出是誰講的嗎
+//
+// 使用者在主控台看到一行字時要立刻知道兩件事：**誰講的**（是這個套件，
+// 不是 Three，不是他自己的程式），以及**他呼叫的哪一支**。前者靠 `WW.` 前綴，
+// 後者靠後面那個名字。
+//
+// 沒有前綴的訊息在一個真實專案的主控台裡是找不到來源的 —— 那裡同時有
+// Three 的警告、打包器的、瀏覽器的、還有使用者自己的。
+const MESSAGE_SOURCES = ['packages/three/src', 'packages/cook/src'];
+
+// CLI 例外：那些字是講給**剛敲完指令的人**聽的，來源已經很明顯。
+// 掛上 WW.cook: 只是噪音 —— 前綴是為了在一個混雜的主控台裡認出來源，
+// 而終端機裡只有剛才那一行指令。
+const CLI_ONLY = ['packages/cook/src/cli.ts'];
+const unprefixed = [];
+let messages = 0;
+for (const dir of MESSAGE_SOURCES) {
+  for (const file of walkTs(join(ROOT, dir))) {
+    const text = readFileSync(file, 'utf8');
+    // 兩種寫法都要看：單一字串，以及 `console.warn([…].join())` 的第一行 ——
+    // 多行警告在這個套件裡很常見，而漏掉它們等於漏掉最長、最重要的那幾則。
+    //
+    // 只看**字面**開頭的那種。變數開頭的看不出前綴，而那一類本來就該把
+    // 前綴寫在字面裡。
+    for (const hit of text.matchAll(
+      /(?:throw new Error|console\.(?:warn|error))\(\s*\[?\s*(['`])([^'`\n]{0,24})/g,
+    )) {
+      messages++;
+      if (CLI_ONLY.some((one) => file.endsWith(one.split('/').join(sep)))) continue;
+      if (!hit[2].startsWith('WW')) unprefixed.push(`${relative(ROOT, file)}：${hit[2]}…`);
+    }
+  }
 }
-console.log('文件關卡：全過');
+note(`面向使用者的訊息 ${messages} 處`);
+check(
+  unprefixed.length === 0,
+  '每一則都看得出是這個套件講的',
+  unprefixed.length === 0
+    ? undefined
+    : `${unprefixed.length} 則沒有 WW 前綴：${String.fromCharCode(10)}      ${unprefixed.join(String.fromCharCode(10) + `      `)}`,
+);
+
+finish('文件關卡');

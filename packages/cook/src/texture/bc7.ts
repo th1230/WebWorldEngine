@@ -167,7 +167,7 @@ export function encodeBc7Block(block: Uint8Array, out: Uint8Array, outOffset: nu
       }
     }
   }
-  if (best === null) throw new Error('BC7：找不到端點');
+  if (best === null) throw new Error('WW.cook: 找不到端點');
 
   // anchor 規則：index[0] 的最高位隱含為 0，所以必須 ≤ 7。
   // 超過就把兩個端點對調並反轉所有索引 —— 調色盤剛好整個反向，
@@ -226,7 +226,9 @@ export function decodeBc7(data: Uint8Array, width: number, height: number): Uint
       const reader = new BitReader(data, (by * blocks.x + bx) * 16);
       const mode = reader.read(7);
       if (mode !== 0b1000000) {
-        throw new Error(`BC7 解碼器只支援 mode 6，區塊 (${bx}, ${by}) 的 mode 位元為 ${mode}`);
+        throw new Error(
+          `WW.cook: BC7 解碼器只支援 mode 6，區塊 (${bx}, ${by}) 的 mode 位元為 ${mode}`,
+        );
       }
 
       const q: number[][] = [[], []];

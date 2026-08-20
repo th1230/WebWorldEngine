@@ -18,48 +18,23 @@
  * 與 gi-check 同一個邏輯：場景裡除了那塊板子沒有藍色。板子貼到箱子旁邊之後
  * 那一面沾到多少藍，就是探針抓到多少。
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') {
-    res.writeHead(204).end();
-    return;
-  }
-  const file = join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          {
-            '.html': 'text/html',
-            '.js': 'text/javascript',
-            '.json': 'application/json',
-            '.wasm': 'application/wasm',
-          }[extname(file)] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const site = await serveDist(DIST);
 
 console.log('接觸尺度：板子貼到箱子旁邊，探針抓得到多少藍\n');
-const browser = await chromium.launch({ channel: 'chrome' });
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 800, height: 480 } });
 
 for (const res of [4, 8, 16, 24]) {
-  await page.goto(`http://localhost:${server.address().port}/?gi=1&probeRes=${res}`, {
+  await page.goto(`${site.url}?gi=1&probeRes=${res}`, {
     waitUntil: 'load',
   });
   await page.waitForFunction(
@@ -93,4 +68,4 @@ for (const res of [4, 8, 16, 24]) {
 }
 
 await browser.close();
-server.close();
+site.close();

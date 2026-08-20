@@ -15,48 +15,22 @@
  * 三個都是**把時間跑過去**才看得到的。所以這一關真的開一個瀏覽器、真的跑
  * 900 步、然後問「箱子最後在哪裡」。
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { startReport } from '../lib/report.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
-const COOKED = join(root, 'apps/benchmark/public');
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const COOKED = join(ROOT, 'apps/benchmark/public');
 
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') {
-    res.writeHead(204).end();
-    return;
-  }
-  const file = path.startsWith('/cooked')
-    ? join(COOKED, path)
-    : join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          {
-            '.html': 'text/html',
-            '.js': 'text/javascript',
-            '.json': 'application/json',
-            '.wasm': 'application/wasm',
-          }[extname(file)] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
+const site = await serveDist(DIST, { mounts: { '/cooked': COOKED } });
 
-console.log('物理／水：跑 900 步，看箱子最後停在哪裡');
-const browser = await chromium.launch({ channel: 'chrome' });
+const { check, fail, finish } = startReport('物理／水：跑 900 步，看箱子最後停在哪裡');
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 800, height: 480 } });
 const errors = [];
 page.on('console', (m) => {
@@ -64,14 +38,8 @@ page.on('console', (m) => {
 });
 page.on('pageerror', (e) => errors.push('PAGEERROR ' + String(e.message).split('\n')[0]));
 
-let failed = 0;
-const check = (ok, label, detail) => {
-  console.log(`  ${ok ? '✓' : '✗'} ${label}${detail ? ` —— ${detail}` : ''}`);
-  if (!ok) failed++;
-};
-
 try {
-  await page.goto(`http://localhost:${server.address().port}/?physics=1&orbit=260`, {
+  await page.goto(`${site.url}?physics=1&orbit=260`, {
     waitUntil: 'load',
   });
   await page.waitForFunction(() => window.__ww?.totalFrames > 90, undefined, { timeout: 120000 });
@@ -132,16 +100,11 @@ try {
   check(out.calls > 0, '畫面真的畫出來了', `${out.calls} 次繪製`);
   check(errors.length === 0, '沒有主控台錯誤', errors.slice(0, 2).join(' | ') || undefined);
 } catch (e) {
-  console.log('  ✗ 失敗：' + String(e).split('\n')[0].slice(0, 120));
-  failed++;
+  fail('關卡跑到一半就掛了', String(e).split('\n')[0].slice(0, 120));
 }
 
 await page.close();
 await browser.close();
-server.close();
+site.close();
 
-if (failed > 0) {
-  console.log(`\n物理關卡：${failed} 項沒過`);
-  process.exit(1);
-}
-console.log('\n物理關卡：全過');
+finish('物理關卡');

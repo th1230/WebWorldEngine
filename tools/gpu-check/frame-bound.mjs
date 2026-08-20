@@ -9,44 +9,17 @@
  * 這不是代理量測（impostor 那次的錯是拿一個構不到的東西去逼近）。這裡量的
  * 是**上限本身**：省不到比 CPU 更多的時間，而 CPU 有多少是直接量得到的。
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
-const COOKED = join(root, 'apps/benchmark/public');
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') {
-    res.writeHead(204).end();
-    return;
-  }
-  const file = path.startsWith('/cooked')
-    ? join(COOKED, path)
-    : join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          {
-            '.html': 'text/html',
-            '.js': 'text/javascript',
-            '.json': 'application/json',
-            '.wasm': 'application/wasm',
-          }[extname(file)] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const COOKED = join(ROOT, 'apps/benchmark/public');
+const site = await serveDist(DIST, { mounts: { '/cooked': COOKED } });
 
 // ## 常態場景，加上**刻意要把 CPU 逼成瓶頸**的那幾個
 //
@@ -65,12 +38,8 @@ const SCENES = [
 ];
 
 console.log('幀被誰綁住：CPU 那一段搬得走的話，最多省多少\n');
-const browser = await chromium.launch({
-  channel: 'chrome',
-  headless: false,
-  args: ['--enable-unsafe-webgpu'],
-});
-const base = `http://localhost:${server.address().port}`;
+const browser = await launchBrowser({ webgpu: true });
+const base = site.origin;
 
 const results = [];
 
@@ -146,7 +115,7 @@ try {
   process.exitCode = 1;
 }
 await browser.close();
-server.close();
+site.close();
 
 // ## 翻盤條件跑過了沒有
 //

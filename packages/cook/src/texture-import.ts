@@ -62,7 +62,7 @@ export async function decodeTexture(
   const sourceWidth = meta.width ?? 0;
   const sourceHeight = meta.height ?? 0;
   if (sourceWidth === 0 || sourceHeight === 0) {
-    throw new Error(`${label} 的影像尺寸讀不到（格式可能不支援）`);
+    throw new Error(`WW.cook: ${label} 的影像尺寸讀不到（格式可能不支援）`);
   }
 
   // 先套上限，再對齊到 4 的倍數。順序反過來的話，縮放會把對齊破壞掉。

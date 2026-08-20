@@ -17,52 +17,22 @@
  *
  * 量的是同一個像素在幾種狀態下的顏色 —— 同一條程式碼、同一個場景。
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { startReport } from '../lib/report.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') {
-    res.writeHead(204).end();
-    return;
-  }
-  const file = join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const site = await serveDist(DIST);
 
-console.log('反射探針：反射裡要有實際拍到的東西');
-let failed = 0;
-const check = (ok, message) => {
-  console.log('  ' + (ok ? '✓' : '✗') + ' ' + message);
-  if (!ok) failed++;
-};
+const { check, finish, markFailed } = startReport('反射探針：反射裡要有實際拍到的東西');
 
-const browser = await chromium.launch({
-  channel: 'chrome',
-  headless: false,
-  args: ['--enable-unsafe-webgpu'],
-});
-const base = `http://localhost:${server.address().port}`;
+const browser = await launchBrowser({ webgpu: true });
+const base = site.origin;
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
 page.on('console', (m) => {
@@ -228,11 +198,10 @@ try {
   );
 } catch (error) {
   console.log('  ✗ ' + String(error?.message ?? error));
-  failed++;
+  markFailed();
 } finally {
   await browser.close();
-  server.close();
+  site.close();
 }
 
-console.log(failed === 0 ? '\n反射探針關卡：全過\n' : `\n有 ${failed} 項沒過\n`);
-process.exit(failed === 0 ? 0 : 1);
+finish('反射探針關卡');

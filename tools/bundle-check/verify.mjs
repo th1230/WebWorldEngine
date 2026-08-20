@@ -31,19 +31,15 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { startReport } from '../lib/report.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
-const dist = join(root, 'packages/three/dist');
+const dist = join(ROOT, 'packages/three/dist');
 
 // 這道關卡吃的是 `packages/three/dist`，不是 example 的產物。
-assertDistFresh(root, ['packages/three/src'], 'packages/three/dist');
+assertDistFresh(ROOT, ['packages/three/src'], 'packages/three/dist');
 
-console.log('打包的形狀：WebGL 那條路不該拖到 WebGPU 的東西');
-let failed = 0;
-const check = (ok, message) => {
-  console.log('  ' + (ok ? '✓' : '✗') + ' ' + message);
-  if (!ok) failed++;
-};
+const { check, finish } = startReport('打包的形狀：WebGL 那條路不該拖到 WebGPU 的東西');
 
 /** 一個檔案靜態 import 了哪些外部模組（相對路徑不算）。 */
 function staticImports(file) {
@@ -137,9 +133,4 @@ console.log(
     `延後 ${(sizeOf(lazy) / 1024).toFixed(0)} kB（${lazy.length} 個檔）`,
 );
 
-console.log('');
-if (failed > 0) {
-  console.log(`打包形狀關卡：${failed} 項沒過`);
-  process.exit(1);
-}
-console.log('打包形狀關卡：全過');
+finish('打包形狀關卡');

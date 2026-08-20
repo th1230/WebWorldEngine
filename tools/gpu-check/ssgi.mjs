@@ -10,44 +10,20 @@
  * 探針那條路的同一個位置量到 R 94.9 / B 37.6（紅比藍高 57）。兩邊量的是
  * 同一件事，所以數字直接可比。
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { startReport } from '../lib/report.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') {
-    res.writeHead(204).end();
-    return;
-  }
-  const file = join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          {
-            '.html': 'text/html',
-            '.js': 'text/javascript',
-            '.json': 'application/json',
-            '.wasm': 'application/wasm',
-          }[extname(file)] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const site = await serveDist(DIST);
 
-console.log('螢幕空間間接光：背光面收集到的顏色\n');
-const browser = await chromium.launch({ channel: 'chrome' });
+const { check, fail, finish } = startReport('螢幕空間間接光：背光面收集到的顏色\n');
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 800, height: 480 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e.message).split('\n')[0].slice(0, 100)));
@@ -55,16 +31,10 @@ page.on('console', (m) => {
   if (m.type() === 'error') errors.push(m.text().split('\n')[0].slice(0, 100));
 });
 
-let failed = 0;
-const check = (ok, label, detail) => {
-  console.log(`  ${ok ? '✓' : '✗'} ${label}${detail ? ` —— ${detail}` : ''}`);
-  if (!ok) failed++;
-};
-
 try {
   // 探針**關掉**（intensity 0），這樣量到的完全是 SSGI 的貢獻。
   const radius = process.argv[2] ?? 12;
-  await page.goto(`http://localhost:${server.address().port}/?gi=1&giOff=1&ssgiRadius=${radius}`, {
+  await page.goto(`${site.url}?gi=1&giOff=1&ssgiRadius=${radius}`, {
     waitUntil: 'load',
   });
   await page.waitForFunction(
@@ -104,15 +74,10 @@ try {
   );
   check(errors.length === 0, '沒有主控台錯誤', errors.slice(0, 2).join(' | ') || undefined);
 } catch (e) {
-  console.log('  ✗ 失敗：' + String(e).split('\n')[0].slice(0, 140));
-  failed++;
+  fail('關卡跑到一半就掛了', String(e).split('\n')[0].slice(0, 140));
 }
 
 await page.close();
 await browser.close();
-server.close();
-if (failed > 0) {
-  console.log(`\n螢幕空間間接光：${failed} 項沒過`);
-  process.exit(1);
-}
-console.log('\n螢幕空間間接光：全過');
+site.close();
+finish('螢幕空間間接光');

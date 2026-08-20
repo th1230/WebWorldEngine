@@ -23,7 +23,7 @@ import tseslint from 'typescript-eslint';
 const THREE_BAN = {
   group: ['three', 'three/*'],
   message:
-    'Three.js 只能出現在 packages/render-three 與 apps/*。' +
+    'Three.js 只能出現在 packages/three、internal/render-three 與 apps/*。' +
     '引擎核心必須與 renderer backend 解耦，見 specs/adr/0001-three-as-adapter.md。',
 };
 

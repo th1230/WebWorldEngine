@@ -109,7 +109,7 @@ export async function generateLodLevels(
   const welded = source.indices === null ? weld(source) : source;
   const position = welded.attributes['position'];
   if (position === undefined) {
-    throw new Error('LOD 產生需要 position attribute。');
+    throw new Error('WW: LOD 產生需要 position attribute —— 傳進來的幾何沒有這個屬性。');
   }
 
   await MeshoptSimplifier.ready;

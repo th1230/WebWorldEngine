@@ -1,9 +1,8 @@
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
 
 /**
  * 品質契約每嚴一格，要付多少 GPU 時間。
@@ -38,32 +37,13 @@ import { assertDistFresh } from '../lib/dist-fresh.mjs';
  * 而他知道自己買到什麼、付了什麼 —— 那正是四問第一問：**會改變畫面的決定
  * 是開發者的**，引擎負責把價錢算出來交出去。
  */
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const COOKED = join(root, 'apps/benchmark/public');
-const DIST = join(root, 'apps/example/dist');
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  const file = path.startsWith('/cooked')
-    ? join(COOKED, path)
-    : join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
-const url = `http://localhost:${server.address().port}/`;
-const browser = await chromium.launch({ channel: 'chrome' });
+assertDistFresh(ROOT);
+const COOKED = join(ROOT, 'apps/benchmark/public');
+const DIST = join(ROOT, 'apps/example/dist');
+const site = await serveDist(DIST, { mounts: { '/cooked': COOKED } });
+const url = site.url;
+const browser = await launchBrowser();
 const BASE = '?cooked=1&count=20000&hlodBudgetMB=512';
 const CASES = [
   ['2（預設）', ''],
@@ -100,4 +80,4 @@ for (const [k] of CASES) {
   );
 }
 await browser.close();
-server.close();
+site.close();

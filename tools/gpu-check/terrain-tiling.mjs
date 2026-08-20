@@ -1,10 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
 
 /**
  * 「大地表」與「一個極細物件」那兩條軸：**分塊值多少**。
@@ -37,10 +36,9 @@ import { assertDistFresh } from '../lib/dist-fresh.mjs';
  * 開銷 —— 所以量到的是**下界**，真的做進去只會更好。
  */
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
 
 /**
  * 兩個規模都要量，而且第一輪就是被這件事教的。
@@ -75,13 +73,13 @@ const SCALES = [
 async function main() {
   console.log('建置 example…');
   execFileSync('pnpm', ['--filter', '@ww/example-app', 'build'], {
-    cwd: root,
+    cwd: ROOT,
     stdio: 'pipe',
     shell: process.platform === 'win32',
   });
 
   const site = await serve(DIST);
-  const browser = await launch();
+  const browser = await launchBrowser();
   try {
     for (const scale of SCALES) {
       console.log(`\n${scale.name}`);
@@ -126,38 +124,9 @@ async function main() {
 }
 
 async function serve(dir) {
-  const COOKED = join(root, 'apps/benchmark/public');
-  const server = createServer((req, res) => {
-    const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    const file = path.startsWith('/cooked')
-      ? join(COOKED, path)
-      : join(dir, path === '/' ? 'index.html' : path);
-    readFile(file).then(
-      (bytes) => {
-        const type =
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
-            extname(file)
-          ] ?? 'application/octet-stream';
-        res.writeHead(200, { 'content-type': type });
-        res.end(bytes);
-      },
-      () => res.writeHead(404).end(),
-    );
-  });
-  await listenSafe(server);
-  return { url: `http://localhost:${server.address().port}/`, close: () => server.close() };
-}
-
-async function launch() {
-  const errors = [];
-  for (const channel of ['chrome', undefined]) {
-    try {
-      return await chromium.launch(channel === undefined ? {} : { channel });
-    } catch (error) {
-      errors.push(String(error).split('\n')[0]);
-    }
-  }
-  throw new Error(`無法啟動瀏覽器：\n  ${errors.join('\n  ')}`);
+  const COOKED = join(ROOT, 'apps/benchmark/public');
+  const site = await serveDist(dir, { mounts: { '/cooked': COOKED } });
+  return { url: site.url, close: () => site.close() };
 }
 
 await main();

@@ -332,11 +332,11 @@ export async function readSourceGltf(bytes: Uint8Array): Promise<RawMesh> {
   const document = await new NodeIO().readBinary(bytes);
   const meshes = document.getRoot().listMeshes();
   const mesh = meshes[0];
-  if (mesh === undefined) throw new Error('glTF 沒有任何 mesh');
+  if (mesh === undefined) throw new Error('WW.cook: glTF 沒有任何 mesh');
 
   const primitives = mesh.listPrimitives();
   const primitive = primitives[0];
-  if (primitive === undefined) throw new Error('mesh 沒有任何 primitive');
+  if (primitive === undefined) throw new Error('WW.cook: mesh 沒有任何 primitive');
 
   // 多 mesh / 多 primitive **明確拒絕，不靜默取第一個**。
   //
@@ -352,7 +352,7 @@ export async function readSourceGltf(bytes: Uint8Array): Promise<RawMesh> {
   // 成為一個 cooked mesh。
   if (meshes.length > 1 || primitives.length > 1) {
     throw new Error(
-      `尚未支援多 mesh / 多 primitive 的 glTF（找到 ${meshes.length} 個 mesh、` +
+      `WW.cook: 尚未支援多 mesh / 多 primitive 的 glTF（找到 ${meshes.length} 個 mesh、` +
         `第一個 mesh 有 ${primitives.length} 個 primitive）。` +
         `程序化來源一個資產只對應一個 material slot。`,
     );
@@ -360,8 +360,8 @@ export async function readSourceGltf(bytes: Uint8Array): Promise<RawMesh> {
 
   const position = primitive.getAttribute('POSITION');
   const indices = primitive.getIndices();
-  if (position === null) throw new Error('primitive 缺少 POSITION');
-  if (indices === null) throw new Error('primitive 缺少索引（未支援非索引幾何）');
+  if (position === null) throw new Error('WW.cook: primitive 缺少 POSITION');
+  if (indices === null) throw new Error('WW.cook: primitive 缺少索引（未支援非索引幾何）');
 
   const uv = primitive.getAttribute('TEXCOORD_0');
   const normal = primitive.getAttribute('NORMAL');

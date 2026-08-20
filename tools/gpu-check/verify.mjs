@@ -1,10 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
 
 /**
  * 旋鈕到底有沒有省到 GPU —— **量它，而且擋它**。
@@ -54,10 +53,9 @@ import { assertDistFresh } from '../lib/dist-fresh.mjs';
  * 別的。只量一種的話，量到的是那一種內容的結論，不是這個引擎的結論。
  */
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
 
 /**
  * 兩種內容，而且**必須兩種都量**，各自的門檻寫在自己旁邊。
@@ -89,13 +87,13 @@ const ROUNDS = 5;
 async function main() {
   console.log('建置 example…');
   execFileSync('pnpm', ['--filter', '@ww/example-app', 'build'], {
-    cwd: root,
+    cwd: ROOT,
     stdio: 'pipe',
     shell: process.platform === 'win32',
   });
 
   const site = await serve(DIST);
-  const browser = await launch();
+  const browser = await launchBrowser();
   const results = [];
 
   try {
@@ -197,39 +195,9 @@ const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 async function serve(dir) {
   // `/cooked*` 從 benchmark 的 public 讀 —— 少了這一段 `?cooked=1` 會靜靜退回
   // 純色材質，於是這個檢查驗的內容裡根本沒有貼圖，然後永遠量不到差別。
-  const COOKED = join(root, 'apps/benchmark/public');
-  const server = createServer((req, res) => {
-    const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    const file = path.startsWith('/cooked')
-      ? join(COOKED, path)
-      : join(dir, path === '/' ? 'index.html' : path);
-    readFile(file).then(
-      (bytes) => {
-        const type =
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
-            extname(file)
-          ] ?? 'application/octet-stream';
-        res.writeHead(200, { 'content-type': type });
-        res.end(bytes);
-      },
-      () => res.writeHead(404).end(),
-    );
-  });
-  await listenSafe(server);
-  return { url: `http://localhost:${server.address().port}/`, close: () => server.close() };
-}
-
-async function launch() {
-  const errors = [];
-  for (const channel of ['chrome', undefined]) {
-    try {
-      // 有頭：無頭沒有真的 GPU，而這裡量的是真的 GPU 時間。
-      return await chromium.launch(channel === undefined ? {} : { channel });
-    } catch (error) {
-      errors.push(String(error).split('\n')[0]);
-    }
-  }
-  throw new Error(`無法啟動瀏覽器：\n  ${errors.join('\n  ')}`);
+  const COOKED = join(ROOT, 'apps/benchmark/public');
+  const site = await serveDist(dir, { mounts: { '/cooked': COOKED } });
+  return { url: site.url, close: () => site.close() };
 }
 
 await main();

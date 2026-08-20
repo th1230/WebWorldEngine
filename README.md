@@ -37,7 +37,7 @@ controls、後處理全部照樣能用，隨時可以換回去。
 packages/             會發布到 npm
   three/                @webworld/three —— runtime，裝進使用者的 Three.js 專案
   cook/                 @webworld/cook —— 離線 CLI（Node），把 glTF 烘焙成 .wwm
-  format/               @webworld/format —— 上面兩個之間的格式契約（只有型別）
+  format/               @webworld/format —— 兩者共用的那一層：格式契約與純演算法
 internal/             不發布：上面那些的實作，build 時內聯進 dist
   core/                 零依賴：型別、assert、RingBuffer、統計、矩陣
   assets-runtime/       manifest 載入、.wwm 解碼、快取與參考計數
@@ -50,10 +50,15 @@ apps/
   example/              一個普通的 Three.js 專案，只換一個字
   benchmark/            量測用的 Vite app 與所有場景
 tools/
+  lib/                  關卡共用的那幾件事：伺服器、瀏覽器、報告、產物新舊
+  gpu-check/            大部分的畫面關卡都在這裡（一個效果一支）
   benchmark-runner/     Playwright 跑分與回歸比對
-  package-check/        打包 → 裝進乾淨專案 → import
+  package-check/        打包 → 裝進乾淨專案 → import；另有 npm 欄位檢查
   visual-check/         畫面比對：強化版 vs 原生，掃相機角度
   site-check/           網站指標：首次可見、下載量、記憶體、與頁面共存
+  bundle-check/         只用 WebGL 的人不該下載 WebGPU 那一半
+  docs-check/           README 寫的 API 真的存在，訊息認得出是誰講的
+  gi-check/  physics-check/   間接光、物理各自的證明場景
 benchmarks/baselines/ 各機器的效能基準（進版控）
 specs/                準則、里程碑、契約與 ADR
 ```
@@ -94,7 +99,7 @@ cook（Node，離線）→  format  →  （無）
 ```bash
 pnpm install
 pnpm verify       # typecheck + lint + format + 807 個單元測試
-pnpm verify:all   # 上面那個，加上二十五道要瀏覽器的關卡
+pnpm verify:all   # 上面那個，加上二十二道要瀏覽器的關卡
 pnpm example      # 範例 app，http://localhost:5174/
 pnpm dev          # benchmark app，http://localhost:5173/
 pnpm build:pkg    # 建置三個發布套件的 dist
@@ -148,7 +153,7 @@ import 不報錯、只是每個使用者多下載一包。所以每一道關卡�
 | `pnpm water-look-check` | 水的每一項都從「有多深」推得出來 |
 | `pnpm cross-check` | **同一個效果，兩個後端，必須算出同一組數字** |
 
-### 三件學到的事
+### 四件學到的事
 
 **一、有量、沒有人擋，等於沒量。** 這一輪最嚴重的兩個 bug —— 分頁記憶體漲到
 1 GB、畫面比對從來沒被跑過 —— 兩個都有工具量得出來，只是沒有人跑。所以現在
@@ -162,6 +167,14 @@ import 不報錯、只是每個使用者多下載一包。所以每一道關卡�
 名字裡那件事 —— 比對上游而 bug 在下游、用一個天生免疫的指標、測試場景
 分不出兩種成因。這一輪有五個上線中的 bug 是先**重寫量測**才找出來的。
 判準怎麼訂見 [`specs/doctrine.md`](specs/doctrine.md)。
+
+**四、複製出去的那幾份會各自漂走。** 44 個關卡本來各自帶一份靜態伺服器、
+一份瀏覽器啟動、一份報告格式。重複不是問題，**它們早就不一樣了**才是：
+37 份 mime 表裡只有 15 份認得 `.wasm`，44 次瀏覽器啟動裡只有 8 次找不到
+Chrome 時講得出人話，38 台伺服器裡只有 1 台擋得住路徑穿越。沒有人決定過
+那些差異。收進 `tools/lib/` 之後淨少 1,235 行，而且一個地方補的東西全部
+都補到了。
+
 ## 發布
 
 三個套件**齊步發布**，版本永遠相同：

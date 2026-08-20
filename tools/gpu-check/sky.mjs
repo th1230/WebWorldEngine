@@ -11,52 +11,22 @@
  * 所以日落時白色地面上的間接光應該是紅的。那個紅在這個全白的場景裡只有一個
  * 來源。
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { startReport } from '../lib/report.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') {
-    res.writeHead(204).end();
-    return;
-  }
-  const file = join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
-            extname(file)
-          ] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const site = await serveDist(DIST);
 
-console.log('天空：顏色是積分出來的，而且會餵給間接光');
-let failed = 0;
-const check = (ok, message) => {
-  console.log('  ' + (ok ? '\u2713' : '\u2717') + ' ' + message);
-  if (!ok) failed++;
-};
+const { check, fail, finish } = startReport('天空：顏色是積分出來的，而且會餵給間接光');
 
-const browser = await chromium.launch({
-  channel: 'chrome',
-  headless: false,
-  args: ['--enable-unsafe-webgpu'],
-});
-const base = `http://localhost:${server.address().port}`;
+const browser = await launchBrowser({ webgpu: true });
+const base = site.origin;
 
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -182,17 +152,10 @@ try {
     `沒有主控台錯誤${errors.length > 0 ? '：' + errors[0].slice(0, 140) : ''}`,
   );
 } catch (e) {
-  console.log('失敗：' + String(e).split(String.fromCharCode(10))[0].slice(0, 240));
-  failed++;
+  fail('關卡跑到一半就掛了', String(e).split(String.fromCharCode(10))[0].slice(0, 240));
   process.exitCode = 1;
 }
 await browser.close();
-server.close();
+site.close();
 
-if (failed > 0) {
-  console.log('');
-  console.log(`天空關卡：${failed} 項沒過`);
-  process.exit(1);
-}
-console.log('');
-console.log('天空關卡：全過');
+finish('天空關卡');

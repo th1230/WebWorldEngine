@@ -186,7 +186,7 @@ async function readDocument(
   try {
     json = JSON.parse(new TextDecoder().decode(bytes));
   } catch (error) {
-    throw new Error(`${sourceName} 既不是 GLB 也不是合法的 JSON`, { cause: error });
+    throw new Error(`WW.cook: ${sourceName} 既不是 GLB 也不是合法的 JSON`, { cause: error });
   }
 
   /**
@@ -203,7 +203,7 @@ async function readDocument(
   const missing = referencedUris(json).filter((uri) => map[uri] === undefined);
   if (missing.length > 0) {
     throw new Error(
-      `${sourceName} 缺少 ${missing.length} 個外部資源：${missing.slice(0, 5).join('、')}` +
+      `WW.cook: ${sourceName} 缺少 ${missing.length} 個外部資源：${missing.slice(0, 5).join('、')}` +
         `${missing.length > 5 ? ' …' : ''}`,
     );
   }
@@ -301,7 +301,7 @@ export async function importGltf(
   }
 
   if (out.length === 0) {
-    throw new Error(`${sourceName} 沒有任何可用的 primitive（需要 POSITION 與索引）`);
+    throw new Error(`WW.cook: ${sourceName} 沒有任何可用的 primitive（需要 POSITION 與索引）`);
   }
   return { primitives: out, warnings };
 }

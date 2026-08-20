@@ -22,8 +22,8 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { ROOT } from '../lib/repo-root.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const PACKAGES = ['format', 'three', 'cook'];
 
 const next = process.argv[2];
@@ -39,7 +39,7 @@ if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(next)) {
 }
 
 for (const name of PACKAGES) {
-  const path = join(root, 'packages', name, 'package.json');
+  const path = join(ROOT, 'packages', name, 'package.json');
   const text = readFileSync(path, 'utf8');
   const manifest = JSON.parse(text);
   const before = manifest.version;

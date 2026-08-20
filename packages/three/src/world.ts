@@ -197,7 +197,7 @@ export class World {
    */
   stream(options: StreamOptions): WorldStream {
     if (this._stream !== null) {
-      throw new Error('WW: 這個 scene 已經在串流了。要換設定請先 stopStream()。');
+      throw new Error('WW.World.stream: 這個 scene 已經在串流了。要換設定請先 stopStream()。');
     }
 
     const stream = new WorldStream(options);

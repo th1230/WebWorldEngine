@@ -1,10 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
 
 /**
  * 畫面對不對，不是數字對不對。
@@ -103,10 +102,14 @@ import { assertDistFresh } from '../lib/dist-fresh.mjs';
  * 從頭到尾都是綠的。
  */
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+// `/cooked*` 從 benchmark 的 public 讀 —— 那是 `pnpm cook` 的輸出，不進版控，
+// 而 example 的 vite 設定只在 dev server 上代理它。建置後的 app 少了這一段
+// 就載不到貼圖，於是 `?cooked=1` 會靜靜退回純色材質 —— **檢查照樣全綠，
+// 只是它驗的內容裡根本沒有貼圖**。
+const COOKED = join(ROOT, 'apps/benchmark/public');
 
 /**
  * 鄰域外的像素佔比上限。
@@ -153,23 +156,23 @@ const DIST = join(root, 'apps/example/dist');
 async function main() {
   console.log('建置 example app…');
   execFileSync('pnpm', ['--filter', './apps/example', 'build'], {
-    cwd: root,
+    cwd: ROOT,
     stdio: ['ignore', 'pipe', 'inherit'],
     shell: process.platform === 'win32',
   });
 
-  const server = await serve(DIST);
-  const browser = await launch();
+  const site = await serveDist(DIST, { mounts: { '/cooked': COOKED } });
+  const browser = await launchBrowser();
   const failures = [];
   try {
     for (const mode of modes()) {
-      const result = await run(browser, server.url, mode);
+      const result = await run(browser, site.url, mode);
       const problem = judge(mode, result);
       if (problem !== null) failures.push(problem);
     }
   } finally {
     await browser.close();
-    server.close();
+    site.close();
   }
 
   if (failures.length > 0) {
@@ -315,46 +318,6 @@ function judge(mode, result) {
     return `${mode.name}：不合的像素沒有集中在輪廓上（梯度比 ${ratio.toFixed(1)} < ${mode.ratio}）`;
   }
   return null;
-}
-
-async function serve(dir) {
-  // `/cooked*` 從 benchmark 的 public 讀 —— 那是 `pnpm cook` 的輸出，不進版控，
-  // 而 example 的 vite 設定只在 dev server 上代理它。建置後的 app 少了這一段
-  // 就載不到貼圖，於是 `?cooked=1` 會靜靜退回純色材質 —— **檢查照樣全綠，
-  // 只是它驗的內容裡根本沒有貼圖**。
-  const COOKED = join(root, 'apps/benchmark/public');
-  const server = createServer((req, res) => {
-    const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    const file = path.startsWith('/cooked')
-      ? join(COOKED, path)
-      : join(dir, path === '/' ? 'index.html' : path);
-    readFile(file).then(
-      (bytes) => {
-        const type =
-          { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' }[
-            extname(file)
-          ] ?? 'application/octet-stream';
-        res.writeHead(200, { 'content-type': type });
-        res.end(bytes);
-      },
-      () => res.writeHead(404).end(),
-    );
-  });
-  await listenSafe(server);
-  return { url: `http://localhost:${server.address().port}/`, close: () => server.close() };
-}
-
-async function launch() {
-  const errors = [];
-  for (const channel of ['chrome', undefined]) {
-    try {
-      // 有頭：無頭沒有真的 GPU，而這裡比的是真的畫出來的像素。
-      return await chromium.launch(channel === undefined ? {} : { channel });
-    } catch (error) {
-      errors.push(String(error).split('\n')[0]);
-    }
-  }
-  throw new Error(`無法啟動瀏覽器：\n  ${errors.join('\n  ')}`);
 }
 
 await main();

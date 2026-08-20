@@ -242,7 +242,7 @@ function imageFor(kind: TextureKind, size: number, seed: number): Image {
     case 'data':
       // 單通道資料貼圖目前沒有來源。真的需要時（例如 height、mask）
       // 應該有自己的產生器，而不是拿 albedo 充數。
-      throw new Error('data 貼圖尚無程序化來源');
+      throw new Error('WW.cook: data 貼圖尚無程序化來源');
   }
 }
 

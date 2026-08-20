@@ -32,44 +32,18 @@
  * 76.9% 然後 55.6%）—— 那是這台機器的雙峰，不是塊數的效果。所以這裡只報
  * 「對照組省了多少」，不排名。
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { chromium } from 'playwright';
-import { listenSafe } from '../lib/listen-safe.mjs';
+import { join } from 'node:path';
 import { assertDistFresh } from '../lib/dist-fresh.mjs';
+import { serveDist } from '../lib/serve.mjs';
+import { launchBrowser } from '../lib/browser.mjs';
+import { ROOT } from '../lib/repo-root.mjs';
+import { startReport } from '../lib/report.mjs';
 
-const root = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 // 關卡吃的是建好的產物 —— 它比原始碼舊的話，這一輪的每個數字都沒有意義。
-assertDistFresh(root);
-const DIST = join(root, 'apps/example/dist');
-const COOKED = join(root, 'apps/benchmark/public');
-const server = createServer((req, res) => {
-  const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (path === '/favicon.ico') {
-    res.writeHead(204).end();
-    return;
-  }
-  const file = path.startsWith('/cooked')
-    ? join(COOKED, path)
-    : join(DIST, path === '/' ? 'index.html' : path);
-  readFile(file).then(
-    (b) => {
-      res.writeHead(200, {
-        'content-type':
-          {
-            '.html': 'text/html',
-            '.js': 'text/javascript',
-            '.json': 'application/json',
-            '.wasm': 'application/wasm',
-          }[extname(file)] ?? 'application/octet-stream',
-      });
-      res.end(b);
-    },
-    () => res.writeHead(404).end(),
-  );
-});
-await listenSafe(server);
+assertDistFresh(ROOT);
+const DIST = join(ROOT, 'apps/example/dist');
+const COOKED = join(ROOT, 'apps/benchmark/public');
+const site = await serveDist(DIST, { mounts: { '/cooked': COOKED } });
 
 const SEGMENTS = 1200;
 const CONFIGS = [
@@ -79,17 +53,12 @@ const CONFIGS = [
   ['切成 1024 塊', 1024],
 ];
 
-console.log(
+const { markFailed, finish } = startReport(
   `一份 ${SEGMENTS}x${SEGMENTS} 段的地面（約 ${((SEGMENTS * SEGMENTS * 2) / 1e6).toFixed(1)}M 三角形）\n`,
 );
-const browser = await chromium.launch({
-  channel: 'chrome',
-  headless: false,
-  args: ['--enable-unsafe-webgpu'],
-});
-const base = `http://localhost:${server.address().port}`;
+const browser = await launchBrowser({ webgpu: true });
+const base = site.origin;
 const results = [];
-let failed = 0;
 
 async function run(split) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -143,7 +112,7 @@ try {
       // 1% 是很寬鬆的上限 —— 正常是 0.02–0.04%。
       if (ratio > 0.01) {
         detail += '　✗ 差太多，選階沒守住品質契約';
-        failed++;
+        markFailed();
       }
     }
 
@@ -162,9 +131,9 @@ try {
   }
 } catch (e) {
   console.log('失敗：' + String(e).split('\n')[0].slice(0, 160));
-  failed++;
+  markFailed();
 }
 
 await browser.close();
-server.close();
-if (failed > 0) process.exit(1);
+site.close();
+finish('切塊的價值');
