@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as WW from '@webworld/three';
+import { readPixelsAsync } from './readback.ts';
 
 /**
  * 接觸陰影的證明場景：一個箱子**貼在**地面上。
@@ -25,6 +26,41 @@ export interface ContactScene {
   render: (renderer: THREE.WebGLRenderer) => void;
   /** 讀某個世界座標投影到畫面上那一點的遮蔽值，0–1。 */
   sample: (renderer: THREE.WebGLRenderer, point: THREE.Vector3) => number;
+  /**
+   * 同一件事，非同步 —— 兩個後端都走得通。
+   *
+   * WebGPU 沒有同步的讀回，所以跨後端比對只能走這一支。
+   */
+  sampleAsync: (renderer: unknown, point: THREE.Vector3) => Promise<number>;
+  /**
+   * 直接讀 gbuffer 的法線 —— 比輸出更上游一層。
+   *
+   * 兩個後端的效果對不起來的時候，要先知道**輸入**一不一樣。輸入就不同的話，
+   * 再怎麼查著色器都是白費。
+   */
+  sampleNormalAsync: (renderer: unknown, point: THREE.Vector3) => Promise<number[]>;
+  /**
+   * 某一點周圍一小塊的平均遮蔽值。
+   *
+   * 單點取樣落在陰影邊緣上時，差一個像素就是 0.1 與 1.0 的差別 —— 那量的是
+   * 「邊緣剛好落在哪」而不是「效果對不對」。天空那邊也是同一個理由改成整面
+   * 平均的。
+   */
+  sampleWindowAsync: (renderer: unknown, point: THREE.Vector3, size: number) => Promise<number>;
+  /** 遮罩的尺寸，以及某個世界點投影到的像素座標。診斷讀回方向用。 */
+  probePixel: (point: THREE.Vector3) => { width: number; height: number; x: number; y: number };
+  /** 直接讀某個像素 —— 不做任何座標換算。 */
+  readPixelAsync: (renderer: unknown, x: number, y: number) => Promise<number>;
+  /** gbuffer 法線的粗略縮圖 —— 輸入有沒有結構，圖看得出來。 */
+  normalMapAsync: (renderer: unknown) => Promise<number[]>;
+  /** 遮罩的粗略縮圖（16×9 的平均）。分布不對的時候，數字看不出來，圖看得出來。 */
+  maskMapAsync: (renderer: unknown) => Promise<number[]>;
+  /** 遮罩裡有多少比例是暗的 —— 兩個後端都走得通的版本。 */
+  coverageAsync: (renderer: unknown) => Promise<number>;
+  /** 把中間值畫出來（只有 node 那條路有）。 */
+  setDebug: (mode: number) => void;
+  /** 等 WebGPU 那條路建好（先畫幾幀讓它把材質建出來）。 */
+  nodeReady: (renderer: unknown) => Promise<void>;
   /** 幾個有意義的取樣點，測試要用同一組。 */
   points: {
     contact: THREE.Vector3;
@@ -130,13 +166,136 @@ export function makeContactScene(): ContactScene {
   const pixel = new Uint8Array(4);
   const projected = new THREE.Vector3();
 
+  /** 一幀：更新深度法線，然後算接觸陰影。 也要用它。 */
+  const drawOnce = (renderer: THREE.WebGLRenderer): void => {
+    gbuffer.update(renderer, scene, camera);
+    shadows.render(renderer, camera, gbuffer, lightDirection);
+  };
+
   return {
     root,
     camera,
     lightDirection,
-    render: (renderer) => {
-      gbuffer.update(renderer, scene, camera);
-      shadows.render(renderer, camera, gbuffer, lightDirection);
+    render: drawOnce,
+    normalMapAsync: async (renderer) => {
+      const target = (gbuffer as unknown as { target: { width: number; height: number } }).target;
+      const data = await readPixelsAsync(renderer, target, 0, 0, target.width, target.height, (n) => new Uint8Array(n));
+      const out: number[] = [];
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 16; c++) {
+          let sum = 0;
+          let n = 0;
+          for (let y = Math.floor((r / 9) * target.height); y < Math.floor(((r + 1) / 9) * target.height); y += 2) {
+            for (let x = Math.floor((c / 16) * target.width); x < Math.floor(((c + 1) / 16) * target.width); x += 2) {
+              sum += data[(y * target.width + x) * 4 + 1] ?? 0;
+              n++;
+            }
+          }
+          out.push(Math.round(sum / Math.max(n, 1)));
+        }
+      }
+      return out;
+    },
+    maskMapAsync: async (renderer) => {
+      const target = targetOf(shadows);
+      const data = await readPixelsAsync(renderer, target, 0, 0, target.width, target.height, (n) => new Uint8Array(n));
+      const cols = 16;
+      const rows = 9;
+      const out: number[] = [];
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          let sum = 0;
+          let n = 0;
+          for (let y = Math.floor((r / rows) * target.height); y < Math.floor(((r + 1) / rows) * target.height); y += 2) {
+            for (let x = Math.floor((c / cols) * target.width); x < Math.floor(((c + 1) / cols) * target.width); x += 2) {
+              sum += data[(y * target.width + x) * 4] ?? 0;
+              n++;
+            }
+          }
+          out.push(Math.round(sum / Math.max(n, 1)));
+        }
+      }
+      return out;
+    },
+    coverageAsync: async (renderer) => {
+      const target = targetOf(shadows);
+      const data = await readPixelsAsync(renderer, target, 0, 0, target.width, target.height, (n) => new Uint8Array(n));
+      let dark = 0;
+      for (let i = 0; i < data.length; i += 4) if ((data[i] ?? 255) < 230) dark++;
+      return dark / (target.width * target.height);
+    },
+    probePixel: (point) => {
+      const target = targetOf(shadows);
+      projected.copy(point).project(camera);
+      return {
+        width: target.width,
+        height: target.height,
+        x: Math.round(((projected.x + 1) / 2) * target.width),
+        y: Math.round(((projected.y + 1) / 2) * target.height),
+      };
+    },
+    readPixelAsync: async (renderer, x, y) => {
+      const target = targetOf(shadows);
+      const data = await readPixelsAsync(renderer, target, x, y, 1, 1, (n) => new Uint8Array(n));
+      return (data[0] ?? 0) / 255;
+    },
+    sampleWindowAsync: async (renderer, point, size) => {
+      const target = targetOf(shadows);
+      projected.copy(point).project(camera);
+      const half = size >> 1;
+      const x = Math.min(target.width - size, Math.max(0, Math.round(((projected.x + 1) / 2) * target.width) - half));
+      const y = Math.min(target.height - size, Math.max(0, Math.round(((projected.y + 1) / 2) * target.height) - half));
+      const data = await readPixelsAsync(renderer, target, x, y, size, size, (n) => new Uint8Array(n));
+      let sum = 0;
+      for (let i = 0; i < size * size; i++) sum += data[i * 4] ?? 0;
+      return sum / (size * size) / 255;
+    },
+    sampleNormalAsync: async (renderer, point) => {
+      const target = (gbuffer as unknown as { target: { width: number; height: number } }).target;
+      projected.copy(point).project(camera);
+      const x = Math.min(target.width - 1, Math.max(0, Math.round(((projected.x + 1) / 2) * target.width)));
+      const y = Math.min(target.height - 1, Math.max(0, Math.round(((projected.y + 1) / 2) * target.height)));
+      const data = await readPixelsAsync(renderer, target, x, y, 1, 1, (n) => new Uint8Array(n));
+      return [(data[0] ?? 0) / 255, (data[1] ?? 0) / 255, (data[2] ?? 0) / 255];
+    },
+    setDebug: (mode) => {
+      (shadows as unknown as { debugMode: number }).debugMode = mode;
+    },
+    sampleAsync: async (renderer, point) => {
+      const target = targetOf(shadows);
+      projected.copy(point).project(camera);
+      const x = Math.min(
+        target.width - 1,
+        Math.max(0, Math.round(((projected.x + 1) / 2) * target.width)),
+      );
+      const y = Math.min(
+        target.height - 1,
+        Math.max(0, Math.round(((projected.y + 1) / 2) * target.height)),
+      );
+      const data = await readPixelsAsync(
+        renderer,
+        target,
+        x,
+        y,
+        1,
+        1,
+        (length) => new Uint8Array(length),
+      );
+      return (data[0] ?? 0) / 255;
+    },
+    nodeReady: async (renderer) => {
+      // ## 要等的是**真的時間**，不是 microtask
+      //
+      // node 材質是動態 `import()` 進來的，而那需要好幾個 macrotask。
+      // 第一版用 `await Promise.resolve()`（microtask）推了 30 圈，import
+      // 一次都沒完成 —— 於是 target 從來沒被畫過，WebGPU 上讀它直接丟
+      // 「Cannot read properties of undefined (reading format)」。
+      //
+      // 那個錯誤訊息完全看不出是「還沒建好」。
+      for (let i = 0; i < 60; i++) {
+        drawOnce(renderer as THREE.WebGLRenderer);
+        await new Promise((resolve) => setTimeout(resolve, 8));
+      }
     },
     sample: (renderer, point) => {
       const target = targetOf(shadows);

@@ -2017,7 +2017,22 @@ Object.assign(window, {
             render: (): void => contactScene.render(renderer),
             sample: (which: "contact" | "open" | "lit" | "terminator" | "under"): number =>
               contactScene.sample(renderer, contactScene.points[which]),
+            // 跨後端比對要走同一支。WebGPU 沒有同步的讀回。
+            sampleAsync: (
+              which: "contact" | "open" | "lit" | "terminator" | "under",
+            ): Promise<number> => contactScene.sampleAsync(renderer, contactScene.points[which]),
             coverage: (): number => contactScene.coverage(renderer),
+            coverageAsync: (): Promise<number> => contactScene.coverageAsync(renderer),
+            probePixel: (which: "contact" | "open" | "lit" | "terminator" | "under"): unknown =>
+              contactScene.probePixel(contactScene.points[which]),
+            readPixelAsync: (x: number, y: number): Promise<number> =>
+              contactScene.readPixelAsync(renderer, x, y),
+            sampleWindowAsync: (which: "contact" | "open" | "lit" | "terminator" | "under", size: number): Promise<number> =>
+              contactScene.sampleWindowAsync(renderer, contactScene.points[which], size),
+            maskMapAsync: (): Promise<number[]> => contactScene.maskMapAsync(renderer),
+            normalMapAsync: (): Promise<number[]> => contactScene.normalMapAsync(renderer),
+            sampleNormalAsync: (which: "contact" | "open" | "lit" | "terminator" | "under"): Promise<number[]> =>
+              contactScene.sampleNormalAsync(renderer, contactScene.points[which]),
             setStrength: (v: number): void => contactScene.setStrength(v),
             setCameraAngle: (which: 0 | 1): void => contactScene.setCameraAngle(which),
           },

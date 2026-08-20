@@ -8,6 +8,7 @@ import {
   Vector2,
   WebGLRenderTarget,
 } from 'three';
+// 那份 node 材質是動態載入的（見 `update`）—— 只用 WebGL 的人不必下載它。
 import type { Camera, Scene, Texture, WebGLRenderer } from 'three';
 
 /**
@@ -52,6 +53,14 @@ export class SceneDepthNormals {
 
   private target: WebGLRenderTarget | null = null;
   private readonly material = new MeshNormalMaterial();
+  /**
+   * WebGPU 那條路的法線材質。
+   *
+   * 不能用 `MeshNormalMaterial` —— 它的 node 版本多做一次 sRGB 轉換，法線
+   * 方向會整個歪掉。見 `depth-normals-node.ts`。
+   */
+  private nodeMaterial: unknown = null;
+  private nodePending: Promise<void> | null = null;
   private readonly size = new Vector2();
   /** 上一次更新是在 renderer 的第幾次繪製。過期檢查用。 */
   private stamp = -1;
@@ -91,7 +100,19 @@ export class SceneDepthNormals {
     const previousTarget = renderer.getRenderTarget();
     const previousOverride = scene.overrideMaterial;
 
-    scene.overrideMaterial = this.material;
+    // WebGPU 上換成自己那份 —— 兩邊寫進去的編碼必須一樣，否則下游每個效果
+    // 拿到的法線都是歪的。還沒建好就先用 Three 那份（只有前幾幀）。
+    if (
+      (renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer === true &&
+      this.nodeMaterial === null
+    ) {
+      this.nodePending ??= import('./depth-normals-node.ts')
+        .then((m) => m.createNormalNodeMaterial())
+        .then((material) => {
+          this.nodeMaterial = material;
+        });
+    }
+    scene.overrideMaterial = (this.nodeMaterial ?? this.material) as never;
     renderer.setRenderTarget(this.target);
     renderer.clear(true, true, false);
     renderer.render(scene, camera);

@@ -10,7 +10,9 @@ import {
   WebGLCubeRenderTarget,
 } from 'three';
 import type { CubeTexture, Texture, WebGLRenderer } from 'three';
-import { createSkyNodeMaterial, type SkyNodeHandle } from './sky-node.ts';
+// 只有型別是靜態的 —— 實作是動態載入的，見 `buildNode`。型別在編譯後會消失，
+// 所以它不會把那個模組拉進主包。
+import type { SkyNodeHandle } from './sky-node.ts';
 
 /**
  * 大氣散射的天空。
@@ -197,6 +199,12 @@ export class SkyAtmosphere {
         ) => { texture: Texture; dispose: () => void };
         HalfFloatType: number;
       };
+      // ## 這個模組也要動態載入
+      //
+      // 它裡面才 `await import('three/tsl')`，所以靜態 import 它不會把 tsl
+      // 拉進主包 —— 但**它自己那份轉寫會**。實測就是這樣把首屏的下載量推過
+      // 1024 kB 的預算（1027.1 kB），而那些位元組對只用 WebGL 的人毫無用處。
+      const { createSkyNodeMaterial } = await import('./sky-node.ts');
       const handle = await createSkyNodeMaterial({
         intensity: this.options.intensity,
         mieDirectional: this.options.mieDirectional,

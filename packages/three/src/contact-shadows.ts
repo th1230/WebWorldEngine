@@ -1,5 +1,7 @@
 import { Matrix4, NoColorSpace, ShaderMaterial, Vector3, WebGLRenderTarget } from 'three';
 import { drawFullscreen, FULLSCREEN_VERTEX, VIEW_POSITION_GLSL } from './fullscreen.ts';
+// 只有型別是靜態的 —— 那份 TSL 轉寫是動態載入的，見 `renderNode`。
+import type { ContactShadowsNodeHandle } from './contact-shadows-node.ts';
 import type { Camera, PerspectiveCamera, Texture, WebGLRenderer } from 'three';
 import type { SceneDepthNormals } from './depth-normals.ts';
 
@@ -104,6 +106,19 @@ export class ContactShadows {
    *   像「這個效果就是壞的」而不是像「方向反了」。
    * @returns 遮蔽貼圖。1 = 沒被擋，0 = 全擋。乘進畫面即可。
    */
+  /**
+   * WebGPU 那條路的材質。惰性建立 —— 只用 WebGL 的人不該下載 `three/tsl`。
+   *
+   * 還沒好之前 `render` 回傳 `null`（跟「還沒有 gbuffer」同一個回應），
+   * 呼叫端本來就要處理那個情況。
+   */
+  /** 這一幀的投影矩陣。node 那條路要自己複製一份（uniform 是它自己的）。 */
+  private readonly projection = new Matrix4();
+  /** 把中間值畫出來。只有 node 那條路有 —— 它是為了查 WebGPU 上的問題加的。 */
+  debugMode = 0;
+  private node: ContactShadowsNodeHandle | null = null;
+  private nodePending: Promise<void> | null = null;
+
   render(
     renderer: WebGLRenderer,
     camera: Camera,
@@ -118,13 +133,7 @@ export class ContactShadows {
     this.ensureTarget(gbuffer.width, gbuffer.height);
 
     const perspective = camera as PerspectiveCamera;
-    const uniforms = this.material.uniforms;
-    uniforms.tNormal!.value = normal;
-    uniforms.tDepth!.value = depth;
-    uniforms.uProjection!.value = perspective.projectionMatrix;
     this.projectionInverse.copy(perspective.projectionMatrix).invert();
-    uniforms.uProjectionInverse!.value = this.projectionInverse;
-
     // ## 光的方向要換到視空間
     //
     // 追蹤整段都在視空間裡做（深度緩衝就是視空間的東西）。用世界座標的方向
@@ -133,6 +142,18 @@ export class ContactShadows {
       .copy(lightDirection)
       .transformDirection(camera.matrixWorldInverse)
       .normalize();
+
+    // WebGPU 不吃 ShaderMaterial，走 node 那份。兩份的一致性由跨後端關卡守。
+    this.projection.copy(perspective.projectionMatrix);
+    if ((renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer === true) {
+      return this.renderNode(renderer, normal, depth);
+    }
+
+    const uniforms = this.material.uniforms;
+    uniforms.tNormal!.value = normal;
+    uniforms.tDepth!.value = depth;
+    uniforms.uProjection!.value = perspective.projectionMatrix;
+    uniforms.uProjectionInverse!.value = this.projectionInverse;
     uniforms.uLightDirection!.value = this.lightViewDirection;
     uniforms.uDistance!.value = this.options.distance;
     uniforms.uSteps!.value = this.options.steps;
@@ -143,6 +164,35 @@ export class ContactShadows {
     renderer.setRenderTarget(this.target);
     renderer.clear(true, false, false);
     drawFullscreen(renderer, this.material);
+    renderer.setRenderTarget(previous);
+    return this.target!.texture;
+  }
+
+  /**
+   * WebGPU 那條路。第一次呼叫啟動非同步建立並回傳 `null` —— 下一幀就好了。
+   *
+   * 要等它的話用 `contactShadowsNodeReady()`。
+   */
+  private renderNode(renderer: WebGLRenderer, normal: Texture, depth: Texture): Texture | null {
+    if (this.node === null) {
+      this.nodePending ??= import('./contact-shadows-node.ts')
+        .then((m) => m.createContactShadowsNodeMaterial())
+        .then((handle) => {
+          this.node = handle;
+        });
+      return null;
+    }
+    this.node.setTextures(normal, depth);
+    this.node.setMatrices(this.projection, this.projectionInverse);
+    this.node.setLight(this.lightViewDirection);
+    this.node.setParams(this.options);
+    this.node.setDebug(this.debugMode);
+    this.node.setConvention(renderer);
+
+    const previous = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.target);
+    renderer.clear(true, false, false);
+    drawFullscreen(renderer, this.node.material as never);
     renderer.setRenderTarget(previous);
     return this.target!.texture;
   }

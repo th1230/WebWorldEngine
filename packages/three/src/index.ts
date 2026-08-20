@@ -90,6 +90,7 @@ export { DistanceFieldShadows, type DistanceFieldShadowsOptions } from './distan
 export { TracedReflections, type TracedReflectionsOptions } from './traced-reflections.ts';
 export { ReflectionProbes, type ReflectionProbesOptions } from './reflection-probes.ts';
 export { WaterSurface, type WaterSurfaceOptions } from './water-surface.ts';
+export { readPixelsAsync, type ReadableTarget } from './readback.ts';
 export { SkyAtmosphere, skyNodeReady, type SkyAtmosphereOptions } from './sky.ts';
 export { LOD_FADE_CAPACITY } from './lod-fade.ts';
 export { VolumetricFog, type VolumetricFogOptions } from './volumetric-fog.ts';

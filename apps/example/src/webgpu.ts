@@ -4,6 +4,7 @@ import { HemisphereLight, DirectionalLight, Color, Matrix4, Vector3 } from 'thre
 import { makeSkinnedRig } from './skinned.ts';
 import { makeGiScene, type GiScene } from './gi-scene.ts';
 import { makeSkyScene, type SkyScene } from './sky-scene.ts';
+import { makeContactScene, type ContactScene } from './contact-scene.ts';
 
 /**
  * `WW.AnimatedInstancedMesh` 在 **WebGPU** 上的驗證頁。
@@ -49,6 +50,11 @@ const GI_OFF = params.get('giOff') === '1';
  * 不同。跨後端比對的前提就是這個：量到的差異只能來自實作，不能來自佈置。
  */
 const SKY = params.get('sky') === '1';
+/**
+ * `?contact=1` 換成接觸陰影的驗證場景。與 WebGL 那頁共用同一個
+ * `makeContactScene` —— 佈置一模一樣，只有 renderer 不同。
+ */
+const CONTACT = params.get('contact') === '1';
 
 const renderer = new WebGPURenderer({ canvas, antialias: true });
 renderer.setSize(innerWidth, innerHeight, false);
@@ -80,6 +86,22 @@ if (GI) {
 
 }
 
+let contactScene: ContactScene | null = null;
+if (CONTACT) {
+  scene.remove(...scene.children.filter((o) => (o as { isLight?: boolean }).isLight === true));
+  contactScene = makeContactScene();
+  // ## **不要**把 root 加進這一頁的場景
+  //
+  // 這個場景有自己的私有 scene，而 gbuffer 畫的就是那一個。加進來會把 root
+  // 從私有 scene 裡**搬走**（Three 的 add 會重新掛父節點），於是 gbuffer 畫
+  // 到的是空的 —— 深度全 1、法線全 0，而效果看起來像完全沒作用。
+  //
+  // WebGL 那頁本來就沒有加，是我照著天空/間接光那兩個的寫法抄過來才踩到。
+  // 天空與間接光可以加是因為它們畫的是這一頁的場景。
+  // node 材質是非同步建的。不等的話量到的是還沒畫過的 target。
+  await contactScene.nodeReady(renderer);
+}
+
 let skyScene: SkyScene | null = null;
 if (SKY) {
   scene.remove(...scene.children.filter((o) => (o as { isLight?: boolean }).isLight === true));
@@ -107,7 +129,7 @@ for (let i = 0; i < COUNT; i++) {
   m.makeTranslation((rand() - 0.5) * 120, 0, (rand() - 0.5) * 120);
   mesh.setMatrixAt(i, m);
 }
-if (giScene === null && skyScene === null) scene.add(mesh);
+if (giScene === null && skyScene === null && contactScene === null) scene.add(mesh);
 
 let frames = 0;
 function step(t: number): void {
@@ -132,6 +154,28 @@ renderer.setAnimationLoop(() => {
 
 Object.assign(window, {
   __wwgpu: {
+    contact:
+      contactScene === null
+        ? null
+        : {
+            render: (): void => contactScene.render(renderer as never),
+            setDebug: (mode: number): void => contactScene.setDebug(mode),
+            coverageAsync: (): Promise<number> => contactScene.coverageAsync(renderer),
+            probePixel: (which: "contact" | "open" | "lit" | "terminator" | "under"): unknown =>
+              contactScene.probePixel(contactScene.points[which]),
+            readPixelAsync: (x: number, y: number): Promise<number> =>
+              contactScene.readPixelAsync(renderer, x, y),
+            sampleWindowAsync: (which: "contact" | "open" | "lit" | "terminator" | "under", size: number): Promise<number> =>
+              contactScene.sampleWindowAsync(renderer, contactScene.points[which], size),
+            maskMapAsync: (): Promise<number[]> => contactScene.maskMapAsync(renderer),
+            normalMapAsync: (): Promise<number[]> => contactScene.normalMapAsync(renderer),
+            sampleNormalAsync: (which: "contact" | "open" | "lit" | "terminator" | "under"): Promise<number[]> =>
+              contactScene.sampleNormalAsync(renderer, contactScene.points[which]),
+            sampleAsync: (
+              which: "contact" | "open" | "lit" | "terminator" | "under",
+            ): Promise<number> =>
+              contactScene.sampleAsync(renderer, contactScene.points[which]),
+          },
     sky:
       skyScene === null
         ? null

@@ -11,6 +11,7 @@ import {
 } from 'three';
 import type { Material, Object3D, Scene, WebGLRenderer } from 'three';
 import { projectCubeToSH, type FacePixels } from './cube-sh.ts';
+import { readPixelsAsync } from './readback.ts';
 import type { ReflectionProbes } from './reflection-probes.ts';
 import { IRRADIANCE_SAMPLE_GLSL, IRRADIANCE_UNIFORMS_GLSL } from './irradiance-glsl.ts';
 
@@ -703,6 +704,7 @@ async function bakeCache(
     : new ((await import('three/webgpu')) as unknown as {
         CubeRenderTarget: new (size: number) => WebGLCubeRenderTarget;
       }).CubeRenderTarget(faceSize);
+  // 事後設得動，兩個後端都是 —— 驗過：改成建構時傳入，關卡一條都不會紅。
   target.texture.type = HalfFloatType;
   const camera = new CubeCamera(options.near ?? 0.1, options.far ?? 1000, target);
   const entry = { target, camera };
@@ -786,17 +788,33 @@ export async function bakeIrradiance(
           }).readRenderTargetPixelsAsync(target, 0, 0, faceSize, faceSize, buffer, face),
         );
       } else {
-        // WebGPU 那條路是把資料**回傳**，不是填進傳進去的緩衝。
+        // ## WebGPU 的讀回有三個坑，全部交給 `readPixelsAsync`
+        //
+        // 1. 資料是**回傳**的，不是填進傳進去的緩衝。
+        // 2. 每列的位元組數被補到 256 的倍數。16 寬的半精度面是 128 位元組，
+        //    補完 256 —— **一半的資料是填充**。
+        // 3. 列的順序與 WebGL 相反，所以每一面上下顛倒。
+        //
+        // 前一版只處理了第 1 點。後果是 WebGPU 上的 SH 係數是拿填充與顛倒的
+        // 像素投影出來的 —— 而 GI 關卡只驗「兩邊都有間接光」，於是它綠著
+        // 過了很久（實測 R−B：WebGL 57.2、WebGPU 85.8，那個差距就是它）。
         const slot = faces.length;
         faces.push(new Uint16Array(0));
         waits.push(
-          (renderer as unknown as {
-            readRenderTargetPixelsAsync: (...args: unknown[]) => Promise<FacePixels>;
-          })
-            .readRenderTargetPixelsAsync(target, 0, 0, faceSize, faceSize, 0, face)
-            .then((data) => {
-              faces[slot] = data;
-            }),
+          readPixelsAsync(
+            renderer,
+            target as unknown as { width: number; height: number },
+            0,
+            0,
+            faceSize,
+            faceSize,
+            (length) => new Uint16Array(length),
+            face,
+            // cube 的面在 WebGPU 上與 WebGL 同序 —— 這裡不能翻。
+            false,
+          ).then((data) => {
+            faces[slot] = data as FacePixels;
+          }),
         );
       }
     }
