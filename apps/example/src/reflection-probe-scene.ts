@@ -69,6 +69,11 @@ export function makeReflectionProbeScene(): ReflectionProbeScene {
   const scene = new THREE.Scene();
   scene.add(root);
 
+  // 全解析度的深度法線。預設是半解析度（那對真的應用是對的取捨），但這裡是
+  // 量測台 —— 重取樣的誤差會混進每一個判準裡，而那不是這一關要量的東西。
+  const world = WW.worldFor(scene);
+  world.setDepthNormals({ scale: 1 });
+
   // 牆用 MeshBasicMaterial：顏色不受光照影響，所以拍到什麼是**確定的**。
   // 用 Standard 的話量到的顏色同時取決於光源角度，而那不是這裡要測的東西。
   const wall = (color: number, position: THREE.Vector3, rotationY: number): THREE.Mesh => {
@@ -133,7 +138,6 @@ export function makeReflectionProbeScene(): ReflectionProbeScene {
   camera.lookAt(0, 0, 0);
   camera.updateMatrixWorld(true);
 
-  const gbuffer = new WW.SceneDepthNormals({ scale: 1 });
   const reflections = new WW.TracedReflections({
     // 1 = 完全霧面：螢幕空間那一層的權重歸零。
     roughness: 1,
@@ -155,16 +159,11 @@ export function makeReflectionProbeScene(): ReflectionProbeScene {
     renderer.setRenderTarget(colorTarget);
     renderer.render(scene, camera);
     renderer.setRenderTarget(null);
-    gbuffer.update(renderer, scene, camera);
-    reflections.render(
-      renderer,
-      camera,
-      gbuffer,
-      colorTarget.texture,
-      null,
-      null,
-      useProbes ? probes : null,
-    );
+    world.beginFrame();
+    reflections.render(renderer, scene, camera, {
+      color: colorTarget.texture,
+      probes: useProbes ? probes : null,
+    });
   };
 
   return {

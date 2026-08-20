@@ -18,7 +18,7 @@ import { drawFullscreen, FULLSCREEN_VERTEX, VIEW_POSITION_GLSL } from './fullscr
 // 只有型別是靜態的 —— 那份 TSL 轉寫是動態載入的。
 import type { DepthPackNodeHandle, VirtualShadowMapNodeHandle } from './virtual-shadow-map-node.ts';
 import type { Camera, Material, PerspectiveCamera, Scene, Texture, WebGLRenderer } from 'three';
-import type { SceneDepthNormals } from './depth-normals.ts';
+import { worldFor } from './world.ts';
 
 /**
  * 虛擬陰影圖：假裝很大的陰影圖，實際只配置得下的那一張。
@@ -306,14 +306,17 @@ export class VirtualShadowMap {
   /**
    * 把這一幀的陰影解出來：一張遮罩，1 = 被照到，0 = 在陰影裡。
    *
-   * 走的是與接觸陰影、距離場陰影同一個形狀 —— 吃共用的深度法線，輸出一張
-   * 遮罩讓呼叫端自己合成。
+   * 走的是與接觸陰影、距離場陰影、體積霧、追蹤反射同一個形狀 —— 共用的
+   * 深度法線自己去拿，輸出一張遮罩讓呼叫端自己合成。
+   *
+   * 與 `update` 的分工：`update` 決定這一幀要烘哪些頁（那是**光**那邊的
+   * 事），這裡才是**畫面**那邊的事。兩個都要每幀叫。
    */
-  resolve(renderer: WebGLRenderer, camera: Camera, gbuffer: SceneDepthNormals): Texture | null {
+  render(renderer: WebGLRenderer, scene: Scene, camera: Camera): Texture | null {
+    const gbuffer = worldFor(scene).depthNormals(renderer, camera);
     const depth = gbuffer.depthTexture;
     const normal = gbuffer.normalTexture;
     if (depth === null || normal === null) return null;
-    gbuffer.isFresh(renderer);
 
     this.ensureResolveTarget(gbuffer.width, gbuffer.height);
 

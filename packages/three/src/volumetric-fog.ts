@@ -11,9 +11,9 @@ import { drawFullscreen, FULLSCREEN_VERTEX, VIEW_POSITION_GLSL } from './fullscr
 // 只有型別是靜態的 —— 那份 TSL 轉寫是動態載入的，見 `renderNode`。
 import type { VolumetricFogNodeHandle } from './volumetric-fog-node.ts';
 import { FIELD_SAMPLE_GLSL, FIELD_UNIFORMS_GLSL } from './field-glsl.ts';
-import type { Camera, PerspectiveCamera, Texture, WebGLRenderer } from 'three';
-import type { SceneDepthNormals } from './depth-normals.ts';
+import type { Camera, PerspectiveCamera, Texture, WebGLRenderer, Scene } from 'three';
 import type { GlobalDistanceField } from './global-distance-field.ts';
+import { worldFor } from './world.ts';
 
 /**
  * 體積霧與光柱。
@@ -64,6 +64,16 @@ export interface VolumetricFogOptions {
   anisotropy?: number;
   /** 陰影追蹤幾步。預設 24。 */
   shadowSteps?: number;
+}
+
+/** 每幀會變的東西。與其他效果同一個形狀 —— 位置參數的順序記不住。 */
+export interface VolumetricFogFrame {
+  /** 光的方向（世界空間，從光源指向場景）。 */
+  lightDirection: Vector3;
+  /** 光的顏色 —— 光柱是它染的。 */
+  lightColor: Color;
+  /** 有距離場就用它遮蔽；沒有的話光柱不會被擋住。 */
+  field?: GlobalDistanceField | null;
 }
 
 export class VolumetricFog {
@@ -129,17 +139,23 @@ export class VolumetricFog {
    * @param field 全域距離場。給了光柱才會被擋住；不給就是均勻的霧。
    * @returns RGB 是加進去的散射光，A 是透光率（要拿它去乘原本的畫面）。
    */
+  /**
+   * 畫這一幀的效果。
+   *
+   * 共用的深度法線圖是**自己去 `worldFor(scene)` 拿的** —— 呼叫端不必
+   * 知道它存在，也不會弄錯順序。記得每幀開頭呼叫一次 `beginFrame()`，
+   * 那樣同一張圖一幀只會畫一次。
+   */
   render(
     renderer: WebGLRenderer,
+    scene: Scene,
     camera: Camera,
-    gbuffer: SceneDepthNormals,
-    lightDirection: Vector3,
-    lightColor: Color,
-    field: GlobalDistanceField | null = null,
+    frame: VolumetricFogFrame,
   ): Texture | null {
+    const gbuffer = worldFor(scene).depthNormals(renderer, camera);
+    const { lightDirection, lightColor, field = null } = frame;
     const depth = gbuffer.depthTexture;
     if (depth === null) return null;
-    gbuffer.isFresh(renderer);
     this.ensureTarget(gbuffer.width, gbuffer.height);
 
     const perspective = camera as PerspectiveCamera;

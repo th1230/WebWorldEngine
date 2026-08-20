@@ -132,7 +132,6 @@ export function makeDfShadowScene(): DfShadowScene {
   camera.lookAt(-25, 0, 0);
   camera.updateMatrixWorld(true);
 
-  const gbuffer = new WW.SceneDepthNormals({ scale: 1 });
   const shadows = new WW.DistanceFieldShadows({ steps: 64, softness: 6, strength: 1 });
   const fog = new WW.VolumetricFog({
     density: 0.06,
@@ -145,14 +144,19 @@ export function makeDfShadowScene(): DfShadowScene {
   const scene = new THREE.Scene();
   scene.add(root);
 
+  // 全解析度的深度法線。預設是半解析度（那對真的應用是對的取捨），但這裡是
+  // 量測台 —— 重取樣的誤差會混進每一個判準裡，而那不是這一關要量的東西。
+  const world = WW.worldFor(scene);
+  world.setDepthNormals({ scale: 1 });
+
   const pixel = new Uint8Array(4);
   const projected = new THREE.Vector3();
   const fieldCentre = new THREE.Vector3(0, 0, 0);
 
   /** 一幀：更新深度法線，然後算距離場陰影。`nodeReady` 也要用它。 */
   const drawOnce = (renderer: THREE.WebGLRenderer): void => {
-    gbuffer.update(renderer, scene, camera);
-    shadows.render(renderer, camera, gbuffer, field, lightDirection);
+    world.beginFrame();
+    shadows.render(renderer, scene, camera, { field, lightDirection });
   };
 
   return {
@@ -169,15 +173,12 @@ export function makeDfShadowScene(): DfShadowScene {
     fieldPending: () => field.pendingCells,
     render: drawOnce,
     renderFog: (renderer, useField) => {
-      gbuffer.update(renderer, scene, camera);
-      fog.render(
-        renderer,
-        camera,
-        gbuffer,
+      world.beginFrame();
+      fog.render(renderer, scene, camera, {
         lightDirection,
-        new THREE.Color(0xffffff),
-        useField ? field : null,
-      );
+        lightColor: new THREE.Color(0xffffff),
+        field: useField ? field : null,
+      });
     },
     sampleFog: (renderer, point) => {
       const target = (fog as unknown as { target: THREE.WebGLRenderTarget }).target;

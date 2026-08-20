@@ -1,9 +1,9 @@
 import { Matrix4, NoColorSpace, ShaderMaterial, Vector3, WebGLRenderTarget } from 'three';
+import { worldFor } from './world.ts';
 import { drawFullscreen, FULLSCREEN_VERTEX, VIEW_POSITION_GLSL } from './fullscreen.ts';
 // 只有型別是靜態的 —— 那份 TSL 轉寫是動態載入的，見 `renderNode`。
 import type { ContactShadowsNodeHandle } from './contact-shadows-node.ts';
-import type { Camera, PerspectiveCamera, Texture, WebGLRenderer } from 'three';
-import type { SceneDepthNormals } from './depth-normals.ts';
+import type { Camera, PerspectiveCamera, Texture, WebGLRenderer, Scene } from 'three';
 
 /**
  * 接觸陰影：shadow map 永遠糊掉的那幾公分。
@@ -64,6 +64,12 @@ export interface ContactShadowsOptions {
   strength?: number;
 }
 
+/** 每幀會變的東西。與其他效果同一個形狀 —— 位置參數的順序記不住。 */
+export interface ContactShadowsFrame {
+  /** 光的方向（世界空間，從光源指向場景）。 */
+  lightDirection: Vector3;
+}
+
 export class ContactShadows {
   private readonly options: Required<ContactShadowsOptions>;
   private target: WebGLRenderTarget | null = null;
@@ -119,16 +125,24 @@ export class ContactShadows {
   private node: ContactShadowsNodeHandle | null = null;
   private nodePending: Promise<void> | null = null;
 
+  /**
+   * 畫這一幀的效果。
+   *
+   * 共用的深度法線圖是**自己去 `worldFor(scene)` 拿的** —— 呼叫端不必
+   * 知道它存在，也不會弄錯順序。記得每幀開頭呼叫一次 `beginFrame()`，
+   * 那樣同一張圖一幀只會畫一次。
+   */
   render(
     renderer: WebGLRenderer,
+    scene: Scene,
     camera: Camera,
-    gbuffer: SceneDepthNormals,
-    lightDirection: Vector3,
+    frame: ContactShadowsFrame,
   ): Texture | null {
+    const gbuffer = worldFor(scene).depthNormals(renderer, camera);
+    const { lightDirection } = frame;
     const normal = gbuffer.normalTexture;
     const depth = gbuffer.depthTexture;
     if (normal === null || depth === null) return null;
-    gbuffer.isFresh(renderer);
 
     this.ensureTarget(gbuffer.width, gbuffer.height);
 

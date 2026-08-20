@@ -22,7 +22,7 @@
     "package-check": "node tools/package-check/verify.mjs",
     "site-check": "node tools/site-check/verify.mjs",
     "visual-check": "node tools/visual-check/verify.mjs",
-    "verify:all": "pnpm verify && pnpm build:example && pnpm bundle-check && pnpm package-check && pnpm site-check && pnpm visual-check && pnpm physics-check && pnpm gi-check && pnpm ssgi-check && pnpm impostor-check && pnpm gpu-check && pnpm webgpu-check && pnpm vt-check && pnpm daynight-check && pnpm contact-check && pnpm df-shadow-check && pnpm reflect-check && pnpm sky-check && pnpm lod-fade-check && pnpm fog-check && pnpm vsm-check && pnpm shadow-lod-check && pnpm reflprobe-check && pnpm water-look-check && pnpm cross-check",
+    "verify:all": "pnpm verify && pnpm build:pkg && pnpm build:example && pnpm bundle-check && pnpm package-check && pnpm site-check && pnpm visual-check && pnpm physics-check && pnpm gi-check && pnpm ssgi-check && pnpm impostor-check && pnpm gpu-check && pnpm webgpu-check && pnpm vt-check && pnpm daynight-check && pnpm contact-check && pnpm df-shadow-check && pnpm reflect-check && pnpm sky-check && pnpm lod-fade-check && pnpm fog-check && pnpm vsm-check && pnpm shadow-lod-check && pnpm reflprobe-check && pnpm water-look-check && pnpm cross-check",
     "bench": "tsx tools/benchmark-runner/src/cli.ts run --profile hardware",
     "bench:smoke": "tsx tools/benchmark-runner/src/cli.ts run --profile smoke",
     "bench:baseline": "tsx tools/benchmark-runner/src/cli.ts baseline",

@@ -63,8 +63,6 @@ export class SceneDepthNormals {
   private nodePending: Promise<void> | null = null;
   private readonly size = new Vector2();
   /** 上一次更新是在 renderer 的第幾次繪製。過期檢查用。 */
-  private stamp = -1;
-  private warnedStale = false;
 
   constructor(options: SceneDepthNormalsOptions = {}) {
     this.scale = options.scale ?? 0.5;
@@ -126,31 +124,6 @@ export class SceneDepthNormals {
     renderer.render(scene, camera);
     scene.overrideMaterial = previousOverride;
     renderer.setRenderTarget(previousTarget);
-
-    this.stamp = renderer.info.render.frame;
-  }
-
-  /**
-   * 資料是這一幀的嗎。效果在用之前問一次。
-   *
-   * 不是的話會警告一次並回 false —— 呼叫端可以自己決定要跳過還是照用。
-   * 靜靜地用舊資料是最糟的：靜止時完全正常，一動起來就有殘影。
-   */
-  isFresh(renderer: WebGLRenderer): boolean {
-    if (this.target === null) return false;
-    // 同一幀裡會有好幾次 render（各個效果自己的 pass），所以不能要求完全相等。
-    const fresh = renderer.info.render.frame - this.stamp <= 8;
-    if (!fresh && !this.warnedStale) {
-      this.warnedStale = true;
-      console.warn(
-        [
-          'WW.SceneDepthNormals: 拿到的是舊的深度與法線 —— `update()` 這一幀沒有被呼叫。',
-          '症狀是相機移動時效果有殘影，而靜止時完全正常（所以很難查）。',
-          '正確的用法是每幀先呼叫一次 update()，再把同一個物件傳給各個效果。',
-        ].join('\n'),
-      );
-    }
-    return fresh;
   }
 
   private ensureTarget(width: number, height: number): void {

@@ -15,11 +15,11 @@ import {
   REFLECTION_PROBE_SAMPLE_GLSL,
   REFLECTION_PROBE_UNIFORMS_GLSL,
 } from './reflection-probes.ts';
-import type { Camera, PerspectiveCamera, Texture, WebGLRenderer } from 'three';
-import type { SceneDepthNormals } from './depth-normals.ts';
+import type { Camera, PerspectiveCamera, Texture, WebGLRenderer, Scene } from 'three';
 import type { GlobalDistanceField } from './global-distance-field.ts';
 import type { IrradianceVolume } from './irradiance.ts';
 import type { ReflectionProbes } from './reflection-probes.ts';
+import { worldFor } from './world.ts';
 
 /**
  * 反射：先在畫面上找，找不到就去距離場裡找。
@@ -89,6 +89,18 @@ export interface TracedReflectionsOptions {
   roughness?: number;
   /** 什麼都沒打到時的顏色（天空）。預設深藍。 */
   sky?: Color;
+}
+
+/** 每幀會變的東西。與其他效果同一個形狀 —— 位置參數的順序記不住。 */
+export interface TracedReflectionsFrame {
+  /** 已經畫好的那一張畫面 —— 螢幕空間的反射是從它取樣的。 */
+  color: Texture;
+  /** 打不到畫面內的東西時，沿著距離場繼續追。 */
+  field?: GlobalDistanceField | null;
+  /** 追不到的方向退回間接光。 */
+  irradiance?: IrradianceVolume | null;
+  /** 有探針的話優先用探針 —— 它記得畫面外的環境。 */
+  probes?: ReflectionProbes | null;
 }
 
 export class TracedReflections {
@@ -185,19 +197,24 @@ export class TracedReflections {
    * @param field 全域距離場。給了才有螢幕外的反射。
    * @param irradiance 探針體積。給了距離場那一層才知道打到的東西多亮。
    */
+  /**
+   * 畫這一幀的效果。
+   *
+   * 共用的深度法線圖是**自己去 `worldFor(scene)` 拿的** —— 呼叫端不必
+   * 知道它存在，也不會弄錯順序。記得每幀開頭呼叫一次 `beginFrame()`，
+   * 那樣同一張圖一幀只會畫一次。
+   */
   render(
     renderer: WebGLRenderer,
+    scene: Scene,
     camera: Camera,
-    gbuffer: SceneDepthNormals,
-    colorTexture: Texture,
-    field: GlobalDistanceField | null = null,
-    irradiance: IrradianceVolume | null = null,
-    probes: ReflectionProbes | null = null,
+    frame: TracedReflectionsFrame,
   ): Texture | null {
+    const gbuffer = worldFor(scene).depthNormals(renderer, camera);
+    const { color: colorTexture, field = null, irradiance = null, probes = null } = frame;
     const depth = gbuffer.depthTexture;
     const normal = gbuffer.normalTexture;
     if (depth === null || normal === null) return null;
-    gbuffer.isFresh(renderer);
 
     this.ensureTarget(gbuffer.width, gbuffer.height);
 

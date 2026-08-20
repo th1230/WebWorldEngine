@@ -290,15 +290,22 @@ export function makeGiScene(
       });
       // 先跑幾次暖機（著色器編譯、target 配置），再計時。第一次一定最慢，
       // 而拿第一次當代表會把編譯時間算成每幀成本。
-      for (let warm = 0; warm < 3; warm++)
-        ssgi.render(renderer, scene, camera, sceneTarget.texture);
+      const world = WW.worldFor(scene);
+      for (let warm = 0; warm < 3; warm++) {
+        world.beginFrame();
+        ssgi.render(renderer, scene, camera, { color: sceneTarget.texture });
+      }
       renderer.getContext().finish();
       const started = performance.now();
       const ROUNDS = 20;
-      for (let i = 0; i < ROUNDS; i++) ssgi.render(renderer, scene, camera, sceneTarget.texture);
+      for (let i = 0; i < ROUNDS; i++) {
+        world.beginFrame();
+        ssgi.render(renderer, scene, camera, { color: sceneTarget.texture });
+      }
       renderer.getContext().finish();
       const perFrameMs = (performance.now() - started) / ROUNDS;
-      const indirect = ssgi.render(renderer, scene, camera, sceneTarget.texture);
+      world.beginFrame();
+      const indirect = ssgi.render(renderer, scene, camera, { color: sceneTarget.texture });
 
       // 把收集到的那張讀回來量。讀的是 SSGI 的輸出本身 —— 合成之後再量
       // 的話混著直接光，分不出是誰貢獻的。

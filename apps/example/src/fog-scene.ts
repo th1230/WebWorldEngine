@@ -58,6 +58,11 @@ export function makeFogScene(): FogScene {
   const scene = new THREE.Scene();
   scene.add(root);
 
+  // 全解析度的深度法線。預設是半解析度（那對真的應用是對的取捨），但這裡是
+  // 量測台 —— 重取樣的誤差會混進每一個判準裡，而那不是這一關要量的東西。
+  const world = WW.worldFor(scene);
+  world.setDepthNormals({ scale: 1 });
+
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(600, 600),
     new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 1 }),
@@ -101,7 +106,6 @@ export function makeFogScene(): FogScene {
   camera.lookAt(0, 30, 0);
   camera.updateMatrixWorld(true);
 
-  const gbuffer = new WW.SceneDepthNormals({ scale: 1 });
   const fog = new WW.VolumetricFog({
     // 視線總長 220，密度 0.004 → 光學深度約 0.9，透光率約 0.4。
     // 第一版用 0.06 直接把畫面糊成一片白（透光率 0.001）。
@@ -125,8 +129,12 @@ export function makeFogScene(): FogScene {
   const white = new THREE.Color(0xffffff);
   /** 一幀。`nodeReady` 也要用它。 */
   const drawOnce = (renderer: THREE.WebGLRenderer, useField: boolean): void => {
-    gbuffer.update(renderer, scene, camera);
-    fog.render(renderer, camera, gbuffer, lightDirection, white, useField ? field : null);
+    world.beginFrame();
+    fog.render(renderer, scene, camera, {
+      lightDirection,
+      lightColor: white,
+      field: useField ? field : null,
+    });
   };
 
   return {

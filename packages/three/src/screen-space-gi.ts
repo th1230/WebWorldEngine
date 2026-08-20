@@ -1,18 +1,15 @@
 import {
-  DepthTexture,
   HalfFloatType,
   Matrix4,
-  MeshNormalMaterial,
-  NearestFilter,
   NoColorSpace,
   RGBAFormat,
   ShaderMaterial,
-  UnsignedShortType,
   Vector2,
   WebGLRenderTarget,
 } from 'three';
 import type { Camera, PerspectiveCamera, Scene, Texture, WebGLRenderer } from 'three';
 import { drawFullscreen, FULLSCREEN_VERTEX } from './fullscreen.ts';
+import { worldFor } from './world.ts';
 
 /**
  * 螢幕空間的一次反彈間接光。
@@ -62,12 +59,21 @@ export interface ScreenSpaceGiOptions {
   /** 強度。預設 1。 */
   intensity?: number;
   /**
-   * 解析度倍率。預設 0.5（半解析度）。
+   * 收集那一張圖的解析度倍率。預設 0.5（半解析度）。
    *
    * 間接光是低頻的，半解析度看不出差別而成本是四分之一。模糊那一步本來就會
    * 把細節抹掉。
+   *
+   * 它**不影響**深度與法線的解析度 —— 那一張是整個場景共用的，由
+   * `worldFor(scene).depthNormals()` 決定。
    */
   scale?: number;
+}
+
+/** 每幀會變的東西。與其他效果同一個形狀 —— 位置參數的順序記不住。 */
+export interface ScreenSpaceGiFrame {
+  /** 已經畫好的那一張畫面 —— 反彈的光是從它取樣的。 */
+  color: Texture;
 }
 
 /**
@@ -76,17 +82,14 @@ export interface ScreenSpaceGiOptions {
  * ```js
  * const ssgi = new WW.ScreenSpaceGI({ radius: 4 });
  * // 每幀，在主畫面畫完之後：
- * ssgi.render(renderer, scene, camera, sceneColorTexture, outputTarget);
+ * const gi = ssgi.render(renderer, scene, camera, { color: sceneColorTexture });
  * ```
  *
  * 需要一張**已經畫好的場景顏色**（通常是 `EffectComposer` 的 read buffer）。
  */
 export class ScreenSpaceGI {
   private readonly options: Required<ScreenSpaceGiOptions>;
-  /** 法線與深度。深度用 render target 自己的 depthTexture，不另外畫一次。 */
-  private normalTarget: WebGLRenderTarget | null = null;
   private gatherTarget: WebGLRenderTarget | null = null;
-  private readonly normalMaterial = new MeshNormalMaterial();
   private readonly gatherMaterial: ShaderMaterial;
   private readonly size = new Vector2();
   private readonly projectionInverse = new Matrix4();
@@ -130,30 +133,29 @@ export class ScreenSpaceGI {
    * 分成兩步而不是直接寫回畫面：合成要怎麼做（加上去？乘上去？先做色調對應？）
    * 是開發者的選擇，而這個套件不替他決定那種事。
    */
-  render(renderer: WebGLRenderer, scene: Scene, camera: Camera, colorTexture: Texture): Texture {
+  render(
+    renderer: WebGLRenderer,
+    scene: Scene,
+    camera: Camera,
+    frame: ScreenSpaceGiFrame,
+  ): Texture | null {
+    const gbuffer = worldFor(scene).depthNormals(renderer, camera);
+    const normal = gbuffer.normalTexture;
+    const depth = gbuffer.depthTexture;
+    if (normal === null || depth === null) return null;
+    const colorTexture = frame.color;
     renderer.getDrawingBufferSize(this.size);
     const width = Math.max(1, Math.floor(this.size.x * this.options.scale));
     const height = Math.max(1, Math.floor(this.size.y * this.options.scale));
     this.ensureTargets(width, height);
 
     const previousTarget = renderer.getRenderTarget();
-    const previousOverride = scene.overrideMaterial;
-
-    // ## 一次法線重畫
-    //
-    // 深度直接掛在同一張 target 上（`depthTexture`），所以這是**一次**額外的
-    // 場景繪製，不是兩次。
-    scene.overrideMaterial = this.normalMaterial;
-    renderer.setRenderTarget(this.normalTarget);
-    renderer.clear(true, true, false);
-    renderer.render(scene, camera);
-    scene.overrideMaterial = previousOverride;
 
     const perspective = camera as PerspectiveCamera;
     const uniforms = this.gatherMaterial.uniforms;
     uniforms.tColor!.value = colorTexture;
-    uniforms.tNormal!.value = this.normalTarget!.texture;
-    uniforms.tDepth!.value = this.normalTarget!.depthTexture;
+    uniforms.tNormal!.value = normal;
+    uniforms.tDepth!.value = depth;
     uniforms.uProjection!.value = perspective.projectionMatrix;
     this.projectionInverse.copy(perspective.projectionMatrix).invert();
     uniforms.uProjectionInverse!.value = this.projectionInverse;
@@ -170,26 +172,10 @@ export class ScreenSpaceGI {
   }
 
   private ensureTargets(width: number, height: number): void {
-    if (
-      this.normalTarget !== null &&
-      this.normalTarget.width === width &&
-      this.normalTarget.height === height
-    ) {
-      return;
+    if (this.gatherTarget !== null && this.gatherTarget.width === width) {
+      if (this.gatherTarget.height === height) return;
     }
-    this.normalTarget?.dispose();
     this.gatherTarget?.dispose();
-
-    const depth = new DepthTexture(width, height, UnsignedShortType);
-    this.normalTarget = new WebGLRenderTarget(width, height, {
-      format: RGBAFormat,
-      // 法線是**資料**，不是顏色 —— 走色彩空間轉換的話解出來的方向是錯的，
-      // 而那不會報錯，只會讓收集到的光從錯的方向來。
-      colorSpace: NoColorSpace,
-      minFilter: NearestFilter,
-      magFilter: NearestFilter,
-      depthTexture: depth,
-    });
     this.gatherTarget = new WebGLRenderTarget(width, height, {
       format: RGBAFormat,
       type: HalfFloatType,
@@ -199,9 +185,7 @@ export class ScreenSpaceGI {
   }
 
   dispose(): void {
-    this.normalTarget?.dispose();
     this.gatherTarget?.dispose();
-    this.normalMaterial.dispose();
     this.gatherMaterial.dispose();
   }
 }

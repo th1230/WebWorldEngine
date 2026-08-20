@@ -157,7 +157,6 @@ export function makeContactScene(): ContactScene {
   blocker.lookAt(camera.position);
   root.add(blocker);
 
-  const gbuffer = new WW.SceneDepthNormals({ scale: 1 });
   const shadows = new WW.ContactShadows({
     distance: 2.5,
     thickness: 1.2,
@@ -168,13 +167,28 @@ export function makeContactScene(): ContactScene {
   const scene = new THREE.Scene();
   scene.add(root);
 
+  // 全解析度的深度法線。預設是半解析度（那對真的應用是對的取捨），但這裡是
+  // 量測台 —— 重取樣的誤差會混進每一個判準裡，而那不是這一關要量的東西。
+  const world = WW.worldFor(scene);
+  world.setDepthNormals({ scale: 1 });
+
+  /**
+   * 伸手拿共用深度法線那張 render target。
+   *
+   * 套件只公開 `normalTexture` 與 `depthTexture` —— 對使用者那就夠了。而
+   * `readPixelsAsync` 要的是 target 本身，所以量測台這裡轉一次型。這是
+   * **關卡專用**的，不是使用者要做的事。
+   */
+  const readTargetOf = (gbuffer: WW.SceneDepthNormals): THREE.WebGLRenderTarget =>
+    (gbuffer as unknown as { target: THREE.WebGLRenderTarget }).target;
+
   const pixel = new Uint8Array(4);
   const projected = new THREE.Vector3();
 
-  /** 一幀：更新深度法線，然後算接觸陰影。 也要用它。 */
+  /** 一幀。深度法線是效果自己去 world 拿的 —— 這裡只推進幀號。 */
   const drawOnce = (renderer: THREE.WebGLRenderer): void => {
-    gbuffer.update(renderer, scene, camera);
-    shadows.render(renderer, camera, gbuffer, lightDirection);
+    world.beginFrame();
+    shadows.render(renderer, scene, camera, { lightDirection });
   };
 
   return {
@@ -183,7 +197,7 @@ export function makeContactScene(): ContactScene {
     lightDirection,
     render: drawOnce,
     normalMapAsync: async (renderer) => {
-      const target = (gbuffer as unknown as { target: { width: number; height: number } }).target;
+      const target = readTargetOf(world.depthNormals(renderer as THREE.WebGLRenderer, camera));
       const data = await readPixelsAsync(
         renderer,
         target,
@@ -310,7 +324,7 @@ export function makeContactScene(): ContactScene {
       return sum / (size * size) / 255;
     },
     sampleNormalAsync: async (renderer, point) => {
-      const target = (gbuffer as unknown as { target: { width: number; height: number } }).target;
+      const target = readTargetOf(world.depthNormals(renderer as THREE.WebGLRenderer, camera));
       projected.copy(point).project(camera);
       const x = Math.min(
         target.width - 1,

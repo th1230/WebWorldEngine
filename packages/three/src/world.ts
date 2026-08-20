@@ -1,4 +1,5 @@
-import { Vector3, type Camera, type Object3D } from 'three';
+import { Vector3, type Camera, type Object3D, type Scene, type WebGLRenderer } from 'three';
+import { SceneDepthNormals, type SceneDepthNormalsOptions } from './depth-normals.ts';
 import { InstancedMesh } from './instanced-mesh.ts';
 import { OriginRebase, type OriginRebaseOptions } from './origin.ts';
 import { WorldStream, type StreamOptions } from './streaming.ts';
@@ -29,8 +30,106 @@ export class World {
   private _stream: WorldStream | null = null;
   private _origin: OriginRebase | null = null;
 
+  /** 這一幀共用的深度與法線。第一個要的人觸發，其餘的人拿同一份。 */
+  private _depthNormals: SceneDepthNormals | null = null;
+  private _depthNormalsOptions: SceneDepthNormalsOptions = {};
+  private _frame = 0;
+  private _depthNormalsFrame = -1;
+  private _beganFrame = false;
+  private _warnedNoBeginFrame = false;
+
   constructor(scene: Object3D) {
     this.scene = scene;
+  }
+
+  /**
+   * 告訴這個 world：新的一幀開始了。
+   *
+   * ## 為什麼需要這一行
+   *
+   * 螢幕空間的那幾個效果（接觸陰影、距離場陰影、體積霧、追蹤反射、虛擬
+   * 陰影圖）共用同一張深度法線圖。共用的東西**一幀只該算一次**，而
+   * 「一幀」是應用層的概念 —— 套件從外面看不到它。
+   *
+   * 先前的做法是把那張圖交給呼叫端：自己 new、自己每幀 update、自己傳給
+   * 每一個效果。那有三個代價，而第三個最貴：
+   *
+   * 1. 使用者要知道一個他不關心的東西存在
+   * 2. 順序錯了不會報錯
+   * 3. **套件只能用猜的** —— `isFresh` 原本是
+   *    `renderer.info.render.frame - stamp <= 8`，那個 8 是因為每個效果
+   *    自己的 pass 也會讓幀號前進，所以無法要求相等
+   *
+   * 有了這一行，「新不新」變成確定的：這一幀叫過就是新的。
+   *
+   * ## 它不接管繪製
+   *
+   * 這裡只推進一個計數器。什麼時候畫、畫什麼、後處理怎麼接，全部還是
+   * 呼叫端的事 —— 見 ADR-0001 與 `specs/api.md` 第一節。
+   *
+   * ```js
+   * const world = WW.worldFor(scene);
+   * function frame() {
+   *   world.beginFrame();
+   *   const shadow = contact.render(renderer, scene, camera, { lightDirection });
+   *   renderer.render(scene, camera);
+   * }
+   * ```
+   */
+  beginFrame(): void {
+    this._beganFrame = true;
+    this._frame++;
+  }
+
+  /**
+   * 調整那張共用圖怎麼畫。**在第一次繪製之前叫**，之後叫會重建它。
+   *
+   * 預設是半解析度（`scale: 0.5`）—— 那幾個效果吃的都是低頻的東西，半解析度
+   * 看不出差別而成本是四分之一。要更銳利的接觸陰影就調到 1。
+   *
+   * ## 為什麼是設定而不是參數
+   *
+   * 這張圖是**共用**的。做成 `depthNormals(renderer, camera, options)` 的話
+   * 就變成「第一個要它的效果說了算」，而那個順序是隱含的 —— 換個效果的呼叫
+   * 順序，解析度就跟著變，且不會報錯。設定跟每幀的事分開就沒有這個問題。
+   */
+  setDepthNormals(options: SceneDepthNormalsOptions): void {
+    this._depthNormalsOptions = options;
+    this._depthNormals?.dispose();
+    this._depthNormals = null;
+    this._depthNormalsFrame = -1;
+  }
+
+  /**
+   * 這一幀共用的深度與法線圖。**效果自己來拿，呼叫端不必知道它存在。**
+   *
+   * 一幀只會真的畫一次：第一個要的人觸發，後面的人拿到同一份。
+   *
+   * 沒有呼叫過 `beginFrame` 的話這裡每次都會重畫 —— 那是**正確但浪費**的
+   * 退路（畫面對，只是同一張圖一幀畫了好幾次）。會講一次，因為那個浪費
+   * 從外面看不出來。
+   */
+  depthNormals(renderer: WebGLRenderer, camera: Camera): SceneDepthNormals {
+    this._depthNormals ??= new SceneDepthNormals(this._depthNormalsOptions);
+    if (!this._beganFrame) {
+      if (!this._warnedNoBeginFrame) {
+        this._warnedNoBeginFrame = true;
+        console.warn(
+          [
+            'WW.World: 沒有呼叫 beginFrame()，所以共用的深度法線圖每個效果各畫了一次。',
+            '畫面是對的，只是同一張圖一幀畫了好幾次 —— 那個浪費從外面看不出來。',
+            '在每幀的開頭加一行 WW.worldFor(scene).beginFrame() 就好。',
+          ].join('\n'),
+        );
+      }
+      this._depthNormals.update(renderer, this.scene as Scene, camera);
+      return this._depthNormals;
+    }
+    if (this._depthNormalsFrame !== this._frame) {
+      this._depthNormalsFrame = this._frame;
+      this._depthNormals.update(renderer, this.scene as Scene, camera);
+    }
+    return this._depthNormals;
   }
 
   /**

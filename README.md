@@ -93,50 +93,73 @@ cook（Node，離線）→  format  →  （無）
 
 ```bash
 pnpm install
-pnpm verify     # typecheck + lint + test
-pnpm example    # 範例 app，http://localhost:5174/
-pnpm build:pkg  # 建置三個發布套件的 dist
-pnpm site-check # 網站指標（首次可見、下載量、記憶體、與頁面共存）
+pnpm verify       # typecheck + lint + format + 807 個單元測試
+pnpm verify:all   # 上面那個，加上二十五道要瀏覽器的關卡
+pnpm example      # 範例 app，http://localhost:5174/
+pnpm dev          # benchmark app，http://localhost:5173/
+pnpm build:pkg    # 建置三個發布套件的 dist
+pnpm format       # prettier 寫回去（.md 不在範圍內，spec 的表格是手排的）
 ```
 
-## 四道關卡，一個指令
+## 一個指令，二十五道關卡
 
 ```bash
 pnpm verify:all
 ```
 
-| | 擋什麼 | 需要 |
-| --- | --- | --- |
-| `pnpm verify` | 型別、lint、500 個單元測試 | — |
-| `pnpm package-check` | 打包 → 裝進乾淨專案 → 在瀏覽器裡跑起來 | 瀏覽器 |
-| `pnpm site-check` | 首次可見、下載量、記憶體、與頁面共存、看不見時要停 | 瀏覽器 |
-| `pnpm visual-check` | 畫面與原生版的差異，七個模式各掃八個角度 | 瀏覽器 |
-| `pnpm gpu-check` | **真的 GPU 時間**與原生版的比較，兩種內容 | 瀏覽器 |
-| `pnpm webgpu-check` | 頂點動畫在 **WebGPU／node 材質**上有沒有真的在動 | 瀏覽器（有頭） |
+這個專案的核心問題不是「會不會壞」，是**壞掉的時候看不出來**。一個沒接上的
+效果不報錯、幀時間還特別好看；一個少剔除的旋鈕不報錯、只是慢；一個靜態
+import 不報錯、只是每個使用者多下載一包。所以每一道關卡守的都是**一句沒有
+人會去量的話**。
 
-**後面五道不在 `pnpm verify` 裡**，因為它們要建 app 跟開瀏覽器。而這一輪
-最嚴重的兩個 bug 都是「有量、沒有人擋」——分頁記憶體漲到 1 GB、畫面比對
-從來沒被跑過。所以它們現在有一個統一的入口，不必記四個指令。
+### 不用瀏覽器
 
-`webgpu-check` 補的是**另一條後端**：這個套件有兩份 shader 實作（WebGL 注入
-GLSL、WebGPU 設 `positionNode`），而只做一邊的症狀是「一群停在綁定姿勢、
-完全不動的模型」——不報錯、幀時間還特別好看。它的判準刻意不是「有沒有跑完」，
-是**比兩個時間點的畫面**，因為沒接上時「跑完了」與「沒有錯誤」都成立。
+| | 擋什麼 |
+| --- | --- |
+| `pnpm verify` | 型別、lint、格式、807 個單元測試 |
+| `pnpm bundle-check` | 只用 WebGL 的人不該下載 WebGPU 那一半 |
 
-`gpu-check` 補的是一直缺的那一側：其餘的證據全部在 CPU（幀時間、分組時間、
-traversal 時間），但這個引擎做的每一件事**改變的是送給 GPU 的東西**。它靠
-`EXT_disjoint_timer_query_webgl2` 直接問 GPU，而不是量 `render()` 回來多快
-（那是 CPU —— 實測開關兩邊都是 0.13 ms）。加上它的第一天就刪掉了一個功能：
-一個做完、驗過、畫質在契約內的材質旋鈕，淨值是 **−15% 到 −20%**。
+### 要瀏覽器
 
-`node tools/package-check/verify.mjs` 把三個套件打包、裝進一個乾淨專案，
-import 之後真的跑一次 cook 並檢查產出的 `.wwm`，最後把它打包成一個網站在
-瀏覽器裡跑起來。工作區裡 `exports` 直指 `src/`，所以其餘檢查全部碰不到
-`dist` —— 打包壞掉只有這個檢查抓得到。CI 會跑它。
+| | 擋什麼 |
+| --- | --- |
+| `pnpm package-check` | 打包 → 裝進乾淨專案 → 真的用一次 |
+| `pnpm site-check` | 首次可見、下載量、分頁記憶體、與頁面共存、看不見要停 |
+| `pnpm visual-check` | 畫面與原生版的差異，七個模式各掃八個角度 |
+| `pnpm gpu-check` | **真的 GPU 時間**與原生版的比較，兩種內容 |
+| `pnpm webgpu-check` | 頂點動畫在 WebGPU／node 材質上有沒有真的在動 |
+| `pnpm physics-check` | 東西真的踩在畫出來的地面上、浮在畫出來的水面上 |
+| `pnpm gi-check` | 背光面的光**是從紅牆反彈過來的**，兩個後端都要 |
+| `pnpm ssgi-check` | 螢幕空間間接光到底有沒有在做事 |
+| `pnpm impostor-check` | Impostor 對真幾何：快多少，以及像不像 |
+| `pnpm vt-check` | 虛擬貼圖畫的是**對的那一頁**嗎 |
+| `pnpm daynight-check` | 太陽移動的代價：整份探針重烘要多久 |
+| `pnpm contact-check` | 接觸陰影暗的地方在接縫上，不是整片 |
+| `pnpm df-shadow-check` | 距離場陰影遠處也要有形狀 |
+| `pnpm reflect-check` | 反射照得到**畫面外**的東西 |
+| `pnpm sky-check` | 天空的顏色是積分出來的，而且會餵給間接光 |
+| `pnpm lod-fade-check` | 換階抖動不可以在畫面上開洞 |
+| `pnpm fog-check` | 光柱要被擋住，不可以穿牆 |
+| `pnpm vsm-check` | 虛擬陰影圖的解析度要真的比圖集大 |
+| `pnpm shadow-lod-check` | 陰影 pass 自己剔除、自己選階 |
+| `pnpm reflprobe-check` | 反射裡要有**實際拍到的東西**，而且跟著串流更新 |
+| `pnpm water-look-check` | 水的每一項都從「有多深」推得出來 |
+| `pnpm cross-check` | **同一個效果，兩個後端，必須算出同一組數字** |
 
-最後那一段刻意只 serve 打包產出，不讓 `node_modules` 被讀到 —— 那才是使用者
-網站的樣子。worker 若靠路徑解析，就是在這裡 404。
+### 三件學到的事
 
+**一、有量、沒有人擋，等於沒量。** 這一輪最嚴重的兩個 bug —— 分頁記憶體漲到
+1 GB、畫面比對從來沒被跑過 —— 兩個都有工具量得出來，只是沒有人跑。所以現在
+只有一個入口。
+
+**二、關卡吃的是產物，產物過期就全部無效。** 每一道都先 `assertDistFresh`：
+原始碼比 `dist` 新就**直接停**，不是警告。舊產物給的是有信心的錯誤答案，
+那比沒有關卡更糟。
+
+**三、關卡自己也會壞，而且壞得看不出來。** 一道關卡可能結構上就看不到它
+名字裡那件事 —— 比對上游而 bug 在下游、用一個天生免疫的指標、測試場景
+分不出兩種成因。這一輪有五個上線中的 bug 是先**重寫量測**才找出來的。
+判準怎麼訂見 [`specs/doctrine.md`](specs/doctrine.md)。
 ## Benchmark
 
 ```bash
@@ -167,6 +190,7 @@ pnpm bench:smoke     # 無頭 + SwiftShader，只驗證跑不跑得起來
 | [`specs/doctrine.md`](specs/doctrine.md) | **判斷一件事該不該做、做完了沒有。動手之前先讀。** |
 | [`specs/roadmap.md`](specs/roadmap.md) | 里程碑、通過條件與實測數字 |
 | [`specs/api.md`](specs/api.md) | 使用者實際會寫的程式碼 |
+| [`packages/three/README.md`](packages/three/README.md) | **對外的那一份** —— 套件裡有什麼、怎麼用 |
 | [`specs/benchmark.md`](specs/benchmark.md) | 場景與量測協定 |
 
 ## 範圍

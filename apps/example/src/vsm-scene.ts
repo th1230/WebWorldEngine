@@ -73,6 +73,11 @@ export function makeVsmScene(pagesPerSide: number): VsmScene {
   const scene = new THREE.Scene();
   scene.add(root);
 
+  // 全解析度的深度法線。預設是半解析度（那對真的應用是對的取捨），但這裡是
+  // 量測台 —— 重取樣的誤差會混進每一個判準裡，而那不是這一關要量的東西。
+  const world = WW.worldFor(scene);
+  world.setDepthNormals({ scale: 1 });
+
   const ground = new THREE.Mesh(
     // 地面比光源視錐（300）小，所以陰影圖有些地方是**空的** —— 那才驗得到
     // 「頁要清成白的」。地面蓋滿整個視錐的話，清成黑的也看不出差別。
@@ -124,7 +129,6 @@ export function makeVsmScene(pagesPerSide: number): VsmScene {
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld(true);
 
-  const gbuffer = new WW.SceneDepthNormals({ scale: 1 });
   let mask: THREE.Texture | null = null;
 
   /**
@@ -174,8 +178,8 @@ export function makeVsmScene(pagesPerSide: number): VsmScene {
 
   const doResolve = (renderer: THREE.WebGLRenderer, debug = 0): void => {
     shadowMap.debugMode = debug;
-    gbuffer.update(renderer, scene, camera);
-    mask = shadowMap.resolve(renderer, camera, gbuffer);
+    world.beginFrame();
+    mask = shadowMap.render(renderer, scene, camera);
   };
 
   return {

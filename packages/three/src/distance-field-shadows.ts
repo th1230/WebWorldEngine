@@ -1,9 +1,9 @@
 import { Matrix4, NoColorSpace, ShaderMaterial, Vector3, WebGLRenderTarget } from 'three';
+import { worldFor } from './world.ts';
 import { drawFullscreen, FULLSCREEN_VERTEX, VIEW_POSITION_GLSL } from './fullscreen.ts';
 // 只有型別是靜態的 —— 那份 TSL 轉寫是動態載入的，見 `renderNode`。
 import type { DistanceFieldShadowsNodeHandle } from './distance-field-shadows-node.ts';
-import type { Camera, PerspectiveCamera, Texture, WebGLRenderer } from 'three';
-import type { SceneDepthNormals } from './depth-normals.ts';
+import type { Camera, PerspectiveCamera, Texture, WebGLRenderer, Scene } from 'three';
 import type { GlobalDistanceField } from './global-distance-field.ts';
 
 /**
@@ -67,6 +67,14 @@ export interface DistanceFieldShadowsOptions {
   strength?: number;
 }
 
+/** 每幀會變的東西。與其他效果同一個形狀 —— 位置參數的順序記不住。 */
+export interface DistanceFieldShadowsFrame {
+  /** 全域距離場：陰影是沿著它追出來的。 */
+  field: GlobalDistanceField;
+  /** 光的方向（世界空間，從光源指向場景）。 */
+  lightDirection: Vector3;
+}
+
 export class DistanceFieldShadows {
   private readonly options: Required<DistanceFieldShadowsOptions>;
   private target: WebGLRenderTarget | null = null;
@@ -113,17 +121,24 @@ export class DistanceFieldShadows {
    * @param lightDirection 光**照過來**的方向（從光源指向場景），世界座標。
    * @returns 遮蔽貼圖。1 = 沒被擋，0 = 全擋。
    */
+  /**
+   * 畫這一幀的效果。
+   *
+   * 共用的深度法線圖是**自己去 `worldFor(scene)` 拿的** —— 呼叫端不必
+   * 知道它存在，也不會弄錯順序。記得每幀開頭呼叫一次 `beginFrame()`，
+   * 那樣同一張圖一幀只會畫一次。
+   */
   render(
     renderer: WebGLRenderer,
+    scene: Scene,
     camera: Camera,
-    gbuffer: SceneDepthNormals,
-    field: GlobalDistanceField,
-    lightDirection: Vector3,
+    frame: DistanceFieldShadowsFrame,
   ): Texture | null {
+    const gbuffer = worldFor(scene).depthNormals(renderer, camera);
+    const { field, lightDirection } = frame;
     const depth = gbuffer.depthTexture;
     const normal = gbuffer.normalTexture;
     if (depth === null || normal === null) return null;
-    gbuffer.isFresh(renderer);
 
     this.ensureTarget(gbuffer.width, gbuffer.height);
 

@@ -124,7 +124,6 @@ export function makeReflectionScene(): ReflectionScene {
   camera.lookAt(0, 8, 0);
   camera.updateMatrixWorld(true);
 
-  const gbuffer = new WW.SceneDepthNormals({ scale: 1 });
   const reflections = new WW.TracedReflections({
     // 32 步 × 1.5 = 48 單位。鏡子到綠箱子是 29.7 —— 第一版 32 × 0.8 = 25.6
     // 構不到，於是螢幕空間那一層什麼都沒找到，而那看起來像它壞了。
@@ -155,6 +154,11 @@ export function makeReflectionScene(): ReflectionScene {
 
   const scene = new THREE.Scene();
   scene.add(root);
+
+  // 全解析度的深度法線。預設是半解析度（那對真的應用是對的取捨），但這裡是
+  // 量測台 —— 重取樣的誤差會混進每一個判準裡，而那不是這一關要量的東西。
+  const world = WW.worldFor(scene);
+  world.setDepthNormals({ scale: 1 });
 
   // 主畫面畫進一張 target —— 螢幕空間那一層要取樣它。
   const colorTarget = new THREE.WebGLRenderTarget(1280, 720, { type: THREE.HalfFloatType });
@@ -187,15 +191,14 @@ export function makeReflectionScene(): ReflectionScene {
       renderer.render(scene, camera);
       renderer.setRenderTarget(previous);
 
-      gbuffer.update(renderer, scene, camera);
-      reflections.render(
-        renderer,
-        camera,
-        gbuffer,
-        colorTarget.texture,
-        useField ? field : null,
-        useField ? probes : null,
-      );
+      world.beginFrame();
+      reflections.render(renderer, scene, camera, {
+        color: colorTarget.texture,
+        field: useField ? field : null,
+        // `probes` 是一個 IrradianceVolume —— 舊的位置參數版本這裡看不出來
+        // 它進的是哪一格，而那正是換成具名的理由。
+        irradiance: useField ? probes : null,
+      });
     },
     sample: (renderer, point) => {
       const target = targetOf(reflections);
