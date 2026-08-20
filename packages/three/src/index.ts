@@ -36,15 +36,9 @@ export {
 } from './vertex-animation.ts';
 export { worldFor, World, type WorldStats } from './world.ts';
 export { applyShadows, type CascadedShadows } from './shadows.ts';
-export {
-  IrradianceVolume,
-  bakeIrradiance,
-  applyIrradiance,
-  irradianceNodeReady,
-  disposeBakeCache,
-  type IrradianceVolumeOptions,
-  type IrradianceBakeOptions,
-} from './irradiance.ts';
+export { IrradianceVolume, type IrradianceVolumeOptions } from './irradiance.ts';
+export { bakeIrradiance, disposeBakeCache, type IrradianceBakeOptions } from './irradiance-bake.ts';
+export { applyIrradiance, irradianceNodeReady } from './irradiance-apply.ts';
 export { ScreenSpaceGI, type ScreenSpaceGiOptions } from './screen-space-gi.ts';
 export { DistanceFieldVolume, type DistanceFieldGiOptions } from './distance-field-gi.ts';
 export {

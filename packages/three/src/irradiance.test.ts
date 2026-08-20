@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MeshBasicMaterial, MeshStandardMaterial, Mesh, BoxGeometry, Group, Vector3 } from 'three';
-import { IrradianceVolume, applyIrradiance } from './irradiance.ts';
+import { IrradianceVolume } from './irradiance.ts';
+import { applyIrradiance } from './irradiance-apply.ts';
 
 /**
  * 一顆「均勻白光」的探針。
