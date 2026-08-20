@@ -101,7 +101,7 @@ pnpm build:pkg    # 建置三個發布套件的 dist
 pnpm format       # prettier 寫回去（.md 不在範圍內，spec 的表格是手排的）
 ```
 
-## 一個指令，二十五道關卡
+## 一個指令，二十七道關卡
 
 ```bash
 pnpm verify:all
@@ -117,6 +117,8 @@ import 不報錯、只是每個使用者多下載一包。所以每一道關卡�
 | | 擋什麼 |
 | --- | --- |
 | `pnpm verify` | 型別、lint、格式、807 個單元測試 |
+| `pnpm metadata-check` | npm 頁面上看得到的欄位（description、repository、進入點在 dist） |
+| `pnpm docs-check` | README 裡寫的 API 真的存在，而且每個公開功能都寫到了 |
 | `pnpm bundle-check` | 只用 WebGL 的人不該下載 WebGPU 那一半 |
 
 ### 要瀏覽器

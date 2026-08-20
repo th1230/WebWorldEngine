@@ -50,6 +50,7 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test
       - run: pnpm metadata-check
+      - run: pnpm docs-check
 
       - run: pnpm build:pkg
 

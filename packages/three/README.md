@@ -268,6 +268,9 @@ WW.worldFor(scene).stream({
 
 不呼叫 `stream()` 的話一切照常，只是內容全部常駐。
 
+開了之後 `world.streaming` 是那個 `WorldStream`，`.stats` 上有
+常駐、載入中、待處理與失敗的數量。
+
 ## 座標精度：走遠了畫面不抖
 
 ```js
@@ -699,6 +702,7 @@ rocks.stats;              // { visible, tested, levels, cpuMs, spatial }
 | `translateObject(object, offset)` | 平移一個物件，含它內部的 instance 資料。`OriginRebase` 用的就是它 |
 | `clearAssetCache()` / `disposeBakeCache(renderer)` | 換關卡時把 manifest 與烘焙用的暫存放掉 |
 | `DEFAULT_WAVES` | `Water` 預設的那組波。要改先從它複製一份 |
+| `PageTable` | 虛擬貼圖與虛擬陰影圖共用的頁表。自己做分頁資源時用得到（轉出自 `@webworld/format`） |
 
 自己組 LOD 鏈的話還有這幾個 —— `InstancedMesh` 內部用的就是它們：
 

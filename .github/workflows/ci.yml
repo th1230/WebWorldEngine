@@ -41,6 +41,11 @@ jobs:
       # 要等到發布之後從 npmjs.com 上看才發現。
       - run: pnpm metadata-check
 
+      # README 裡每一個 WW.something 都是一句沒有人守的宣稱。改名之後
+      # 文件那一行從此是錯的，而打擊的是還沒上手的人 —— 他照著寫、拿到
+      # undefined is not a function，然後合理地推論這個套件是壞的。
+      - run: pnpm docs-check
+
       # 產出必須真的建得起來；只做型別檢查抓不到 bundler 層的問題
       - run: pnpm build
 
