@@ -15,11 +15,18 @@
  * 原始訊息 —— 它講的是「Executable doesn't exist」加上一串路徑，而真正該
  * 講的是「這台機器上這道關卡跑不了，因為它需要有頭的 Chrome」。
  *
- * ## 為什麼一定要有頭
+ * ## 預設有頭，而那不是每一關都對
  *
- * 無頭沒有真的 GPU。這些關卡量的是真的 GPU 時間、真的畫出來的像素、
- * 真的 shader 編譯成本 —— 無頭下那三件事全部是 SwiftShader 的軟體模擬，
- * 數字沒有意義而且**看起來完全正常**。
+ * 無頭沒有真的 GPU。二十幾道畫面關卡量的是真的 GPU 時間、真的畫出來的
+ * 像素、真的 shader 編譯成本 —— 無頭下那三件事全部是 SwiftShader 的軟體
+ * 模擬，數字沒有意義而且**看起來完全正常**。所以預設是有頭。
+ *
+ * 但 `package-check` 與 `site-check` 要在 CI 上跑，而 GitHub 的 runner
+ * **沒有顯示器** —— 有頭在那裡啟動不起來（錯誤訊息是
+ * `Target page, context or browser has been closed`，指不到真正的原因）。
+ *
+ * 那兩關量的東西也不需要真的 GPU：一個問「worker 起不起得來」，一個問
+ * 「下載多少、多久看得到」。所以它們明著傳 `headless: true`。
  */
 import { chromium } from 'playwright';
 

@@ -227,9 +227,13 @@ Promise.all([mesh.lodReady, asset]).then(
   const served = await serveDist(site);
 
   // 這裡不在乎用哪一個瀏覽器 —— 要驗的是「worker 起不起得來」，不是效能。
+  //
+  // **無頭**：這一關在 CI 上跑，而 runner 沒有顯示器。其餘那二十幾道
+  // 要有頭是因為它們量真的 GPU 時間；這一關量的是「那個 chunk 載不載得
+  // 到」，無頭完全夠。
   let browser;
   try {
-    browser = await launchBrowser();
+    browser = await launchBrowser({ headless: true });
   } catch (error) {
     served.close();
     throw new Error('worker 那一段沒驗到。\n    pnpm exec playwright install chromium', {

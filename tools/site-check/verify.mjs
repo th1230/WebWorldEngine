@@ -88,7 +88,12 @@ async function main() {
   });
 
   const site = await serveDist(DIST, { mounts: { '/cooked': COOKED } });
-  const browser = await launchBrowser();
+  // **無頭**：這一關在 CI 上跑，而 runner 沒有顯示器。
+  //
+  // 這裡量的是下載量、首次可見、分頁記憶體、與頁面共存 —— 沒有一項是
+  // 真的 GPU 時間，所以無頭不影響結論。（原本的註解寫著「有頭」，而
+  // 底下的程式碼一直是無頭的 —— 那句話從來沒對過。）
+  const browser = await launchBrowser({ headless: true });
   try {
     await measureLoad(browser, site.url);
     await measureCoexistence(browser, site.url);
