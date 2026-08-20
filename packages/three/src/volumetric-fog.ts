@@ -187,6 +187,11 @@ export class VolumetricFog {
         .then((m) => m.createVolumetricFogNodeMaterial())
         .then((handle) => {
           this.node = handle;
+        })
+        .catch((error: unknown) => {
+          // **大聲說出來。** 靜靜失敗的症狀是「WebGPU 上這個效果完全沒有」，
+          // 而那看起來像場景沒設定好，不像材質建不起來。
+          console.error('WW.VolumetricFog：node 材質建不起來，WebGPU 上不會有體積霧。', error);
         });
       return null;
     }

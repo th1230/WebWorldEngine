@@ -96,4 +96,41 @@ describe('WaterSurface', () => {
     expect(u.uCrestFoam!.value).toBe(1.25);
     expect(u.uReflectivity!.value).toBe(0.5);
   });
+
+  /**
+   * ## 改參數只有一道門
+   *
+   * WebGPU 上真正在畫的是非同步建起來的 node 材質，改 `material.uniforms`
+   * 它一個字都收不到。單元測試碰不到 node 那一半（要有 WebGPU），所以這裡
+   * 守 GLSL 那一半 —— node 那一半由 `tools/gpu-check/cross-backend.mjs` 的
+   * 「折射的參數收得到」量，而那條紅測看過：把場景改回直接戳 uniform 之後
+   * WebGPU 的反應是 0.00%。
+   */
+  it('setParams 改得到 uniform，而且沒給的那些不動', () => {
+    const surface = new WaterSurface({
+      water: new Water({ level: 0 }),
+      refraction: 0.05,
+      foamDepth: 2.5,
+    });
+    const u = surface.material.uniforms;
+    expect(u.uRefraction!.value).toBe(0.05);
+
+    surface.setParams({ refraction: 0.3 });
+    expect(u.uRefraction!.value).toBe(0.3);
+    // 沒給的那些要留在原地 —— 整包覆蓋的話呼叫端每次都得重送全部參數，
+    // 而漏送一個的症狀是「那個參數自己跳回預設值」。
+    expect(u.uFoamDepth!.value).toBe(2.5);
+  });
+
+  it('setParams 改得到吸收與顏色 —— 那些是物件，不是數字', () => {
+    // 數字直接指派就好，物件要 copy 進去。忘了 copy 的症狀是「改了沒反應」，
+    // 因為 uniform 還指著舊的那個物件。
+    const surface = new WaterSurface({ water: new Water() });
+    const u = surface.material.uniforms;
+
+    surface.setParams({ absorption: [1, 2, 3], sky: new Color(0x102030) });
+    const absorption = u.uAbsorption!.value as Vector3;
+    expect([absorption.x, absorption.y, absorption.z]).toEqual([1, 2, 3]);
+    expect((u.uSky!.value as Color).getHex()).toBe(0x102030);
+  });
 });

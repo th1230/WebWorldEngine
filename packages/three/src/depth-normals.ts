@@ -110,6 +110,11 @@ export class SceneDepthNormals {
         .then((m) => m.createNormalNodeMaterial())
         .then((material) => {
           this.nodeMaterial = material;
+        })
+        .catch((error: unknown) => {
+          // **大聲說出來。** 靜靜失敗的症狀是「WebGPU 上這個效果完全沒有」，
+          // 而那看起來像場景沒設定好，不像材質建不起來。
+          console.error('WW.SceneDepthNormals：node 材質建不起來，WebGPU 上不會有深度法線。', error);
         });
     }
     scene.overrideMaterial = (this.nodeMaterial ?? this.material) as never;

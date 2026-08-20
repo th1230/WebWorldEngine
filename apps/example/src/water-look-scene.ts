@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as WW from '@webworld/three';
+import { readPixelsAsync } from './readback.ts';
 
 /**
  * 水的外觀證明場景：一個從深到淺的斜坡水底，水面蓋在上面。
@@ -39,6 +40,22 @@ export interface WaterLookScene {
   edgeColumns: (renderer: THREE.WebGLRenderer, rows: number) => number[];
   /** 某個世界 x/z 的水面高度，CPU 算的。 */
   heightAt: (x: number, z: number) => number;
+  /** 某一點周圍一小塊的平均顏色，非同步 —— 兩個後端都走得通。 */
+  /**
+   * 某一塊的平均顏色，非同步 —— 兩個後端都走得通。
+   *
+   * 寬高分開給：水面上「跨後端該不該一致」的量要**橫向**平均掉浪的震盪，
+   * 又要保住上下的深淺分層，所以要的是又寬又扁的一條。
+   */
+  sampleWindowAsync: (
+    renderer: unknown,
+    u: number,
+    v: number,
+    width: number,
+    height?: number,
+  ) => Promise<number[]>;
+  /** 等 WebGPU 那條路建好。 */
+  nodeReady: (renderer: unknown) => Promise<void>;
   /** 折射的強度。給 0 就是「同一片水，只是不折射」的對照組。 */
   setRefraction: (value: number) => void;
   /** 這一刻的時間 —— CPU 與 GPU 要用同一個。 */
@@ -144,8 +161,17 @@ export function makeWaterLookScene(): WaterLookScene {
   const pixel = new Float32Array(4);
 
   const draw = (renderer: THREE.WebGLRenderer, debug = 0, withWater = true): void => {
-    (surface.material.uniforms.uDebug as { value: number }).value = debug;
-    waterMesh.visible = withWater;
+    // ## 每幀都換一次材質
+    //
+    // WebGPU 那份是非同步建起來的，所以「建好了」與「換上去了」是兩件事。
+    // 只在建好的那一刻換一次的話，時序上很容易錯過 —— 而錯過的症狀是
+    // 「WebGPU 上水面完全沒畫出來」，看起來像移植失敗。換材質很便宜。
+    surface.setDebug(debug);
+    // `materialFor` 在 WebGPU 上還沒建好時回 null —— 那時整個不要畫水，
+    // 因為把 ShaderMaterial 交給 WebGPURenderer 會讓整個場景畫不出來。
+    const material = surface.materialFor(renderer) as THREE.ShaderMaterial | null;
+    if (material !== null) waterMesh.material = material;
+    waterMesh.visible = withWater && material !== null;
     surface.setTime(time);
     surface.capture(renderer, scene, camera, waterMesh);
     renderer.setRenderTarget(target);
@@ -178,8 +204,33 @@ export function makeWaterLookScene(): WaterLookScene {
       surface.setProbes(probes.probes);
       return baked;
     },
+    sampleWindowAsync: async (renderer, u, v, width, height = width) => {
+      const x = Math.min(
+        target.width - width,
+        Math.max(0, Math.round(u * target.width) - (width >> 1)),
+      );
+      const y = Math.min(
+        target.height - height,
+        Math.max(0, Math.round(v * target.height) - (height >> 1)),
+      );
+      const data = await readPixelsAsync(renderer, target, x, y, width, height, (n) =>
+        new Float32Array(n),
+      );
+      const sum = [0, 0, 0];
+      for (let i = 0; i < width * height; i++) {
+        for (let c = 0; c < 3; c++) sum[c]! += data[i * 4 + c] ?? 0;
+      }
+      return sum.map((value) => value / (width * height));
+    },
+    nodeReady: async (renderer) => {
+      // node 材質是動態 import 進來的 —— 要等**真的時間**，microtask 不夠。
+      for (let i = 0; i < 60; i++) {
+        draw(renderer as THREE.WebGLRenderer);
+        await new Promise((resolve) => setTimeout(resolve, 8));
+      }
+    },
     setRefraction: (value) => {
-      (surface.material.uniforms.uRefraction as { value: number }).value = value;
+      surface.setParams({ refraction: value });
     },
     render: draw,
     sampleAt: (renderer, u, v) => {

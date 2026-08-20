@@ -17,6 +17,8 @@ import {
 } from './reflection-probes.ts';
 import type { Camera, Object3D, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 import type { ReflectionProbes } from './reflection-probes.ts';
+// 只有型別是靜態的 —— 那份 TSL 轉寫是動態載入的，見 `ensureNode`。
+import type { WaterSurfaceNodeHandle } from './water-surface-node.ts';
 import type { Water } from './water.ts';
 
 /**
@@ -101,11 +103,23 @@ export interface WaterSurfaceOptions {
   reflectivity?: number;
 }
 
+/** 建好之後還能改的那些 —— `water` 不在裡面，換波形要換整個 `WaterSurface`。 */
+export type WaterSurfaceParams = Omit<WaterSurfaceOptions, 'water'>;
+
 export class WaterSurface {
   readonly material: ShaderMaterial;
   private readonly options: Required<Omit<WaterSurfaceOptions, 'water'>> & { water: Water };
   private target: WebGLRenderTarget | null = null;
   private readonly hidden: Object3D[] = [];
+  /**
+   * WebGPU 那條路的材質。惰性建立 —— 只用 WebGL 的人不該下載 `three/tsl`。
+   *
+   * 水與前面幾個效果不同：它是掛在網格上的**材質**，而網格是呼叫端建的。
+   * 所以這裡不能等到 render 才換 —— 要有一個明確的「拿 WebGPU 那份材質」。
+   */
+  private node: WaterSurfaceNodeHandle | null = null;
+  private nodePending: Promise<void> | null = null;
+  private probes: ReflectionProbes | null = null;
 
   constructor(options: WaterSurfaceOptions) {
     this.options = {
@@ -161,12 +175,89 @@ export class WaterSurface {
     });
   }
 
+  /**
+   * 把中間值畫出來。兩條路的號碼**一樣**。
+   *
+   * 做成明確的一支而不是讓 `materialFor` 去讀 uniform：那樣的話呼叫順序就
+   * 變成隱含的相依，而實測踩過 —— `materialFor` 在設定之前被呼叫，於是
+   * WebGPU 那邊的除錯模式**慢一拍**，跨後端比中間值時比到不同的東西。
+   */
+  setDebug(mode: number): void {
+    this.material.uniforms.uDebug!.value = mode;
+    this.node?.setDebug(mode);
+  }
+
+  /**
+   * 改參數要走這裡，**不要去戳 `material.uniforms`**。
+   *
+   * `material` 是 WebGL 那份。WebGPU 上真正在畫的是 node 材質，改 uniform
+   * 它一個字都收不到 —— 而症狀是「這個參數在 WebGPU 上沒反應」，看起來像
+   * 效果本身壞了。範例場景的折射開關就這樣錯過一輪。
+   */
+  setParams(changes: Partial<WaterSurfaceParams>): void {
+    Object.assign(this.options, changes);
+    const u = this.material.uniforms;
+    (u.uAbsorption!.value as Vector3).set(...this.options.absorption);
+    (u.uScatter!.value as Color).copy(this.options.scatter);
+    u.uRefraction!.value = this.options.refraction;
+    u.uFoamDepth!.value = this.options.foamDepth;
+    u.uCrestFoam!.value = this.options.crestFoam;
+    (u.uSunDirection!.value as Vector3).copy(this.options.sunDirection);
+    (u.uSunColor!.value as Color).copy(this.options.sunColor);
+    (u.uSky!.value as Color).copy(this.options.sky);
+    u.uReflectivity!.value = this.options.reflectivity;
+    this.node?.setParams({ ...this.options, waterLevel: this.options.water.level });
+  }
+
   setTime(time: number): void {
     this.material.uniforms.uTime!.value = time;
+    this.node?.setTime(time);
+  }
+
+  /**
+   * 拿這個 renderer 該用的材質。
+   *
+   * WebGL 上就是 `material`；WebGPU 上是 node 那份。
+   *
+   * **node 那份還沒建好時回 `null`** —— 不能回 `material`：`WebGPURenderer`
+   * 拿到 `ShaderMaterial` 會直接丟「Material "ShaderMaterial" is not
+   * compatible」，整個場景畫不出來。回 null 的意思是「這一幀先別畫水」，
+   * 而那是呼叫端處理得了的。
+   *
+   * 呼叫端要在每幀把 `mesh.material` 設成它 —— 換材質是便宜的，而「材質
+   * 建好了卻沒人換上去」是查不動的。
+   */
+  materialFor(renderer: unknown): unknown | null {
+    if ((renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer !== true) {
+      return this.material;
+    }
+    if (this.node === null) {
+      this.nodePending ??= import('./water-surface-node.ts')
+        .then((m) => m.createWaterSurfaceNodeMaterial(this.options.water))
+        .then((handle) => {
+          this.node = handle;
+          // node 是**之後**才建好的，所以中間改過的參數要補上 —— 一律
+          // 從 `this.options` 重送一次，不要另外記一份「改過什麼」。
+          handle.setParams({ ...this.options, waterLevel: this.options.water.level });
+          handle.setDebug(this.material.uniforms.uDebug!.value as number);
+          handle.setTime(this.material.uniforms.uTime!.value as number);
+          handle.setProbes(this.probes);
+        })
+        .catch((error: unknown) => {
+          // **大聲說出來。** 靜靜失敗的症狀是「WebGPU 上這個效果完全沒有」，
+          // 而那看起來像場景沒設定好，不像材質建不起來。
+          console.error('WW.WaterSurface：node 材質建不起來，WebGPU 上不會有水面。', error);
+        });
+      return null;
+    }
+    this.node.setConvention(renderer);
+    return this.node.material;
   }
 
   /** 接上反射探針。不接的話反射用的是 `sky` 那個固定顏色。 */
   setProbes(probes: ReflectionProbes | null): void {
+    this.probes = probes;
+    this.node?.setProbes(probes);
     const u = this.material.uniforms;
     if (probes === null) {
       u.uHasProbes!.value = 0;
@@ -213,6 +304,9 @@ export class WaterSurface {
     this.hidden.length = 0;
 
     const u = this.material.uniforms;
+    this.node?.setScene(this.target!.texture, this.target!.depthTexture as never);
+    const perspectiveCamera = camera as PerspectiveCamera;
+    this.node?.setCamera(perspectiveCamera.near ?? 0.1, perspectiveCamera.far ?? 1000);
     u.tScene!.value = this.target!.texture;
     u.tSceneDepth!.value = this.target!.depthTexture;
     u.uResolution!.value = new Vector2(this.target!.width, this.target!.height);
@@ -234,6 +328,10 @@ export class WaterSurface {
   private ensureTarget(width: number, height: number): void {
     if (this.target !== null && this.target.width === width && this.target.height === height) return;
     this.target?.dispose();
+    // 位元數不是折射取樣誤差的來源 —— 換成 `UnsignedIntType` 重建重測，
+    // 水底深度是 440.011 對 440.006，等於沒動。也就是說這個型別根本沒被
+    // 採用（16 位元在 440 單位處的量化階距約 30 單位，真的是 16 位元的話
+    // 不可能不動）。所以要查折射對不上時，不必再往這裡看。
     const depthTexture = new DepthTexture(width, height, UnsignedShortType);
     this.target = new WebGLRenderTarget(width, height, {
       // 折射拿到的是**還沒做色調映射**的線性顏色，所以與最後畫面對得起來。
@@ -419,6 +517,12 @@ void main() {
     if ( uDebug < 5.5 ) { gl_FragColor = vec4( normal * 0.5 + 0.5, 1.0 ); return; }
     if ( uDebug < 6.5 ) { gl_FragColor = vec4( refracted, 1.0 ); return; }
     if ( uDebug < 7.5 ) { gl_FragColor = vec4( reflected, 1.0 ); return; }
+    // 8/9：被相減的那兩個量。travelled 對不上的時候要知道是哪一個。
+    if ( uDebug < 8.5 ) { gl_FragColor = vec4( vec3( surfaceDistance ), 1.0 ); return; }
+    if ( uDebug < 9.5 ) { gl_FragColor = vec4( vec3( refractedDistance ), 1.0 ); return; }
+    // 10：折射真正推了多遠。水底深度對不上的時候，第一個要問的是
+    // 「兩邊有沒有取樣到同一個點」—— 而那只有這個量答得出來。
+    if ( uDebug < 10.5 ) { gl_FragColor = vec4( refractedUv - screenUv, 0.0, 1.0 ); return; }
   }
 
   gl_FragColor = vec4( color, 1.0 );

@@ -1846,12 +1846,22 @@ Object.assign(window, {
             heightAt: (x: number, z: number): number => waterLookScene.heightAt(x, z),
             coverage: (): number => waterLookScene.coverage(renderer),
             setRefraction: (value: number): void => waterLookScene.setRefraction(value),
+            // 跨後端比對要走同一支。WebGPU 沒有同步的讀回。
+            sampleWindowAsync: (
+              u: number,
+              v: number,
+              width: number,
+              height?: number,
+            ): Promise<number[]> => waterLookScene.sampleWindowAsync(renderer, u, v, width, height),
           },
     reflProbe:
       reflectionProbeScene === null
         ? null
         : {
             settle: (): Promise<number> => reflectionProbeScene.settle(renderer),
+            // 跨後端比對要走同一支。WebGPU 沒有同步的讀回。
+            sampleWindowAsync: (x: number, z: number, size: number): Promise<number[]> =>
+              reflectionProbeScene.sampleWindowAsync(renderer, x, z, size),
             render: (useProbes: boolean, debug?: number): void =>
               reflectionProbeScene.render(renderer, useProbes, debug),
             sample: (x: number, z: number): number[] =>

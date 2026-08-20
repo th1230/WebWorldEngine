@@ -217,6 +217,57 @@ export class Water {
     lines.push(`  sum.y += ${f(this.level)};`, '  return sum;', '}');
     return lines.join('\n');
   }
+
+  /**
+   * 同一個位移，**TSL 那一份** —— `WebGPURenderer` 那條路。
+   *
+   * 讀的是同一個 `this.packed`，所以它與 `heightAt`、與 `displacementGLSL`
+   * 三者不可能分岔 —— 那正是這個檔案存在的理由，而多一個後端不該讓它變成
+   * 「三份各自的實作」。
+   *
+   * 回傳一個 `(p: vec2, t: float) => vec3` 的函式。與 GLSL 那份一樣是**常數
+   * 展開**：波的數量在建構時就固定了。
+   */
+  displacementNode(tsl: {
+    vec3: (...args: unknown[]) => TslLike;
+    float: (v: number) => TslLike;
+    cos: (v: unknown) => TslLike;
+    sin: (v: unknown) => TslLike;
+  }): (p: TslLike, t: TslLike) => TslLike {
+    const packed = this.packed;
+    const level = this.level;
+    return (p, t) => {
+      const { vec3, float, cos, sin } = tsl;
+      let x = float(0);
+      let y = float(level);
+      let z = float(0);
+      for (let at = 0; at < packed.length; at += 6) {
+        const dx = packed[at]!;
+        const dz = packed[at + 1]!;
+        const k = packed[at + 2]!;
+        const amplitude = packed[at + 3]!;
+        const omega = packed[at + 4]!;
+        const q = packed[at + 5]! * amplitude;
+        // 與 GLSL 那份逐行相同：ph = ( dx * p.x + dz * p.y ) * k − omega * t
+        const phase = p.x.mul(dx).add(p.y.mul(dz)).mul(k).sub(t.mul(omega));
+        const c = cos(phase);
+        x = x.add(c.mul(dx * q));
+        z = z.add(c.mul(dz * q));
+        y = y.add(sin(phase).mul(amplitude));
+      }
+      return vec3(x, y, z);
+    };
+  }
+}
+
+/** TSL 的節點。只列出這裡用得到的幾個運算。 */
+interface TslLike {
+  add: (v: unknown) => TslLike;
+  sub: (v: unknown) => TslLike;
+  mul: (v: unknown) => TslLike;
+  readonly x: TslLike;
+  readonly y: TslLike;
+  readonly z: TslLike;
 }
 
 /** GLSL 不接受 `1` 當 float，也不接受指數記法以外的科學記號。 */

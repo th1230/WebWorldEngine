@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as WW from '@webworld/three';
+import { readPixelsAsync } from './readback.ts';
 
 /**
  * 反射探針的證明場景：四面牆各一個顏色的房間，地板照得出它們。
@@ -45,6 +46,12 @@ export interface ReflectionProbeScene {
   settle: (renderer: THREE.WebGLRenderer) => Promise<number>;
   /** 畫一次反射。`useProbes` 關掉就是原本那條「什麼都沒打到就用天空色」。 */
   render: (renderer: THREE.WebGLRenderer, useProbes: boolean, debug?: number) => void;
+  /**
+   * 同一件事，非同步 —— WebGPU 沒有同步的讀回。讀一小塊的平均。
+   */
+  sampleWindowAsync: (renderer: unknown, x: number, z: number, size: number) => Promise<number[]>;
+  /** 等 WebGPU 那條路建好。 */
+  nodeReady: (renderer: unknown) => Promise<void>;
   /** 地板上某一點照出來的顏色。 */
   sampleAt: (renderer: THREE.WebGLRenderer, x: number, z: number) => [number, number, number];
   /** 那一點在畫面上的位置 —— 關卡要先確定它真的在畫面裡。 */
@@ -142,6 +149,16 @@ export function makeReflectionProbeScene(): ReflectionProbeScene {
   const half = new Uint16Array(4);
   const point = new THREE.Vector3();
 
+  /** 一幀。`nodeReady` 也要用它。 */
+  const draw = (renderer: THREE.WebGLRenderer, useProbes: boolean, debug = 0): void => {
+    (reflections as unknown as { debugMode: number }).debugMode = debug;
+    renderer.setRenderTarget(colorTarget);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    gbuffer.update(renderer, scene, camera);
+    reflections.render(renderer, camera, gbuffer, colorTarget.texture, null, null, useProbes ? probes : null);
+  };
+
   return {
     root,
     camera,
@@ -160,25 +177,44 @@ export function makeReflectionProbeScene(): ReflectionProbeScene {
       }
       return baked;
     },
-    render: (renderer, useProbes, debug = 0) => {
-      (reflections as unknown as { debugMode: number }).debugMode = debug;
-      renderer.setRenderTarget(colorTarget);
-      renderer.render(scene, camera);
-      renderer.setRenderTarget(null);
-      gbuffer.update(renderer, scene, camera);
-      reflections.render(
-        renderer,
-        camera,
-        gbuffer,
-        colorTarget.texture,
-        null,
-        null,
-        useProbes ? probes : null,
-      );
-    },
+    render: draw,
     screenAt: (x, z) => {
       point.set(x, 0, z).project(camera);
       return [(point.x + 1) / 2, (point.y + 1) / 2];
+    },
+    sampleWindowAsync: async (renderer, x, z, size) => {
+      const target = (reflections as unknown as { target: THREE.WebGLRenderTarget }).target;
+      point.set(x, 0, z).project(camera);
+      const half = size >> 1;
+      const px = Math.min(
+        target.width - size,
+        Math.max(0, Math.round(((point.x + 1) / 2) * target.width) - half),
+      );
+      const py = Math.min(
+        target.height - size,
+        Math.max(0, Math.round(((point.y + 1) / 2) * target.height) - half),
+      );
+      const data = await readPixelsAsync(
+        renderer,
+        target,
+        px,
+        py,
+        size,
+        size,
+        (n) => new Uint16Array(n),
+      );
+      const sum = [0, 0, 0];
+      for (let i = 0; i < size * size; i++) {
+        for (let c = 0; c < 3; c++) sum[c]! += THREE.DataUtils.fromHalfFloat(data[i * 4 + c] ?? 0);
+      }
+      return sum.map((v) => v / (size * size));
+    },
+    nodeReady: async (renderer) => {
+      // node 材質是動態 import 進來的 —— 要等**真的時間**，microtask 不夠。
+      for (let i = 0; i < 60; i++) {
+        draw(renderer as THREE.WebGLRenderer, true);
+        await new Promise((resolve) => setTimeout(resolve, 8));
+      }
     },
     sampleAt: (renderer, x, z) => {
       const target = (reflections as unknown as { target: THREE.WebGLRenderTarget }).target;

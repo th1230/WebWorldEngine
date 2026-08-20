@@ -1,5 +1,7 @@
 import { Color, Matrix4, NoColorSpace, ShaderMaterial, Vector3, HalfFloatType, WebGLRenderTarget } from 'three';
 import { drawFullscreen, FULLSCREEN_VERTEX, VIEW_POSITION_GLSL } from './fullscreen.ts';
+// 只有型別是靜態的 —— 那份 TSL 轉寫是動態載入的，見 `renderNode`。
+import type { TracedReflectionsNodeHandle } from './traced-reflections-node.ts';
 import { IRRADIANCE_SAMPLE_GLSL, IRRADIANCE_UNIFORMS_GLSL } from './irradiance-glsl.ts';
 import {
   REFLECTION_PROBE_SAMPLE_GLSL,
@@ -86,6 +88,9 @@ export class TracedReflections {
   private target: WebGLRenderTarget | null = null;
   private readonly material: ShaderMaterial;
   private readonly projectionInverse = new Matrix4();
+  /** WebGPU 那條路的材質。惰性建立 —— 只用 WebGL 的人不該下載 `three/tsl`。 */
+  private node: TracedReflectionsNodeHandle | null = null;
+  private nodePending: Promise<void> | null = null;
 
   constructor(options: TracedReflectionsOptions = {}) {
     this.options = {
@@ -188,6 +193,11 @@ export class TracedReflections {
 
     this.ensureTarget(gbuffer.width, gbuffer.height);
 
+    // WebGPU 不吃 ShaderMaterial，走 node 那份。兩份的一致性由跨後端關卡守。
+    if ((renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer === true) {
+      return this.renderNode(renderer, camera, colorTexture, depth, normal, field, irradiance, probes);
+    }
+
     const perspective = camera as PerspectiveCamera;
     const u = this.material.uniforms;
     u.tColor!.value = colorTexture;
@@ -253,6 +263,48 @@ export class TracedReflections {
     renderer.setRenderTarget(this.target);
     renderer.clear(true, false, false);
     drawFullscreen(renderer, this.material);
+    renderer.setRenderTarget(previous);
+    return this.target!.texture;
+  }
+
+  /** WebGPU 那條路。第一次呼叫啟動非同步建立並回傳 `null`。 */
+  private renderNode(
+    renderer: WebGLRenderer,
+    camera: Camera,
+    colorTexture: Texture,
+    depth: Texture,
+    normal: Texture,
+    field: GlobalDistanceField | null,
+    irradiance: IrradianceVolume | null,
+    probes: ReflectionProbes | null,
+  ): Texture | null {
+    if (this.node === null) {
+      this.nodePending ??= import('./traced-reflections-node.ts')
+        .then((m) => m.createTracedReflectionsNodeMaterial())
+        .then((handle) => {
+          this.node = handle;
+        })
+        .catch((error: unknown) => {
+          // **大聲說出來。** 靜靜失敗的症狀是「WebGPU 上這個效果完全沒有」，
+          // 而那看起來像場景沒設定好，不像材質建不起來。
+          console.error('WW.TracedReflections：node 材質建不起來，WebGPU 上不會有反射。', error);
+        });
+      return null;
+    }
+    const perspective = camera as PerspectiveCamera;
+    this.projectionInverse.copy(perspective.projectionMatrix).invert();
+    this.node.setTextures(colorTexture, depth, normal);
+    this.node.setMatrices(perspective.projectionMatrix, this.projectionInverse, camera.matrixWorld);
+    this.node.setField(field, this.options.range);
+    this.node.setIrradiance(irradiance);
+    this.node.setProbes(probes);
+    this.node.setParams(this.options);
+    this.node.setConvention(renderer);
+
+    const previous = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.target);
+    renderer.clear(true, false, false);
+    drawFullscreen(renderer, this.node.material as never);
     renderer.setRenderTarget(previous);
     return this.target!.texture;
   }

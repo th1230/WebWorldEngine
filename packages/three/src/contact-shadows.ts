@@ -179,6 +179,11 @@ export class ContactShadows {
         .then((m) => m.createContactShadowsNodeMaterial())
         .then((handle) => {
           this.node = handle;
+        })
+        .catch((error: unknown) => {
+          // **大聲說出來。** 靜靜失敗的症狀是「WebGPU 上這個效果完全沒有」，
+          // 而那看起來像場景沒設定好，不像材質建不起來。
+          console.error('WW.ContactShadows：node 材質建不起來，WebGPU 上不會有接觸陰影。', error);
         });
       return null;
     }

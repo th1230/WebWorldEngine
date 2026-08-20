@@ -7,6 +7,11 @@ import { makeSkyScene, type SkyScene } from './sky-scene.ts';
 import { makeContactScene, type ContactScene } from './contact-scene.ts';
 import { makeDfShadowScene, type DfShadowScene } from './df-shadow-scene.ts';
 import { makeFogScene, type FogScene } from './fog-scene.ts';
+import {
+  makeReflectionProbeScene,
+  type ReflectionProbeScene,
+} from './reflection-probe-scene.ts';
+import { makeWaterLookScene, type WaterLookScene } from './water-look-scene.ts';
 
 /**
  * `WW.AnimatedInstancedMesh` 在 **WebGPU** 上的驗證頁。
@@ -61,6 +66,10 @@ const CONTACT = params.get('contact') === '1';
 const DF_SHADOW = params.get('dfshadow') === '1';
 /** `?fog=1` 換成體積霧的驗證場景。與 WebGL 那頁共用同一個場景。 */
 const FOG = params.get('fog') === '1';
+/** `?reflprobe=1` 換成反射探針的驗證場景（四面牆各一個顏色的房間）。 */
+const REFL_PROBE = params.get('reflprobe') === '1';
+/** `?waterlook=1` 換成水的外觀場景。 */
+const WATER_LOOK = params.get('waterlook') === '1';
 
 const renderer = new WebGPURenderer({ canvas, antialias: true });
 renderer.setSize(innerWidth, innerHeight, false);
@@ -90,6 +99,24 @@ if (GI) {
   // 前幾幀還沒有間接光，而量測會剛好落在那幾幀裡。
   await WW.irradianceNodeReady();
 
+}
+
+let waterLookScene: WaterLookScene | null = null;
+if (WATER_LOOK) {
+  scene.remove(...scene.children.filter((o) => (o as { isLight?: boolean }).isLight === true));
+  waterLookScene = makeWaterLookScene();
+  // 這個場景有自己的私有 scene —— 不要把 root 加進來。
+  await waterLookScene.settle(renderer as never);
+  await waterLookScene.nodeReady(renderer);
+}
+
+let reflectionProbeScene: ReflectionProbeScene | null = null;
+if (REFL_PROBE) {
+  scene.remove(...scene.children.filter((o) => (o as { isLight?: boolean }).isLight === true));
+  reflectionProbeScene = makeReflectionProbeScene();
+  // 這個場景有自己的私有 scene —— 不要把 root 加進來。
+  await reflectionProbeScene.settle(renderer as never);
+  await reflectionProbeScene.nodeReady(renderer);
 }
 
 let fogScene: FogScene | null = null;
@@ -159,7 +186,9 @@ if (
   skyScene === null &&
   contactScene === null &&
   dfShadowScene === null &&
-  fogScene === null
+  fogScene === null &&
+  reflectionProbeScene === null &&
+  waterLookScene === null
 ) {
   scene.add(mesh);
 }
@@ -187,6 +216,32 @@ renderer.setAnimationLoop(() => {
 
 Object.assign(window, {
   __wwgpu: {
+    waterLook:
+      waterLookScene === null
+        ? null
+        : {
+            settle: (): Promise<number> => waterLookScene.settle(renderer as never),
+            render: (debug?: number): void => waterLookScene.render(renderer as never, debug),
+            sampleWindowAsync: (
+              u: number,
+              v: number,
+              width: number,
+              height?: number,
+            ): Promise<number[]> => waterLookScene.sampleWindowAsync(renderer, u, v, width, height),
+            // CPU 的水面 —— 兩份 GPU 實作互比只知道不一樣，不知道誰不對。
+            heightAt: (x: number, z: number): number => waterLookScene.heightAt(x, z),
+            setRefraction: (value: number): void => waterLookScene.setRefraction(value),
+          },
+    reflProbe:
+      reflectionProbeScene === null
+        ? null
+        : {
+            settle: (): Promise<number> => reflectionProbeScene.settle(renderer as never),
+            render: (useProbes: boolean): void =>
+              reflectionProbeScene.render(renderer as never, useProbes),
+            sampleWindowAsync: (x: number, z: number, size: number): Promise<number[]> =>
+              reflectionProbeScene.sampleWindowAsync(renderer, x, z, size),
+          },
     fog:
       fogScene === null
         ? null

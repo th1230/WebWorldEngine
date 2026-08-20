@@ -174,6 +174,11 @@ export class DistanceFieldShadows {
         .then((m) => m.createDistanceFieldShadowsNodeMaterial())
         .then((handle) => {
           this.node = handle;
+        })
+        .catch((error: unknown) => {
+          // **大聲說出來。** 靜靜失敗的症狀是「WebGPU 上這個效果完全沒有」，
+          // 而那看起來像場景沒設定好，不像材質建不起來。
+          console.error('WW.DistanceFieldShadows：node 材質建不起來，WebGPU 上不會有距離場陰影。', error);
         });
       return null;
     }

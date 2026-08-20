@@ -427,6 +427,22 @@ renderer.render(scene, camera);
 `capture` 要排除水面本身。忘了排除的話折射會取樣到水自己，症狀是水面上出現
 一層越疊越糊的鏡像。
 
+**畫的時候拿 `materialFor(renderer)`，改參數走 `setParams`。**
+
+```js
+mesh.material = surface.materialFor(renderer);      // 每幀。WebGPU 上是另一份材質
+surface.setParams({ refraction: 0.12 });            // 不要去戳 material.uniforms
+```
+
+`material` 是 WebGL 那一份。`WebGPURenderer` 收到 `ShaderMaterial` 會直接丟
+「Material "ShaderMaterial" is not compatible」，所以 WebGPU 上真正在畫的是
+非同步建起來的 node 材質 —— 還沒建好時 `materialFor` 回 `null`，意思是
+「這一幀先別畫水」。換材質很便宜，每幀換一次比記錄狀態可靠。
+
+同理，改 `material.uniforms` 只會改到 WebGL 那份，而症狀是「這個參數在 WebGPU
+上沒反應」—— 看起來像效果本身壞了。跨後端關卡現在守著這件事：折射推大六倍，
+兩邊的顏色都要真的動。
+
 ---
 
 ## 十一、還沒決定的事
