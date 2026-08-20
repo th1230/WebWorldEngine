@@ -1,5 +1,7 @@
 import { Matrix4, NoColorSpace, ShaderMaterial, Vector3, WebGLRenderTarget } from 'three';
 import { drawFullscreen, FULLSCREEN_VERTEX, VIEW_POSITION_GLSL } from './fullscreen.ts';
+// 只有型別是靜態的 —— 那份 TSL 轉寫是動態載入的，見 `renderNode`。
+import type { DistanceFieldShadowsNodeHandle } from './distance-field-shadows-node.ts';
 import type { Camera, PerspectiveCamera, Texture, WebGLRenderer } from 'three';
 import type { SceneDepthNormals } from './depth-normals.ts';
 import type { GlobalDistanceField } from './global-distance-field.ts';
@@ -69,6 +71,9 @@ export class DistanceFieldShadows {
   private readonly options: Required<DistanceFieldShadowsOptions>;
   private target: WebGLRenderTarget | null = null;
   private readonly material: ShaderMaterial;
+  /** WebGPU 那條路的材質。惰性建立 —— 只用 WebGL 的人不該下載 `three/tsl`。 */
+  private node: DistanceFieldShadowsNodeHandle | null = null;
+  private nodePending: Promise<void> | null = null;
   private readonly projectionInverse = new Matrix4();
 
   constructor(options: DistanceFieldShadowsOptions = {}) {
@@ -122,6 +127,11 @@ export class DistanceFieldShadows {
 
     this.ensureTarget(gbuffer.width, gbuffer.height);
 
+    // WebGPU 不吃 ShaderMaterial，走 node 那份。兩份的一致性由跨後端關卡守。
+    if ((renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer === true) {
+      return this.renderNode(renderer, camera, depth, normal, field, lightDirection);
+    }
+
     const perspective = camera as PerspectiveCamera;
     const uniforms = this.material.uniforms;
     uniforms.tDepth!.value = depth;
@@ -144,6 +154,46 @@ export class DistanceFieldShadows {
     renderer.setRenderTarget(this.target);
     renderer.clear(true, false, false);
     drawFullscreen(renderer, this.material);
+    renderer.setRenderTarget(previous);
+    return this.target!.texture;
+  }
+
+  /**
+   * WebGPU 那條路。第一次呼叫啟動非同步建立並回傳 `null` —— 下一幀就好了。
+   */
+  private renderNode(
+    renderer: WebGLRenderer,
+    camera: Camera,
+    depth: Texture,
+    normal: Texture,
+    field: GlobalDistanceField,
+    lightDirection: Vector3,
+  ): Texture | null {
+    if (this.node === null) {
+      this.nodePending ??= import('./distance-field-shadows-node.ts')
+        .then((m) => m.createDistanceFieldShadowsNodeMaterial())
+        .then((handle) => {
+          this.node = handle;
+        });
+      return null;
+    }
+    this.projectionInverse.copy((camera as { projectionMatrix: Matrix4 }).projectionMatrix).invert();
+    this.node.setTextures(depth, normal, field.texture);
+    this.node.setMatrices(this.projectionInverse, camera.matrixWorld);
+    this.node.setField(field.min, field.extent, field.extent / field.resolution);
+    this.node.setLight(lightDirection);
+    this.node.setParams({
+      range: this.options.range > 0 ? this.options.range : field.extent * 0.5,
+      steps: this.options.steps,
+      softness: this.options.softness,
+      strength: this.options.strength,
+    });
+    this.node.setConvention(renderer);
+
+    const previous = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.target);
+    renderer.clear(true, false, false);
+    drawFullscreen(renderer, this.node.material as never);
     renderer.setRenderTarget(previous);
     return this.target!.texture;
   }

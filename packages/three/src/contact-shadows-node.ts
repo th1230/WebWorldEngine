@@ -5,6 +5,7 @@ import {
   loadTsl,
   loadWebGPU,
   sampleDepth,
+  texture2DPlaceholder,
   viewPositionFromDepth,
 } from './fullscreen-node.ts';
 import type { Matrix4, Texture, Vector3 } from 'three';
@@ -40,8 +41,8 @@ export async function createContactShadowsNodeMaterial(): Promise<ContactShadows
   const { Fn, Loop, If, Break, float, vec3, vec4, uniform, uv, texture, normalize, dot, mat4 } = tsl;
 
   // `texture(null)` 建不起來，所以先給一張佔位的 —— `setTextures` 之後會換掉。
-  const tNormal = texture(null as any);
-  const tDepth = texture(null as any);
+  const tNormal = texture(texture2DPlaceholder(webgpu));
+  const tDepth = texture(texture2DPlaceholder(webgpu));
   const uProjection = uniform(mat4());
   const uProjectionInverse = uniform(mat4());
   const uLightDirection = uniform(vec3(0, 1, 0));
@@ -64,7 +65,7 @@ export async function createContactShadowsNodeMaterial(): Promise<ContactShadows
     // 所以整段包在 If 裡 —— 結構不同，算出來的東西一樣。
     If(rawDepth.lessThan(1), () => {
       const origin = viewPositionFromDepth(tsl, screenUv, rawDepth, uProjectionInverse, convention).toVar();
-      const normal = normalize(texture(tNormal, flipV(tsl, screenUv)).xyz.mul(2).sub(1)).toVar();
+      const normal = normalize(tNormal.sample(flipV(tsl, screenUv)).xyz.mul(2).sub(1)).toVar();
       // 往光源走（uLightDirection 是照過來的方向，所以要取負）。
       const toLight = normalize(uLightDirection.negate()).toVar();
 
@@ -133,7 +134,7 @@ export async function createContactShadowsNodeMaterial(): Promise<ContactShadows
 
     const debugged = vec3(result).toVar();
     If(uDebug.equal(1), () => { debugged.assign(vec3(rawDepth)); });
-    If(uDebug.equal(2), () => { debugged.assign(texture(tNormal, flipV(tsl, screenUv)).xyz); });
+    If(uDebug.equal(2), () => { debugged.assign(tNormal.sample(flipV(tsl, screenUv)).xyz); });
     // 9/10/11：參數本身。設錯的話上面每一個中間值看起來都正常，只有結果不對。
     If(uDebug.equal(9), () => { debugged.assign(vec3(uThickness.mul(4))); });
     If(uDebug.equal(10), () => { debugged.assign(vec3(uSteps.div(32))); });
@@ -142,7 +143,7 @@ export async function createContactShadowsNodeMaterial(): Promise<ContactShadows
     //     那時遮蔽本來就該成立。
     If(uDebug.equal(13), () => {
       const o = viewPositionFromDepth(tsl, screenUv, rawDepth, uProjectionInverse, convention).toVar();
-      const n = normalize(texture(tNormal, flipV(tsl, screenUv)).xyz.mul(2).sub(1)).toVar();
+      const n = normalize(tNormal.sample(flipV(tsl, screenUv)).xyz.mul(2).sub(1)).toVar();
       const l = normalize(uLightDirection.negate()).toVar();
       const st = o.add(n.mul(uThickness).mul(0.5)).toVar();
       const sl = uDistance.div(uSteps).toVar();
@@ -173,14 +174,14 @@ export async function createContactShadowsNodeMaterial(): Promise<ContactShadows
     If(uDebug.equal(12), () => { debugged.assign(vec3(stepsReached.div(16))); });
     // 7：面向光的程度。這個閘門把整片擋掉的話，結果會恆為 1。
     If(uDebug.equal(7), () => {
-      const n7 = normalize(texture(tNormal, flipV(tsl, screenUv)).xyz.mul(2).sub(1));
+      const n7 = normalize(tNormal.sample(flipV(tsl, screenUv)).xyz.mul(2).sub(1));
       debugged.assign(vec3(dot(n7, normalize(uLightDirection.negate())).mul(0.5).add(0.5)));
     });
     // 8：迴圈裡看到的最大深度差（除以 thickness）。> 1 代表打到但被厚度擋掉，
     //    ≤ 0 代表根本沒有東西擋在前面。
     If(uDebug.equal(8), () => {
       const o8 = viewPositionFromDepth(tsl, screenUv, rawDepth, uProjectionInverse, convention).toVar();
-      const n8 = normalize(texture(tNormal, flipV(tsl, screenUv)).xyz.mul(2).sub(1)).toVar();
+      const n8 = normalize(tNormal.sample(flipV(tsl, screenUv)).xyz.mul(2).sub(1)).toVar();
       const l8 = normalize(uLightDirection.negate()).toVar();
       const s8 = o8.add(n8.mul(uThickness).mul(0.5)).toVar();
       const step8 = uDistance.div(uSteps).toVar();

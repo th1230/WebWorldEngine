@@ -5,6 +5,7 @@ import { makeSkinnedRig } from './skinned.ts';
 import { makeGiScene, type GiScene } from './gi-scene.ts';
 import { makeSkyScene, type SkyScene } from './sky-scene.ts';
 import { makeContactScene, type ContactScene } from './contact-scene.ts';
+import { makeDfShadowScene, type DfShadowScene } from './df-shadow-scene.ts';
 
 /**
  * `WW.AnimatedInstancedMesh` 在 **WebGPU** 上的驗證頁。
@@ -55,6 +56,8 @@ const SKY = params.get('sky') === '1';
  * `makeContactScene` —— 佈置一模一樣，只有 renderer 不同。
  */
 const CONTACT = params.get('contact') === '1';
+/** `?dfshadow=1` 換成距離場陰影的驗證場景。與 WebGL 那頁共用同一個場景。 */
+const DF_SHADOW = params.get('dfshadow') === '1';
 
 const renderer = new WebGPURenderer({ canvas, antialias: true });
 renderer.setSize(innerWidth, innerHeight, false);
@@ -84,6 +87,16 @@ if (GI) {
   // 前幾幀還沒有間接光，而量測會剛好落在那幾幀裡。
   await WW.irradianceNodeReady();
 
+}
+
+let dfShadowScene: DfShadowScene | null = null;
+if (DF_SHADOW) {
+  scene.remove(...scene.children.filter((o) => (o as { isLight?: boolean }).isLight === true));
+  dfShadowScene = makeDfShadowScene();
+  // 這個場景有自己的私有 scene —— **不要**把 root 加進來（加了會把它從
+  // 私有 scene 搬走，gbuffer 就畫到空的）。
+  dfShadowScene.settle();
+  await dfShadowScene.nodeReady(renderer);
 }
 
 let contactScene: ContactScene | null = null;
@@ -129,7 +142,9 @@ for (let i = 0; i < COUNT; i++) {
   m.makeTranslation((rand() - 0.5) * 120, 0, (rand() - 0.5) * 120);
   mesh.setMatrixAt(i, m);
 }
-if (giScene === null && skyScene === null && contactScene === null) scene.add(mesh);
+if (giScene === null && skyScene === null && contactScene === null && dfShadowScene === null) {
+  scene.add(mesh);
+}
 
 let frames = 0;
 function step(t: number): void {
@@ -154,6 +169,19 @@ renderer.setAnimationLoop(() => {
 
 Object.assign(window, {
   __wwgpu: {
+    dfShadow:
+      dfShadowScene === null
+        ? null
+        : {
+            settle: (): number => dfShadowScene.settle(),
+            render: (): void => dfShadowScene.render(renderer as never),
+            sampleWindowAsync: (
+              which: "shadow" | "open" | "behind" | "outside" | "boxTop" | "terminator",
+              size: number,
+            ): Promise<number> =>
+              dfShadowScene.sampleWindowAsync(renderer, dfShadowScene.points[which], size),
+            coverageAsync: (): Promise<number> => dfShadowScene.coverageAsync(renderer),
+          },
     contact:
       contactScene === null
         ? null

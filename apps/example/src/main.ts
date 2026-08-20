@@ -2001,6 +2001,13 @@ Object.assign(window, {
             settle: (): number => dfShadowScene.settle(),
             pending: (): number => dfShadowScene.fieldPending(),
             render: (): void => dfShadowScene.render(renderer),
+            // 跨後端比對要走同一支。WebGPU 沒有同步的讀回。
+            sampleWindowAsync: (
+              which: "shadow" | "open" | "behind" | "outside" | "boxTop" | "terminator",
+              size: number,
+            ): Promise<number> =>
+              dfShadowScene.sampleWindowAsync(renderer, dfShadowScene.points[which], size),
+            coverageAsync: (): Promise<number> => dfShadowScene.coverageAsync(renderer),
             sample: (which: "shadow" | "open" | "behind" | "outside" | "boxTop" | "terminator"): number =>
               dfShadowScene.sample(renderer, dfShadowScene.points[which]),
             coverage: (): number => dfShadowScene.coverage(renderer),

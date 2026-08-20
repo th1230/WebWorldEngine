@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as WW from '@webworld/three';
+import { readPixelsAsync } from './readback.ts';
 
 /**
  * 距離場陰影的證明場景：一個**大**箱子在一片空地上。
@@ -33,6 +34,12 @@ export interface DfShadowScene {
   settle: () => number;
   render: (renderer: THREE.WebGLRenderer) => void;
   sample: (renderer: THREE.WebGLRenderer, point: THREE.Vector3) => number;
+  /** 同一件事，非同步 —— WebGPU 沒有同步的讀回。 */
+  sampleWindowAsync: (renderer: unknown, point: THREE.Vector3, size: number) => Promise<number>;
+  /** 整張遮罩有多少比例是暗的，兩個後端都走得通。 */
+  coverageAsync: (renderer: unknown) => Promise<number>;
+  /** 等 WebGPU 那條路建好。 */
+  nodeReady: (renderer: unknown) => Promise<void>;
   coverage: (renderer: THREE.WebGLRenderer) => number;
   points: {
     shadow: THREE.Vector3;
@@ -132,6 +139,12 @@ export function makeDfShadowScene(): DfShadowScene {
   const projected = new THREE.Vector3();
   const fieldCentre = new THREE.Vector3(0, 0, 0);
 
+  /** 一幀：更新深度法線，然後算距離場陰影。`nodeReady` 也要用它。 */
+  const drawOnce = (renderer: THREE.WebGLRenderer): void => {
+    gbuffer.update(renderer, scene, camera);
+    shadows.render(renderer, camera, gbuffer, field, lightDirection);
+  };
+
   return {
     root,
     camera,
@@ -144,10 +157,7 @@ export function makeDfShadowScene(): DfShadowScene {
       return rounds;
     },
     fieldPending: () => field.pendingCells,
-    render: (renderer) => {
-      gbuffer.update(renderer, scene, camera);
-      shadows.render(renderer, camera, gbuffer, field, lightDirection);
-    },
+    render: drawOnce,
     renderFog: (renderer, useField) => {
       gbuffer.update(renderer, scene, camera);
       fog.render(renderer, camera, gbuffer, lightDirection, new THREE.Color(0xffffff), useField ? field : null);
@@ -175,6 +185,37 @@ export function makeDfShadowScene(): DfShadowScene {
         THREE.DataUtils.fromHalfFloat(half[2] ?? 0),
         THREE.DataUtils.fromHalfFloat(half[3] ?? 0),
       ];
+    },
+    sampleWindowAsync: async (renderer, point, size) => {
+      const target = targetOf(shadows);
+      projected.copy(point).project(camera);
+      const half = size >> 1;
+      const x = Math.min(
+        target.width - size,
+        Math.max(0, Math.round(((projected.x + 1) / 2) * target.width) - half),
+      );
+      const y = Math.min(
+        target.height - size,
+        Math.max(0, Math.round(((projected.y + 1) / 2) * target.height) - half),
+      );
+      const data = await readPixelsAsync(renderer, target, x, y, size, size, (n) => new Uint8Array(n));
+      let sum = 0;
+      for (let i = 0; i < size * size; i++) sum += data[i * 4] ?? 0;
+      return sum / (size * size) / 255;
+    },
+    coverageAsync: async (renderer) => {
+      const target = targetOf(shadows);
+      const data = await readPixelsAsync(renderer, target, 0, 0, target.width, target.height, (n) => new Uint8Array(n));
+      let dark = 0;
+      for (let i = 0; i < data.length; i += 4) if ((data[i] ?? 255) < 230) dark++;
+      return dark / (target.width * target.height);
+    },
+    nodeReady: async (renderer) => {
+      // node 材質是動態 import 進來的 —— 要等**真的時間**，microtask 不夠。
+      for (let i = 0; i < 60; i++) {
+        drawOnce(renderer as THREE.WebGLRenderer);
+        await new Promise((resolve) => setTimeout(resolve, 8));
+      }
     },
     sample: (renderer, point) => {
       const target = targetOf(shadows);

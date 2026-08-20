@@ -112,6 +112,30 @@ const EFFECTS = [
     },
   },
   {
+    name: '距離場陰影',
+    key: 'dfShadow',
+    glUrl: '/?dfshadow=1&verify=1',
+    gpuUrl: '/webgpu.html?dfshadow=1',
+    labels: ['影子裡', '空地', '箱子後面', '場外面', '箱頂', '明暗交界', '整張暗的比例'],
+    // 前六個是 0..1 的 8 位元取樣，最後一個是比例 —— 尺度差兩個數量級。
+    floor: [1 / 255, 1 / 255, 1 / 255, 1 / 255, 1 / 255, 1 / 255, 1e-4],
+    measure: async (api) => {
+      // ## 兩邊都要 settle
+      //
+      // 距離場是分幀建起來的。不 settle 就量的話場是空的 —— 而空的場**不會
+      // 報錯**，只是完全沒有陰影。實測 WebGL 那側整片 1.0、WebGPU 那側因為
+      // 初始化時剛好叫過而有陰影，於是兩邊差 100%，看起來像 TSL 那份寫錯。
+      api.settle();
+      api.render();
+      const out = [];
+      for (const which of ['shadow', 'open', 'behind', 'outside', 'boxTop', 'terminator']) {
+        out.push(await api.sampleWindowAsync(which, 9));
+      }
+      out.push(await api.coverageAsync());
+      return out;
+    },
+  },
+  {
     name: '間接光探針的 SH 係數',
     key: 'gi',
     glUrl: '/?gi=1&verify=1',
@@ -231,7 +255,7 @@ try {
         maxDiff = d;
         where = effect.labels?.[i] ?? String(i);
       }
-      if (effect.labels !== undefined && effect.labels.length <= 6) {
+      if (effect.labels !== undefined && effect.labels.length <= 8) {
         console.log(`  ${effect.labels[i].padEnd(10)} WebGL ${gl.values[i].toFixed(5)}  WebGPU ${gpu.values[pair[i]].toFixed(5)}  差 ${(d * 100).toFixed(3)}%`);
       }
     }

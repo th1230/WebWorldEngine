@@ -23,6 +23,30 @@
 export type Tsl = Record<string, any>;
 export type TslNode = any;
 
+/**
+ * 佔位貼圖。
+ *
+ * TSL 的 `texture()` / `texture3D()` 在建節點時就要一個**有效的** Texture ——
+ * 給 null 會丟「expects a valid instance of THREE.Texture()」。而效果的貼圖
+ * 要等到第一次 render 才知道是哪一張。
+ *
+ * 所以先接一張 1×1 的，之後換 `.value`。
+ */
+let placeholder2D: unknown = null;
+let placeholder3D: unknown = null;
+
+export function texture2DPlaceholder(three: Tsl): unknown {
+  placeholder2D ??= new three.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+  (placeholder2D as { needsUpdate: boolean }).needsUpdate = true;
+  return placeholder2D;
+}
+
+export function texture3DPlaceholder(three: Tsl): unknown {
+  placeholder3D ??= new three.Data3DTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, 1);
+  (placeholder3D as { needsUpdate: boolean }).needsUpdate = true;
+  return placeholder3D;
+}
+
 let tslPromise: Promise<Tsl> | null = null;
 let webgpuPromise: Promise<Tsl> | null = null;
 
@@ -120,8 +144,8 @@ export function createDepthConvention(tsl: Tsl): DepthConvention {
  * 每一點都讀到 1.0（完全沒有遮蔽），而主控台一行錯誤都沒有。
  */
 export function sampleDepth(tsl: Tsl, depthTexture: TslNode, uv: TslNode): TslNode {
-  const { texture } = tsl;
-  return texture(depthTexture, flipV(tsl, uv));
+  // 對節點本身取樣。再包一層 `texture(node, uv)` 會被當成「拿節點當貼圖」。
+  return depthTexture.sample(flipV(tsl, uv));
 }
 
 /**
