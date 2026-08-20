@@ -1,4 +1,4 @@
-import * as WW from '@webworld/three';
+import * as WW from '@web-world-engine/three';
 import { Matrix4, OrthographicCamera, WebGLRenderTarget } from 'three';
 import { makeSkinnedField, makeSkinnedRig } from './skinned.ts';
 import { makeWaterScene } from './water-scene.ts';

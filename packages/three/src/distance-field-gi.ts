@@ -11,7 +11,7 @@ import {
   bakeSurfaceCache,
   type DistanceFieldOptions,
   type SurfaceCache,
-} from '@webworld/format';
+} from '@web-world-engine/format';
 import type { BufferGeometry } from 'three';
 
 /**

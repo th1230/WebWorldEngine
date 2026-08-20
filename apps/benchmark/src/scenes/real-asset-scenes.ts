@@ -3,7 +3,7 @@ import {
   load,
   loadMaterial,
   type LodChain,
-} from '@webworld/three';
+} from '@web-world-engine/three';
 import {
   AmbientLight,
   DirectionalLight,

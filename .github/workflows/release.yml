@@ -1,17 +1,33 @@
 name: Release
 
-# tag 推上來才跑。不會因為 push 到 main 就發布 —— 發布是一個決定，
-# 不是一個副作用。
+# ## 合併回 `main` 就是「發布」這個決定
+#
+# 平常在 `develop` 上做事，CI 一樣跑。要發一版的時候：在 `develop` 上
+# 跑 `pnpm version:set`、寫 CHANGELOG，然後開 PR 合併回 `main`。
+#
+# **合併本身不會重複發布。** 下面那一步會先問 registry 有沒有這個版本，
+# 有就跳過 —— 所以合併十次而版本沒動，就是十次什麼都不發。真正決定
+# 發不發的是 `package.json` 裡的版本號有沒有變。
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+  # 發布做到一半失敗時，修完可以手動再跑一次（已發布的那幾個會跳過）。
+  workflow_dispatch:
+
+# 同時推兩個 tag 的話兩個 job 會搶著發同一個 scope。這裡**不取消**
+# 進行中的那個 —— 發布做到一半被砍掉會留下「format 上去了、three 沒有」
+# 的狀態，比排隊等它跑完糟得多。
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   publish:
     name: Verify and publish
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # 發完之後要打 tag，所以是 write。CI 那個只讀。
+      contents: write
       # npm 的 trusted publishing 要它；用 NPM_TOKEN 的話沒有影響。
       id-token: write
     steps:
@@ -27,21 +43,24 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # ## tag 與 package.json 必須一致
+      # ## 要發哪一版，由 `package.json` 說了算
       #
-      # 不對的話發出去的版本號與 tag 指的 commit 對不上，而那件事**事後
-      # 無法修正** —— npm 上的版本號拿不回來。所以擋在最前面。
-      - name: Tag 與版本一致
+      # 三個必須一致 —— 不一致的話發出去就是「cook 是 0.2.0、runtime 是
+      # 0.1.0」，而那種組合的症狀是資產載不進去。`metadata-check` 也守這
+      # 一條，這裡再擋一次是因為**後面那一步不可逆**。
+      - name: 決定版本
+        id: version
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          for pkg in format three cook; do
-            VERSION=$(node -p "require('./packages/$pkg/package.json').version")
-            if [ "$TAG" != "$VERSION" ]; then
-              echo "tag v$TAG 與 @webworld/$pkg 的 $VERSION 對不上"
+          VERSION=$(node -p "require('./packages/three/package.json').version")
+          for pkg in format cook; do
+            OTHER=$(node -p "require('./packages/$pkg/package.json').version")
+            if [ "$VERSION" != "$OTHER" ]; then
+              echo "三個套件版本不一致：three=$VERSION、$pkg=$OTHER"
               exit 1
             fi
           done
-          echo "三個套件都是 $TAG"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "三個套件都是 $VERSION"
 
       - run: pnpm cook -- --verify
 
@@ -57,7 +76,7 @@ jobs:
       # 只用 WebGL 的人不該下載 WebGPU 那一半。
       # 生態系自己的兩把尺：publint 驗 package.json 與 tarball，
       # attw 驗型別在四種解析模式下找不找得到。它們第一次跑就抓到
-      # @webworld/cook 的型別整個是斷的 —— 而這裡沒有任何東西看得見。
+      # @web-world-engine/cook 的型別整個是斷的 —— 而這裡沒有任何東西看得見。
       - run: pnpm publish-check
 
       - run: pnpm bundle-check
@@ -68,10 +87,43 @@ jobs:
       - run: node tools/package-check/verify.mjs
 
       # 依相依順序發。format 先上去，另外兩個才解析得到它。
+      # ## dist-tag 要從版本號推出來
+      #
+      # `npm publish` 不看版本號裡有沒有 prerelease 標記 —— 沒給 `--tag`
+      # 一律寫進 `latest`。而 `pnpm version:set` 是**收 `0.2.0-beta.1` 的**，
+      # 所以這條路真的走得到：推一個 beta，全世界 `npm i` 的預設就變成它。
+      #
+      # 規則：`1.2.3` → latest，`1.2.3-beta.1` → beta，`1.2.3-rc.2` → rc。
+      - name: 決定 dist-tag
+        id: tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          case "$VERSION" in
+            *-*) DIST="${VERSION#*-}"; DIST="${DIST%%.*}" ;;
+            *)   DIST="latest" ;;
+          esac
+          echo "dist=$DIST" >> "$GITHUB_OUTPUT"
+          echo "$VERSION → dist-tag $DIST"
+
+      # ## 已經發布過的那幾個要跳過，不是整個停
+      #
+      # 三個是一個一個發的。中間任何一個失敗（網路、npm 抽風）之後重跑
+      # 同一個 tag，前面成功的那些會以「不能覆蓋已發布的版本」擋下來 ——
+      # 於是後面沒發成的永遠發不出去。
+      #
+      # 所以先問 registry 上有沒有這個版本，有就跳過。**這不是忽略錯誤**：
+      # 真的發布失敗照樣讓整個 job 紅。
       - name: Publish
         run: |
+          set -e
+          VERSION="${{ steps.version.outputs.version }}"
           for pkg in format three cook; do
-            pnpm --filter "@webworld/$pkg" publish --no-git-checks --access public
+            if npm view "@web-world-engine/$pkg@$VERSION" version > /dev/null 2>&1; then
+              echo "@web-world-engine/$pkg@$VERSION 已經在 registry 上了，跳過"
+              continue
+            fi
+            pnpm --filter "@web-world-engine/$pkg" publish \
+              --no-git-checks --access public --tag "${{ steps.tag.outputs.dist }}"
           done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -86,3 +138,22 @@ jobs:
           #
           # 需要 id-token: write（上面已經有）與從 GitHub Actions 發布。
           NPM_CONFIG_PROVENANCE: "true"
+
+      # ## 發完之後補上 tag
+      #
+      # 觸發改成「合併到 main」之後，npm 上的版本就沒有東西對得回一個
+      # commit 了。這一步把它補回來：`v0.2.0` 指著實際發布的那一次合併。
+      #
+      # 放在發布**之後**是刻意的 —— 發布失敗時不留下一個指著沒發出去的
+      # 版本的 tag。已經存在就跳過（重跑同一個 commit 時）。
+      - name: 打 tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if git rev-parse "v$VERSION" > /dev/null 2>&1; then
+            echo "v$VERSION 已經存在，跳過"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"

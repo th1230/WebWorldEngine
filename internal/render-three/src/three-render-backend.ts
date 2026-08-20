@@ -1,4 +1,4 @@
-import type { AssetId } from '@webworld/format';
+import type { AssetId } from '@web-world-engine/format';
 import { NO_BACKEND_PROFILE, type CapabilityProfile } from '@ww/core';
 import type { RendererTelemetry } from '@ww/diagnostics';
 import type {

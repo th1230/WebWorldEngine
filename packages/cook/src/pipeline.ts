@@ -7,7 +7,7 @@ import {
   type MeshEntry,
   type TextureEntry,
   asAssetId,
-} from '@webworld/format';
+} from '@web-world-engine/format';
 import { hashObject, hashString } from '@ww/core';
 import {
   DEFAULT_LOD_OPTIONS,

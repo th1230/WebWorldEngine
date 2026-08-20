@@ -12,7 +12,7 @@ import {
   Vector3,
   WebGLRenderTarget,
 } from 'three';
-import { PageTable, type VirtualTextureLayout } from '@webworld/format';
+import { PageTable, type VirtualTextureLayout } from '@web-world-engine/format';
 import { AlwaysDepth, Matrix4, ShaderMaterial } from 'three';
 import { drawFullscreen, FULLSCREEN_VERTEX, VIEW_POSITION_GLSL } from './fullscreen.ts';
 // 只有型別是靜態的 —— 那份 TSL 轉寫是動態載入的。

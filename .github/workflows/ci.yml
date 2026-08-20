@@ -1,9 +1,29 @@
 name: CI
 
+# 平常在 `develop` 上做事；`main` 只收合併，而合併到 `main` 會觸發發布
+# （見 `release.yml`）。兩條都要跑 —— `main` 上跑是因為**發布前最後一次**
+# 驗證要在真的要發的那個 commit 上。
 on:
   push:
-    branches: [main, master]
+    branches: [main, develop]
   pull_request:
+    branches: [main, develop]
+  # ## 每週跑一次，即使沒有人改任何東西
+  #
+  # 這個套件碰 `THREE.BatchedMesh` 的私有欄位（見 `three-internals.ts`：
+  # 官方沒有公開的替代路徑）。Three 改名或改結構的話，這裡會**靜靜地**
+  # **畫不出東西** —— 而 peer 範圍鎖在一個 minor，所以那件事只會在有人
+  # 升級 Three 時發生，而不是在有人改這個 repo 時。
+  #
+  # 排程跑配上 Dependabot 的 PR，就是「上游動了」這件事的偵測器。
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+# 這個 workflow 只讀。沒有這一段的話拿到的是 repo 的預設值，而新 repo
+# 的預設是 contents: write —— 一個只跑測試的 job 不需要那個。
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -59,7 +79,7 @@ jobs:
       # 因為畫面完全正確，只是每個使用者多背一整包 TSL。
       # 生態系自己的兩把尺：publint 驗 package.json 與 tarball，
       # attw 驗型別在四種解析模式下找不找得到。它們第一次跑就抓到
-      # @webworld/cook 的型別整個是斷的 —— 而這裡沒有任何東西看得見。
+      # @web-world-engine/cook 的型別整個是斷的 —— 而這裡沒有任何東西看得見。
       - run: pnpm publish-check
 
       - run: pnpm bundle-check

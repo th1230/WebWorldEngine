@@ -22,7 +22,7 @@
 import { Matrix4 } from 'three';
 import type { BufferGeometry } from 'three';
 import { OcclusionBuffer } from '@ww/engine';
-import { innerBox } from '@webworld/format';
+import { innerBox } from '@web-world-engine/format';
 
 /**
  * 最多畫幾個遮蔽物。

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import * as WW from '@webworld/three';
+import * as WW from '@web-world-engine/three';
 
 /**
  * 一份**很大的單一幾何**，用來量 `splitWithLods` 值多少。

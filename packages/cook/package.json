@@ -1,7 +1,7 @@
 {
-  "name": "@webworld/cook",
+  "name": "@web-world-engine/cook",
   "version": "0.1.0",
-  "description": "把 glTF 烘焙成 @webworld/three 吃的格式：LOD 鏈、切線、BC 壓縮貼圖。",
+  "description": "把 glTF 烘焙成 @web-world-engine/three 吃的格式：LOD 鏈、切線、BC 壓縮貼圖。",
   "keywords": [
     "gltf",
     "lod",
@@ -11,14 +11,14 @@
     "three"
   ],
   "license": "MIT",
-  "author": "thomasYeh",
+  "author": "th1230",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/thomasYeh/WebWorldEngine.git",
+    "url": "git+https://github.com/th1230/WebWorldEngine.git",
     "directory": "packages/cook"
   },
-  "bugs": "https://github.com/thomasYeh/WebWorldEngine/issues",
-  "homepage": "https://github.com/thomasYeh/WebWorldEngine/tree/main/packages/cook#readme",
+  "bugs": "https://github.com/th1230/WebWorldEngine/issues",
+  "homepage": "https://github.com/th1230/WebWorldEngine/tree/main/packages/cook#readme",
   "type": "module",
   "sideEffects": false,
   "engines": {
@@ -67,7 +67,7 @@
     "meshoptimizer": "^1.2.0",
     "mikktspace": "^1.1.1",
     "sharp": "^0.35.3",
-    "@webworld/format": "workspace:*"
+    "@web-world-engine/format": "workspace:*"
   },
   "devDependencies": {
     "@ww/core": "workspace:*",

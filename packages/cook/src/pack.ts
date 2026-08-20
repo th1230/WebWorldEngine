@@ -5,7 +5,7 @@ import {
   ASSET_SCHEMA_VERSION,
   type CollisionEntry,
   type LodEntry,
-} from '@webworld/format';
+} from '@web-world-engine/format';
 import type { LodResult, RawMesh } from './geometry.ts';
 
 export interface PackedMesh {

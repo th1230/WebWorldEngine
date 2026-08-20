@@ -19,7 +19,7 @@ import { serveDist } from '../lib/serve.mjs';
  *
  * - `publishConfig.exports` 有沒有真的把進入點換成 `dist`
  * - `three` 是 peer，所以裝進去之後**必須**用外面那一份
- * - `@webworld/format` 是共用的格式契約，兩個套件必須解析到同一份
+ * - `@web-world-engine/format` 是共用的格式契約，兩個套件必須解析到同一份
  * - 發布內容裡有沒有混進不該有的東西
  *
  * ## 為什麼用 pnpm 打包、用 npm 安裝
@@ -46,9 +46,9 @@ const run = (cmd, args, cwd) =>
 const PACKAGES = ['format', 'three', 'cook'];
 
 const CHECK = `
-import { InstancedMesh, worldFor, sphericalLodErrors, load } from '@webworld/three';
-import { ASSET_SCHEMA_VERSION, MESH_MAGIC } from '@webworld/format';
-import { cookAll, COOKER_VERSION } from '@webworld/cook';
+import { InstancedMesh, worldFor, sphericalLodErrors, load } from '@web-world-engine/three';
+import { ASSET_SCHEMA_VERSION, MESH_MAGIC } from '@web-world-engine/format';
+import { cookAll, COOKER_VERSION } from '@web-world-engine/cook';
 import { BatchedMesh, BoxGeometry, MeshBasicMaterial, Scene, SphereGeometry } from 'three';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
@@ -81,7 +81,7 @@ if (ids.length === 0) throw new Error('cookAll 沒有產出任何 mesh');
 if (manifest.schemaVersion !== ASSET_SCHEMA_VERSION) {
   throw new Error(
     'cook 產出的 schema v' + manifest.schemaVersion +
-      ' 與 runtime 的 v' + ASSET_SCHEMA_VERSION + ' 不符 —— 兩個套件解析到不同的 @webworld/format',
+      ' 與 runtime 的 v' + ASSET_SCHEMA_VERSION + ' 不符 —— 兩個套件解析到不同的 @web-world-engine/format',
   );
 }
 const wwm = [...files.keys()].find((n) => n.endsWith('.wwm'));
@@ -118,7 +118,7 @@ console.log(
 try {
   const tarballs = [];
   for (const name of PACKAGES) {
-    console.log(`打包 @webworld/${name}…`);
+    console.log(`打包 @web-world-engine/${name}…`);
     run('pnpm', ['pack', '--pack-destination', work], join(ROOT, 'packages', name));
   }
   for (const file of readdirSync(work)) {
@@ -169,7 +169,7 @@ async function checkInBrowser(dir) {
 
   writeFileSync(
     join(dir, 'app.js'),
-    `import { InstancedMesh, load, loadMaterial } from '@webworld/three';
+    `import { InstancedMesh, load, loadMaterial } from '@web-world-engine/three';
 import { SphereGeometry, MeshBasicMaterial } from 'three';
 
 const mesh = new InstancedMesh(new SphereGeometry(1, 32, 24), new MeshBasicMaterial(), 4);

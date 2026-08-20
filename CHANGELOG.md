@@ -1,6 +1,6 @@
 # 變更紀錄
 
-三個套件（`@webworld/three`、`@webworld/format`、`@webworld/cook`）**齊步發布**，
+三個套件（`@web-world-engine/three`、`@web-world-engine/format`、`@web-world-engine/cook`）**齊步發布**，
 版本永遠相同 —— 理由見 [`tools/release/version.mjs`](tools/release/version.mjs)。
 所以有時候會有一個「這個套件什麼都沒改」的版本。
 

@@ -3,7 +3,7 @@ import {
   TANGENT_OFFSET,
   VERTEX_FLOATS,
   VERTEX_STRIDE_BYTES,
-} from '@webworld/format';
+} from '@web-world-engine/format';
 import { Document, NodeIO } from '@gltf-transform/core';
 import { describe, expect, it } from 'vitest';
 import {

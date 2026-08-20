@@ -1,4 +1,4 @@
-import type { AssetManifest, MaterialEntry, TextureEntry } from '@webworld/format';
+import type { AssetManifest, MaterialEntry, TextureEntry } from '@web-world-engine/format';
 import { createDefaultContainer, write } from 'ktx-parse';
 import {
   MeshStandardMaterial,

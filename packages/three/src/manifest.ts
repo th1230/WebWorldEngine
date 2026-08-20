@@ -1,4 +1,4 @@
-import type { AssetManifest } from '@webworld/format';
+import type { AssetManifest } from '@web-world-engine/format';
 
 /**
  * cook 過的資產共用的 manifest 取得與快取。

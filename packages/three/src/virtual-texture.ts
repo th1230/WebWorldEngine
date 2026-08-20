@@ -6,7 +6,7 @@ import {
   RGBAFormat,
   UnsignedByteType,
 } from 'three';
-import { PageTable, type PageLoad, type VirtualTextureLayout } from '@webworld/format';
+import { PageTable, type PageLoad, type VirtualTextureLayout } from '@web-world-engine/format';
 import type { Material, WebGLProgramParametersWithUniforms } from 'three';
 
 /**
@@ -28,7 +28,7 @@ import type { Material, WebGLProgramParametersWithUniforms } from 'three';
  * | --- | --- |
  * | 圖集 | 真正存在的貼圖，住得下 `atlasPages²` 頁 |
  * | 頁表 | 每一格說「這一塊該去圖集哪裡拿」，**必須用 NEAREST** |
- * | 住民管理 | 在 `@webworld/format` 的 `PageTable`，純邏輯所以測得動 |
+ * | 住民管理 | 在 `@web-world-engine/format` 的 `PageTable`，純邏輯所以測得動 |
  *
  * 頁表用 NEAREST 不是效能取捨，是**正確性**：內插兩個頁位址會得到第三個
  * 不存在的位址，畫面上是隨機的碎塊。這種錯不會報錯。

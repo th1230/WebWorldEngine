@@ -3,4 +3,4 @@
  *
  * 這裡只是轉出去 —— 場景檔案不必知道它從哪裡來，而且**只有一份實作**。
  */
-export { readPixelsAsync, type ReadableTarget } from '@webworld/three';
+export { readPixelsAsync, type ReadableTarget } from '@web-world-engine/three';

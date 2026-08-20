@@ -1,10 +1,10 @@
 import { IcosahedronGeometry, PlaneGeometry } from 'three';
 import { describe, expect, it } from 'vitest';
-import { maxSurfaceDeviation } from '@webworld/format';
+import { maxSurfaceDeviation } from '@web-world-engine/format';
 import { sphericalLodErrors } from './spherical-error.ts';
 
 /**
- * 被測的東西住在 `@webworld/format`（那個套件沒有任何相依），測試住在這裡
+ * 被測的東西住在 `@web-world-engine/format`（那個套件沒有任何相依），測試住在這裡
  * ——因為驗它需要 Three 的幾何產生器當**獨立的參考實作**，而那是相依。
  *
  * 這支要證明的是「它量得準」，而準的判準是**拿有封閉解的幾何比對**，

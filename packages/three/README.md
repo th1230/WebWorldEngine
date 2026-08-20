@@ -1,4 +1,4 @@
-# @webworld/three
+# @web-world-engine/three
 
 > Three.js 的強化層。**換一個字**就有螢幕誤差 LOD、空間分割剔除與世界串流；
 > 其餘的東西一個一個加，加到哪裡就有到哪裡。
@@ -7,7 +7,7 @@
 controls、後處理全部照樣能用；隨時可以換回去。
 
 ```bash
-npm i @webworld/three
+npm i @web-world-engine/three
 ```
 
 `three` 是 peer dependency —— 用的就是你專案裡那一份。WebGL2 與 WebGPU
@@ -19,7 +19,7 @@ npm i @webworld/three
 
 ```js
 import * as THREE from 'three';
-import * as WW from '@webworld/three';
+import * as WW from '@web-world-engine/three';
 
 const rocks = new WW.InstancedMesh(geometry, material, 10000);
 for (let i = 0; i < 10000; i++) rocks.setMatrixAt(i, matrix);
@@ -702,7 +702,7 @@ rocks.stats;              // { visible, tested, levels, cpuMs, spatial }
 | `translateObject(object, offset)` | 平移一個物件，含它內部的 instance 資料。`OriginRebase` 用的就是它 |
 | `clearAssetCache()` / `disposeBakeCache(renderer)` | 換關卡時把 manifest 與烘焙用的暫存放掉 |
 | `DEFAULT_WAVES` | `Water` 預設的那組波。要改先從它複製一份 |
-| `PageTable` | 虛擬貼圖與虛擬陰影圖共用的頁表。自己做分頁資源時用得到（轉出自 `@webworld/format`） |
+| `PageTable` | 虛擬貼圖與虛擬陰影圖共用的頁表。自己做分頁資源時用得到（轉出自 `@web-world-engine/format`） |
 
 自己組 LOD 鏈的話還有這幾個 —— `InstancedMesh` 內部用的就是它們：
 

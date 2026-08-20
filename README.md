@@ -35,9 +35,9 @@ controls、後處理全部照樣能用，隨時可以換回去。
 
 ```text
 packages/             會發布到 npm
-  three/                @webworld/three —— runtime，裝進使用者的 Three.js 專案
-  cook/                 @webworld/cook —— 離線 CLI（Node），把 glTF 烘焙成 .wwm
-  format/               @webworld/format —— 兩者共用的那一層：格式契約與純演算法
+  three/                @web-world-engine/three —— runtime，裝進使用者的 Three.js 專案
+  cook/                 @web-world-engine/cook —— 離線 CLI（Node），把 glTF 烘焙成 .wwm
+  format/               @web-world-engine/format —— 兩者共用的那一層：格式契約與純演算法
 internal/             不發布：上面那些的實作，build 時內聯進 dist
   core/                 零依賴：型別、assert、RingBuffer、統計、矩陣
   assets-runtime/       manifest 載入、.wwm 解碼、快取與參考計數
@@ -96,9 +96,12 @@ cook（Node，離線）→  format  →  （無）
 
 ## 開發
 
+在 `develop` 上做事。`main` 只收合併，而合併到 `main` 會觸發發布 ——
+見[分支與發布](#分支與發布)。
+
 ```bash
 pnpm install
-pnpm verify       # typecheck + lint + format + 807 個單元測試
+pnpm verify       # typecheck + lint + format + 818 個單元測試，加上四道不用瀏覽器的關卡
 pnpm verify:all   # 上面那個，加上二十二道要瀏覽器的關卡
 pnpm example      # 範例 app，http://localhost:5174/
 pnpm dev          # benchmark app，http://localhost:5173/
@@ -106,7 +109,7 @@ pnpm build:pkg    # 建置三個發布套件的 dist
 pnpm format       # prettier 寫回去（.md 不在範圍內，spec 的表格是手排的）
 ```
 
-## 一個指令，二十七道關卡
+## 一個指令，二十八道關卡
 
 ```bash
 pnpm verify:all
@@ -126,6 +129,7 @@ import 不報錯、只是每個使用者多下載一包。所以每一道關卡�
 | `pnpm docs-check` | README 裡寫的 API 真的存在，而且每個公開功能都寫到了 |
 | `pnpm bundle-check` | 只用 WebGL 的人不該下載 WebGPU 那一半 |
 | `pnpm publish-check` | 發布出去的形狀（publint + are-the-types-wrong） |
+| `pnpm ci-check` | workflow 是**沒被執行過的程式碼** —— 語法、script 名字、發布前有沒有驗過 |
 
 ### 要瀏覽器
 
@@ -176,21 +180,33 @@ Chrome 時講得出人話，38 台伺服器裡只有 1 台擋得住路徑穿越�
 那些差異。收進 `tools/lib/` 之後淨少 1,235 行，而且一個地方補的東西全部
 都補到了。
 
-## 發布
+## 分支與發布
 
-三個套件**齊步發布**，版本永遠相同：
+```text
+develop  ──●──●──●──────●──          平常在這裡做事，CI 每次都跑
+                         ╲
+main     ────────────────●──         合併就是「發布」這個決定
+                         │
+                         └─ release.yml：完整驗證 → npm → 打 v0.2.0
+```
+
+要發一版的時候，在 `develop` 上：
 
 ```bash
 pnpm version:set 0.2.0        # 三個 package.json 一起改
 #  寫 CHANGELOG.md
 git commit -am "release: v0.2.0"
-git tag v0.2.0 && git push --follow-tags
 ```
 
-tag 推上去之後 `.github/workflows/release.yml` 會跑完整驗證（含
-`package-check`：打包 → 裝進乾淨專案 → 真的用一次）再發布。
+然後開 PR 合併回 `main`。合併之後 `.github/workflows/release.yml` 會跑完整
+驗證（含 `package-check`：打包 → 裝進乾淨專案 → 真的用一次）再發布，最後
+補上 `v0.2.0` 這個 tag —— npm 上的版本因此對得回一個 commit。
 
-**齊步是刻意的。** `@webworld/format` 是另外兩個之間的格式契約，而契約
+**合併本身不會重複發布。** 發布那一步會先問 registry 有沒有這個版本，有就
+跳過。所以合併十次而版本沒動，就是十次什麼都不發 —— 真正決定發不發的是
+`package.json` 裡的版本號有沒有變。
+
+**齊步是刻意的。** `@web-world-engine/format` 是另外兩個之間的格式契約，而契約
 裡最重要的東西不是型別，是**意思** —— 兩邊解析到不同版本的話型別全部符合，
 只是意思不一樣，症狀是「cook 過的資產比 runtime 產生的糊」而且沒有錯誤訊息。
 所以有時候會發一個「這個套件什麼都沒改」的版本，那個代價是刻意付的。
@@ -204,6 +220,39 @@ tag 推上去之後 `.github/workflows/release.yml` 會跑完整驗證（含
 發布時會產生 **npm provenance**（sigstore 簽章），把 tarball 綁到確切的
 commit 與 workflow run。它擋的是「有人拿到 token 之後從自己的機器發一個
 版本」—— 那種事在 npm 頁面上完全看不出來。
+
+### 版本號的規則
+
+| | |
+| --- | --- |
+| 三個套件**永遠同版本** | `metadata-check` 守著；`version:set` 一次改三個 |
+| tag 必須等於 `package.json` | `release.yml` 的第一步就比對，不一致直接停 |
+| 預發布走 dist-tag | `v1.0.0-beta.1` → `beta`，不會變成 `latest` |
+| 重跑同一個 tag 是安全的 | 已經在 registry 上的跳過，只補沒發成的那幾個 |
+
+`npm publish` **不看版本號裡有沒有 prerelease 標記** —— 沒給 `--tag` 一律
+寫進 `latest`。而 `version:set` 是收 `0.2.0-beta.1` 的，所以那條路真的
+走得到：推一個 beta，全世界 `npm i` 的預設就變成它。dist-tag 是從 tag 推
+出來的，不靠人記得加參數。
+
+### `three` 的版本鎖
+
+`packages/three` 把 `three` 的 peer 鎖在**一個 minor**。那不是保守 ——
+`three-internals.ts` 碰 `THREE.BatchedMesh` 的私有欄位，因為官方沒有公開的
+替代路徑。
+
+結構改了會**大聲報錯**（`assertBatchedMeshInternals` 在建構時就跑）。上界擋的
+是另一種：**欄位名字與型別都沒變、意思變了** —— 那種事沒有任何自動檢查
+抓得到，唯一的驗證是那 25 道拿原生 Three 當對照組的關卡，而它們只跑過
+一個版本。
+
+代價是 Three 每出一個 minor 就要發一版。那是碰私有欄位的誠實價格，而
+「上游動了」有兩個獨立的偵測器：
+
+- **Dependabot**（`.github/dependabot.yml`）：新版落在範圍外就開 PR
+- **每週排程**（`ci.yml` 的 `schedule`）：沒有人改東西也會跑一次
+
+收到之後要做的事就一件：`pnpm verify:all`。
 
 ## Benchmark
 

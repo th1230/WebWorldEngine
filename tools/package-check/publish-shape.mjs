@@ -12,12 +12,12 @@
  *
  * ## 它們第一次跑就抓到兩個上線中的 bug
  *
- * 兩個都在 `@webworld/cook`，而這個 repo 裡沒有任何東西看得見：
+ * 兩個都在 `@web-world-engine/cook`，而這個 repo 裡沒有任何東西看得見：
  *
  * | | 症狀 |
  * | --- | --- |
  * | `dist/pipeline.d.ts` 引用 `./texture/ktx2.js`，那個目錄被 build 刪了 | 主進入點的型別在使用者那邊解析失敗 |
- * | `publishConfig` 宣告的 `dist/texture.d.ts` 從來沒被產生過 | `@webworld/cook/texture` 完全沒有型別 |
+ * | `publishConfig` 宣告的 `dist/texture.d.ts` 從來沒被產生過 | `@web-world-engine/cook/texture` 完全沒有型別 |
  *
  * 型別檢查過、lint 過、818 個測試過、25 道畫面關卡過、`package-check`
  * 也過（它驗的是「裝得起來、跑得動」，不是「型別找不找得到」）。
@@ -75,19 +75,19 @@ try {
     const lint = run('pnpm', ['exec', 'publint', dir], ROOT);
     check(
       lint.ok,
-      `@webworld/${name} 的 package.json 與 tarball（publint）`,
+      `@web-world-engine/${name} 的 package.json 與 tarball（publint）`,
       lint.ok ? undefined : plain(lint.out).slice(0, 400),
     );
 
     // attw 吃的是打包好的 tarball —— 那才是使用者真正拿到的東西。
     const packed = run('pnpm', ['pack', '--pack-destination', work], dir);
     if (!packed.ok) {
-      check(false, `@webworld/${name} 打包得起來`, plain(packed.out).slice(0, 200));
+      check(false, `@web-world-engine/${name} 打包得起來`, plain(packed.out).slice(0, 200));
       continue;
     }
     const tarball = readdirSync(work).find((f) => f.includes(name) && f.endsWith('.tgz'));
     if (tarball === undefined) {
-      check(false, `@webworld/${name} 的 tarball 找得到`);
+      check(false, `@web-world-engine/${name} 的 tarball 找得到`);
       continue;
     }
     const types = run(
@@ -97,7 +97,7 @@ try {
     );
     check(
       types.ok,
-      `@webworld/${name} 的型別在四種解析模式下都找得到（attw）`,
+      `@web-world-engine/${name} 的型別在四種解析模式下都找得到（attw）`,
       types.ok ? undefined : plain(types.out).slice(0, 400),
     );
   }

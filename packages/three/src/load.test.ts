@@ -6,7 +6,7 @@ import {
   VERTEX_STRIDE_BYTES,
   type AssetManifest,
   type MeshEntry,
-} from '@webworld/format';
+} from '@web-world-engine/format';
 import { MeshBasicMaterial } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InstancedMesh } from './instanced-mesh.ts';

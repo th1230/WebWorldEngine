@@ -3,7 +3,7 @@ export * from './manifest.ts';
 // ## 為什麼「量誤差」放在格式契約裡
 //
 // `.wwm` 的每一階都存了一個 `error`，而**那個數字的意思本身就是契約的一部分**
-// ——`@webworld/cook` 寫進去、`@webworld/three` 讀出來拿去選階，兩邊對它的
+// ——`@web-world-engine/cook` 寫進去、`@web-world-engine/three` 讀出來拿去選階，兩邊對它的
 // 定義必須一模一樣。
 //
 // 一開始兩邊各自算（都用 `relativeError * scale`），而那個估計值**每一階都

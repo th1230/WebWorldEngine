@@ -9,7 +9,7 @@
     "preview": "vite preview --port 4174 --strictPort"
   },
   "dependencies": {
-    "@webworld/three": "workspace:*",
+    "@web-world-engine/three": "workspace:*",
     "three": "^0.185.1",
     "@dimforge/rapier3d-compat": "^0.12.0"
   },

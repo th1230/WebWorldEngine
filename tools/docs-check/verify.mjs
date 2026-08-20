@@ -78,7 +78,7 @@ function walkTs(dir) {
 
 const three = exportedNames('packages/three/src/index.ts');
 const format = exportedNames('packages/format/src/index.ts');
-// `@webworld/three` 轉出了一部分 format 的東西，兩邊都算數。
+// `@web-world-engine/three` 轉出了一部分 format 的東西，兩邊都算數。
 const known = new Set([...three, ...format]);
 
 const { check, note, finish } = startReport('文件裡寫的 API 真的存在嗎');

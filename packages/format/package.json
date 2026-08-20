@@ -1,7 +1,7 @@
 {
-  "name": "@webworld/format",
+  "name": "@web-world-engine/format",
   "version": "0.1.0",
-  "description": "@webworld/three 與 @webworld/cook 之間的資產格式契約：型別、常數，以及「誤差」這個數字的定義。",
+  "description": "@web-world-engine/three 與 @web-world-engine/cook 之間的資產格式契約：型別、常數，以及「誤差」這個數字的定義。",
   "keywords": [
     "three",
     "lod",
@@ -11,14 +11,14 @@
     "distance-field"
   ],
   "license": "MIT",
-  "author": "thomasYeh",
+  "author": "th1230",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/thomasYeh/WebWorldEngine.git",
+    "url": "git+https://github.com/th1230/WebWorldEngine.git",
     "directory": "packages/format"
   },
-  "bugs": "https://github.com/thomasYeh/WebWorldEngine/issues",
-  "homepage": "https://github.com/thomasYeh/WebWorldEngine/tree/main/packages/format#readme",
+  "bugs": "https://github.com/th1230/WebWorldEngine/issues",
+  "homepage": "https://github.com/th1230/WebWorldEngine/tree/main/packages/format#readme",
   "type": "module",
   "sideEffects": false,
   "engines": {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import * as WW from '@webworld/three';
+import * as WW from '@web-world-engine/three';
 
 /**
  * 陰影 pass 自己剔除、自己選階的證明場景。

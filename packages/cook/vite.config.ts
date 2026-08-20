@@ -16,7 +16,7 @@ import dts from 'vite-plugin-dts';
  * 打包進來只會壞掉；其餘幾個是大型 WASM，內聯會讓套件肥好幾倍而且
  * 使用者沒辦法自己升級。
  *
- * ## 為什麼與 `@webworld/three` 分成兩個套件
+ * ## 為什麼與 `@web-world-engine/three` 分成兩個套件
  *
  * 這一整套相依**絕不能出現在瀏覽器的 bundle 裡**。同一個套件同時提供
  * runtime 與 cook，打包工具就得靠 tree-shaking 保證那件事 —— 而那是

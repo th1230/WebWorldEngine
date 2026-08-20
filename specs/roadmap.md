@@ -163,7 +163,7 @@ const material = await WW.loadMaterial(manifest, 'mesh:rock');
 | --- | --- | --- |
 | 1 | 不 cook 也有 LOD | ✅ |
 | 2 | LOD 產生在 worker，不卡主執行緒 | ✅ |
-| 3 | cook 過的路徑仍然可用且更快 | ✅ `@webworld/cook` |
+| 3 | cook 過的路徑仍然可用且更快 | ✅ `@web-world-engine/cook` |
 | 4 | 缺 LOD 鏈時明確說出來，不靜默用最細的幾何 | ✅ |
 | 5 | cook 出來的貼圖與材質載得進來 | ✅ `WW.loadMaterial` / `WW.loadTexture` |
 
@@ -235,9 +235,9 @@ worker 端啟動後立刻 postMessage({ ready: true })
 
 | | |
 | --- | --- |
-| `@webworld/three` | runtime，裝進使用者的 Three.js 專案 |
-| `@webworld/cook` | 離線 CLI（Node）：`npx ww-cook ./assets --out ./public/cooked` |
-| `@webworld/format` | 上面兩個之間的格式契約（只有型別與常數） |
+| `@web-world-engine/three` | runtime，裝進使用者的 Three.js 專案 |
+| `@web-world-engine/cook` | 離線 CLI（Node）：`npx ww-cook ./assets --out ./public/cooked` |
+| `@web-world-engine/format` | 上面兩個之間的格式契約（只有型別與常數） |
 
 **format 必須是獨立的套件**，不能兩邊各自內聯一份 —— 內聯的話
 `ASSET_SCHEMA_VERSION` 會悄悄分岔，而症狀是「cook 完載不進去」且訊息指向
@@ -1953,7 +1953,7 @@ UE 在這件事上不是逐 fragment 分支，是**讓遠的東西走另一個 s
 
 ###### ✅ 改成自己量了（2026-08-18）
 
-`@webworld/format` 加了 `maxSurfaceDeviation`：原始網格的每個頂點到簡化後
+`@web-world-engine/format` 加了 `maxSurfaceDeviation`：原始網格的每個頂點到簡化後
 **表面**的最近距離，取最大值。點對三角形（不是點對頂點 —— 後者便宜且保守，
 但在粗 icosphere 上高估 2.8 倍，那是拿所有人的幀時間換安心），用均勻空間格
 壓到 O(頂點數)。

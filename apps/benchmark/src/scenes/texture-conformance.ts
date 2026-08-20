@@ -6,7 +6,7 @@ import {
   encodeBc4,
   encodeBc5,
   encodeBc7,
-} from '@webworld/cook/texture';
+} from '@web-world-engine/cook/texture';
 import type { BenchmarkScene, SceneDefinition, SceneVerdict } from './types.ts';
 
 /**

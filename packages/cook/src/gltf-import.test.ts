@@ -1,5 +1,5 @@
 import { Document, NodeIO } from '@gltf-transform/core';
-import { VERTEX_FLOATS } from '@webworld/format';
+import { VERTEX_FLOATS } from '@web-world-engine/format';
 import { describe, expect, it } from 'vitest';
 import { KHRMaterialsUnlit } from '@gltf-transform/extensions';
 import { importGltf } from './gltf-import.ts';

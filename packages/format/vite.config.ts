@@ -5,7 +5,7 @@ import dts from 'vite-plugin-dts';
 /**
  * 發布用的 build。
  *
- * 這個套件是 `@webworld/three`（解碼）與 `@webworld/cook`（產生）之間的
+ * 這個套件是 `@web-world-engine/three`（解碼）與 `@web-world-engine/cook`（產生）之間的
  * **格式契約**：`.wwm` 的位元佈局、區塊參照，以及 `ASSET_SCHEMA_VERSION`。
  *
  * 它必須是**一個獨立發布的套件**而不是各自內聯一份 —— 兩邊各自內聯的話，

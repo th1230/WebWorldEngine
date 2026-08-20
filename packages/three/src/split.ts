@@ -1,5 +1,5 @@
 import { BufferAttribute, BufferGeometry } from 'three';
-import { splitGeometry as splitArrays, type SplitOptions } from '@webworld/format';
+import { splitGeometry as splitArrays, type SplitOptions } from '@web-world-engine/format';
 import { generateLodLevels, type LodGenerationOptions } from './lod-generation.ts';
 import type { GeometrySource } from './lod-chain.ts';
 

@@ -1,5 +1,5 @@
 {
-  "name": "@webworld/three",
+  "name": "@web-world-engine/three",
   "version": "0.1.0",
   "description": "Three.js 的強化層：換一個字就有螢幕誤差 LOD、空間分割剔除與世界串流。",
   "keywords": [
@@ -18,14 +18,14 @@
     "virtual-texture"
   ],
   "license": "MIT",
-  "author": "thomasYeh",
+  "author": "th1230",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/thomasYeh/WebWorldEngine.git",
+    "url": "git+https://github.com/th1230/WebWorldEngine.git",
     "directory": "packages/three"
   },
-  "bugs": "https://github.com/thomasYeh/WebWorldEngine/issues",
-  "homepage": "https://github.com/thomasYeh/WebWorldEngine/tree/main/packages/three#readme",
+  "bugs": "https://github.com/th1230/WebWorldEngine/issues",
+  "homepage": "https://github.com/th1230/WebWorldEngine/tree/main/packages/three#readme",
   "type": "module",
   "sideEffects": false,
   "engines": {
@@ -58,7 +58,7 @@
     "three": ">=0.185.0 <0.186.0"
   },
   "dependencies": {
-    "@webworld/format": "workspace:*"
+    "@web-world-engine/format": "workspace:*"
   },
   "devDependencies": {
     "@types/three": "^0.185.4",

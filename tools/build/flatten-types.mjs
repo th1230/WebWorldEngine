@@ -12,12 +12,12 @@
  * ## 為什麼不是「攤平」
  *
  * 先前每個套件各有一份 99 行的複製，做的是真的攤平：只把 src 那一層的
- * `*.d.ts` 搬上去，子目錄整棵刪掉。那在 `@webworld/cook` 上造成兩個 bug，
+ * `*.d.ts` 搬上去，子目錄整棵刪掉。那在 `@web-world-engine/cook` 上造成兩個 bug，
  * 而**這個 repo 裡沒有任何東西看得見**：
  *
  * - `dist/pipeline.d.ts` 引用 `./texture/ktx2.js`，而那個目錄被刪了 ——
  *   主進入點的型別在使用者那邊解析失敗
- * - `@webworld/cook/texture` 宣告的 `dist/texture.d.ts` 從來沒被產生過 ——
+ * - `@web-world-engine/cook/texture` 宣告的 `dist/texture.d.ts` 從來沒被產生過 ——
  *   那個子路徑完全沒有型別
  *
  * 兩個都是 `publint` 與 `@arethetypeswrong/cli` 抓出來的。攤平本身就是問題：
@@ -64,8 +64,8 @@ async function everyDeclaration(dir) {
 
 // ## rootDir 吃掉多少前綴是**看情況**的
 //
-// `@webworld/format` 零相依，tsc 的 rootDir 就是它自己的 `src/`，宣告直接
-// 落在 `dist/index.d.ts`。`@webworld/cook` 透過 paths 拉進內部套件，共同
+// `@web-world-engine/format` 零相依，tsc 的 rootDir 就是它自己的 `src/`，宣告直接
+// 落在 `dist/index.d.ts`。`@web-world-engine/cook` 透過 paths 拉進內部套件，共同
 // 祖先變成 repo 根目錄，於是落在 `dist/packages/cook/src/index.d.ts`。
 //
 // 所以先找完整的相對路徑，找不到再退回只比對檔名 —— 兩種情況都涵蓋，而且
@@ -104,7 +104,7 @@ for (const file of declarations) {
   // 宣告檔裡的 `./x.ts` 在使用者的 TypeScript 下解析不到
   const rewritten = source.replace(/(from\s+['"]\.[^'"]*)\.ts(['"])/g, '$1.js$2');
 
-  // 先把註解剝掉再掃：用法範例裡的 `import … from '@webworld/three'` 不是
+  // 先把註解剝掉再掃：用法範例裡的 `import … from '@web-world-engine/three'` 不是
   // 真的匯入，掃到它會變成一個永遠為真的假警報。
   const code = rewritten.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const shown = relative(srcRoot, file).split(sep).join('/');

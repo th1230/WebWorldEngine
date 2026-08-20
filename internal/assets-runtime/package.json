@@ -10,6 +10,6 @@
   "dependencies": {
     "@ww/core": "workspace:*",
     "ktx-parse": "^1.1.0",
-    "@webworld/format": "workspace:*"
+    "@web-world-engine/format": "workspace:*"
   }
 }

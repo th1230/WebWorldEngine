@@ -1,14 +1,14 @@
-# @webworld/format
+# @web-world-engine/format
 
-[`@webworld/three`](https://www.npmjs.com/package/@webworld/three)（解碼、執行期）與
-[`@webworld/cook`](https://www.npmjs.com/package/@webworld/cook)（產生、離線）
+[`@web-world-engine/three`](https://www.npmjs.com/package/@web-world-engine/three)（解碼、執行期）與
+[`@web-world-engine/cook`](https://www.npmjs.com/package/@web-world-engine/cook)（產生、離線）
 之間共用的那一層。**零相依，而且不認識 Three.js。**
 
-> **你多半不需要裝這個。** `@webworld/three` 與 `@webworld/cook` 各自把它
+> **你多半不需要裝這個。** `@web-world-engine/three` 與 `@web-world-engine/cook` 各自把它
 > 列為相依，npm 會自己帶進來 —— 而 `three` 也把使用者會用到的那幾個轉出去了。
 >
 > 自己讀寫 `.wwm`、自己寫烘焙工具，或想在 Node 裡跑那幾個純演算法時，
-> 才會直接裝它：`npm i @webworld/format`。
+> 才會直接裝它：`npm i @web-world-engine/format`。
 
 ## 兩種東西，同一個理由
 
@@ -53,7 +53,7 @@ PageTable, virtualTextureSize                // 虛擬貼圖的頁表與尺寸�
 - **不會把 Three 拖進 cook**：`cook` 的相依（sharp、gltf-transform）絕不能
   出現在瀏覽器的 bundle 裡，而反向也一樣
 
-目前只有 `@webworld/three` 在用它們（`cook` 還沒有需要）。那不代表它們該搬
+目前只有 `@web-world-engine/three` 在用它們（`cook` 還沒有需要）。那不代表它們該搬
 去 `three` —— 一搬過去就得吃 Three 的型別，上面三件事同時失去。
 
 ## 為什麼是獨立的套件
@@ -67,7 +67,7 @@ PageTable, virtualTextureSize                // 虛擬貼圖的頁表與尺寸�
 **那句話是錯的**，而且是量出來的：
 
 `pnpm pack` 會把 `workspace:*` 改寫成**精確版本**，所以發布出去的是
-`"@webworld/format": "0.1.0"`。使用者同時裝了要求不同版本的 `three` 與
+`"@web-world-engine/format": "0.1.0"`。使用者同時裝了要求不同版本的 `three` 與
 `cook` 時，npm 只會裝兩份巢狀的 —— 不報錯、不警告。
 
 真正擋下來的是**載入時**：`.wwm` 的檔頭帶著 schema 版本，解碼器對不上就丟

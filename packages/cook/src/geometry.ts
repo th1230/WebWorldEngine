@@ -1,4 +1,4 @@
-import { VERTEX_FLOATS, type Bounds, maxSurfaceDeviation } from '@webworld/format';
+import { VERTEX_FLOATS, type Bounds, maxSurfaceDeviation } from '@web-world-engine/format';
 import { MeshoptEncoder } from 'meshoptimizer/encoder';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 import { generateTangents as generateMikkTangents } from 'mikktspace';
@@ -316,7 +316,7 @@ export async function generateLods(
       // （icosphere，真值用矢高）：每一階都低估，最多 1.48 倍。於是實際的
       // 契約變成「≤ 大約 3 像素」而不是宣稱的 2 像素，而沒有任何東西會報錯。
       //
-      // 量法住在 `@webworld/format` —— **這個數字的定義本身就是格式契約的
+      // 量法住在 `@web-world-engine/format` —— **這個數字的定義本身就是格式契約的
       // 一部分**，cook 這邊寫進 `.wwm`、runtime 那邊讀出來選階，兩邊對它的
       // 意思必須一模一樣。只修一邊的症狀是「cook 過的資產比 runtime 產生的
       // 糊」，而型別檢查不會有意見。

@@ -1113,7 +1113,7 @@ if (process.exitCode) { … }
 自己寫一份等於自己維護一份會過期的規格。
 
 `publint` 與 `@arethetypeswrong/cli` 是那把現成的尺，而它們第一次跑就抓到
-兩個上線中的 bug，都在 `@webworld/cook`：
+兩個上線中的 bug，都在 `@web-world-engine/cook`：
 
 | | 症狀 |
 | --- | --- |

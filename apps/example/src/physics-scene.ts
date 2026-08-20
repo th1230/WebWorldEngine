@@ -1,4 +1,4 @@
-import * as WW from '@webworld/three';
+import * as WW from '@web-world-engine/three';
 import * as THREE from 'three';
 
 /**

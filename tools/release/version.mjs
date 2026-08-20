@@ -3,7 +3,7 @@
  *
  * ## 為什麼是齊步走，不是各自獨立
  *
- * `@webworld/format` 是 `three` 與 `cook` 之間的格式契約，而契約裡最重要的
+ * `@web-world-engine/format` 是 `three` 與 `cook` 之間的格式契約，而契約裡最重要的
  * 東西不是型別，是**意思**（見 `packages/format/README.md` 裡「誤差」那一段）。
  * 兩邊解析到不同版本的 format，型別全部符合，只是意思不一樣 —— 症狀是
  * 「cook 過的資產比 runtime 產生的糊」，沒有任何錯誤訊息。
@@ -17,8 +17,9 @@
  * node tools/release/version.mjs 0.2.0
  * ```
  *
- * 它只改 `package.json`。改完之後：寫 CHANGELOG、commit、打 tag、push。
- * 發布本身由 `.github/workflows/release.yml` 在 tag 上做，這裡不碰 npm。
+ * 它只改 `package.json`。改完之後：寫 CHANGELOG、commit、開 PR 合併回 `main`。
+ * 發布本身由 `.github/workflows/release.yml` 在**合併到 `main`** 時做，
+ * 這裡不碰 npm。
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -45,14 +46,14 @@ for (const name of PACKAGES) {
   const before = manifest.version;
   manifest.version = next;
   writeFileSync(path, JSON.stringify(manifest, null, 2) + '\n');
-  console.log(`@webworld/${name}  ${before} → ${next}`);
+  console.log(`@web-world-engine/${name}  ${before} → ${next}`);
 }
 
 console.log('');
-console.log('接下來：');
+console.log('接下來（在 develop 上）：');
 console.log('  1. 寫 CHANGELOG.md（這一版改了什麼、有沒有破壞性變更）');
 console.log(`  2. git commit -am "release: v${next}"`);
-console.log(`  3. git tag v${next} && git push --follow-tags`);
+console.log('  3. 開 PR 合併回 main');
 console.log('');
-console.log('push tag 之後 release workflow 會跑完整驗證再發布。');
-console.log('它需要 repo 的 NPM_TOKEN secret —— 沒設的話那一步會失敗，不會誤發。');
+console.log('合併之後 release workflow 會跑完整驗證、發布，再補上 v' + next + ' 這個 tag。');
+console.log('版本沒動的合併不會發第二次 —— 它會先問 registry。');

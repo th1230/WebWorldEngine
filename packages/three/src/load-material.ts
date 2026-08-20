@@ -1,4 +1,4 @@
-import type { AssetManifest, TextureEntry } from '@webworld/format';
+import type { AssetManifest, TextureEntry } from '@web-world-engine/format';
 import { decodeTexture, validateTexture, type DecodedTexture } from '@ww/assets-runtime';
 import {
   CompressedTexture,

@@ -61,12 +61,12 @@ for (const name of PACKAGES) {
   const missing = REQUIRED.filter((key) => manifest[key] === undefined);
   check(
     missing.length === 0,
-    `@webworld/${name} 的必要欄位 —— 少了 ${missing.join('、') || '沒有'}`,
+    `@web-world-engine/${name} 的必要欄位 —— 少了 ${missing.join('、') || '沒有'}`,
   );
 
   // `type: module` 講的是「這個套件是 ESM」。寫錯的話使用者的打包器會
   // 用 CJS 的規則讀它，而錯誤訊息完全指不到這裡。
-  check(manifest.type === 'module', `@webworld/${name} 是 ESM —— type = ${manifest.type}`);
+  check(manifest.type === 'module', `@web-world-engine/${name} 是 ESM —— type = ${manifest.type}`);
 
   // 進入點必須換成 dist。這條是整份檢查裡最重要的一條：工作區裡 exports
   // 直指 src，所以沒有 publishConfig 的話**使用者會拿到 .ts 原始碼**。
@@ -74,36 +74,46 @@ for (const name of PACKAGES) {
   const entry = typeof published === 'string' ? published : published?.default;
   check(
     typeof entry === 'string' && entry.startsWith('./dist/'),
-    `@webworld/${name} 發布的進入點在 dist —— ${entry ?? '（沒有）'}`,
+    `@web-world-engine/${name} 發布的進入點在 dist —— ${entry ?? '（沒有）'}`,
   );
   const types = typeof published === 'object' ? published?.types : undefined;
   check(
     typeof types === 'string' && types.endsWith('.d.ts'),
-    `@webworld/${name} 有型別宣告 —— ${types ?? '（沒有）'}`,
+    `@web-world-engine/${name} 有型別宣告 —— ${types ?? '（沒有）'}`,
   );
 
   // README 不在 files 裡的話，npm 頁面是空白的。
   const files = manifest.files ?? [];
-  check(files.includes('README.md'), `@webworld/${name} 的 README 會被發布`);
-  check(files.includes('LICENSE'), `@webworld/${name} 的 LICENSE 會被發布`);
+  check(files.includes('README.md'), `@web-world-engine/${name} 的 README 會被發布`);
+  check(files.includes('LICENSE'), `@web-world-engine/${name} 的 LICENSE 會被發布`);
 
   // 版本要一致 —— 三個套件是一起發的，格式契約對不上就會出現
   // 「runtime 認不得 cook 的產出」，而那是執行期才炸的。
   check(
     manifest.version ===
       JSON.parse(readFileSync(join(ROOT, 'packages/three/package.json'), 'utf8')).version,
-    `@webworld/${name} 與 three 同版本 —— ${manifest.version}`,
+    `@web-world-engine/${name} 與 three 同版本 —— ${manifest.version}`,
   );
 }
 
-// three 的 peer 必須存在且有上界。沒有上界的話 Three 一改內部就靜靜地壞掉，
-// 而這個套件用了 BatchedMesh 的內部欄位（見 three-internals.ts）。
+// three 的 peer 必須存在而且有上界。
+//
+// 上界買到的**不是**「結構改了會報錯」—— `assertBatchedMeshInternals` 已經
+// 在建構時把那件事變成一個看得懂的例外了。上界買到的是**語意漂移**：欄位
+// 名字與型別都沒變、意思變了，那種事沒有任何自動檢查抓得到。
+//
+// 唯一的驗證是那 25 道拿原生 Three 當對照組的關卡，而它們只跑過一個版本。
+// 所以範圍就寫那一個版本，代價是 Three 每出一個 minor 就要發一版 ——
+// 那是碰私有欄位的誠實價格。
 const three = JSON.parse(readFileSync(join(ROOT, 'packages/three/package.json'), 'utf8'));
 const peer = three.peerDependencies?.three;
-check(typeof peer === 'string', `@webworld/three 把 three 列為 peer —— ${peer ?? '（沒有）'}`);
+check(
+  typeof peer === 'string',
+  `@web-world-engine/three 把 three 列為 peer —— ${peer ?? '（沒有）'}`,
+);
 check(
   typeof peer === 'string' && peer.includes('<'),
-  `那個範圍有上界 —— ${peer}（沒有上界的話 Three 一改內部就靜靜地壞掉）`,
+  `那個範圍有上界 —— ${peer}（關卡只驗過這個版本，語意漂移沒有自動檢查抓得到）`,
 );
 
 finish('發布欄位關卡');

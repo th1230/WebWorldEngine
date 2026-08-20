@@ -1,5 +1,5 @@
 import { Document, NodeIO } from '@gltf-transform/core';
-import { VERTEX_FLOATS } from '@webworld/format';
+import { VERTEX_FLOATS } from '@web-world-engine/format';
 import type { RawMesh } from './geometry.ts';
 
 /**

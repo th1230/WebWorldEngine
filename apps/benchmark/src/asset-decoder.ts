@@ -1,4 +1,4 @@
-import type { MeshEntry, TextureEntry } from '@webworld/format';
+import type { MeshEntry, TextureEntry } from '@web-world-engine/format';
 import type { DecodedLod, DecodedTexture } from '@ww/assets-runtime';
 import type { DecodeRequest, DecodeResponse } from './asset-decode.worker.ts';
 

@@ -1,4 +1,4 @@
-import { ASSET_SCHEMA_VERSION, type AssetManifest, type MeshEntry } from '@webworld/format';
+import { ASSET_SCHEMA_VERSION, type AssetManifest, type MeshEntry } from '@web-world-engine/format';
 import { assert, type Bytes } from '@ww/core';
 import { AssetFormatError, decodeMesh, type DecodedLod } from './decode.ts';
 import { decodeTexture, validateTexture, type DecodedTexture } from './texture.ts';

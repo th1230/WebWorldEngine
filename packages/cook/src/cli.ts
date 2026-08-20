@@ -10,7 +10,7 @@ import { COOKER_VERSION, cookAll } from './pipeline.ts';
  * 「專案根目錄」在 `node_modules` 底下會指到完全不同的地方。
  */
 const USAGE = `
-ww-cook —— 把 glTF 烘焙成 @webworld/three 吃的格式
+ww-cook —— 把 glTF 烘焙成 @web-world-engine/three 吃的格式
 
   ww-cook <來源目錄> [選項]
 

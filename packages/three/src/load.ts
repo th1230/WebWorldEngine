@@ -5,7 +5,7 @@ import {
   UV_OFFSET,
   VERTEX_FLOATS,
   type MeshEntry,
-} from '@webworld/format';
+} from '@web-world-engine/format';
 import { decodeMesh, type DecodedLod } from '@ww/assets-runtime';
 import { BufferAttribute, BufferGeometry } from 'three';
 import type { LodChain } from './lod-chain.ts';

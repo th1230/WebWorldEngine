@@ -1,0 +1,45 @@
+# 上游動了要有人講。
+#
+# ## 為什麼這個專案特別需要它
+#
+# `packages/three` 把 `three` 的 peer 範圍鎖在**一個 minor**
+# （`>=0.185.0 <0.186.0`），而那不是保守，是必要的：`three-internals.ts`
+# 碰 `THREE.BatchedMesh` 的私有欄位，因為官方沒有公開的替代路徑。Three 改名
+# 或改結構的話，這裡會**靜靜地畫不出東西**。
+#
+# 那個鎖有兩面：
+#
+# - 好的一面：不相容的 Three 裝不進來
+# - 壞的一面：**Three 每出一個 minor，這個套件就自動變成裝不起來**，
+#   而在這個 repo 裡完全沒有徵兆 —— 沒有人升級，就沒有人發現
+#
+# 所以 Three 的更新要主動被推到眼前。配上 `ci.yml` 的每週排程，
+# 「上游動了」這件事就有兩個獨立的偵測器。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # 開發相依一次一個 PR。它們壞掉頂多是 CI 紅，不會影響使用者，
+      # 分開開只是製造噪音。
+      dev:
+        dependency-type: development
+        update-types: [minor, patch]
+    # `three` 不分組，所以它自己一個 PR。它在三個地方是真的相依
+    # （apps/example、apps/benchmark、internal/render-three，都是 ^0.185.1），
+    # 而 0.186 落在範圍外 —— Dependabot 對範圍外的更新會直接提議改範圍，
+    # 那個 PR 就是「上游動了」的通知。
+    #
+    # 收到之後要做的事：跑 `pnpm verify:all`。25 道關卡是拿原生 Three 當
+    # 對照組量的，所以它們就是「這一版還能不能用」的答案。
+
+  # workflow 用的 action 也要更新。它們是供應鏈的一部分，而且
+  # `release.yml` 裡的那幾個碰得到 npm token。
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

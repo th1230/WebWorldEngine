@@ -17,9 +17,9 @@
     "@ww/engine": "workspace:*",
     "@ww/render-three": "workspace:*",
     "three": "^0.185.1",
-    "@webworld/cook": "workspace:*",
-    "@webworld/three": "workspace:*",
-    "@webworld/format": "workspace:*"
+    "@web-world-engine/cook": "workspace:*",
+    "@web-world-engine/three": "workspace:*",
+    "@web-world-engine/format": "workspace:*"
   },
   "devDependencies": {
     "@types/three": "^0.185.4"

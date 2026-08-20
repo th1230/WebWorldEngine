@@ -1,4 +1,4 @@
-import type { TextureEntry } from '@webworld/format';
+import type { TextureEntry } from '@web-world-engine/format';
 import { read } from 'ktx-parse';
 import { AssetFormatError } from './decode.ts';
 

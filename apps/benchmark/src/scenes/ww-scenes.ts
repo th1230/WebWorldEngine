@@ -1,4 +1,8 @@
-import { InstancedMesh as WWInstancedMesh, sphericalLodErrors, worldFor } from '@webworld/three';
+import {
+  InstancedMesh as WWInstancedMesh,
+  sphericalLodErrors,
+  worldFor,
+} from '@web-world-engine/three';
 import {
   AmbientLight,
   DirectionalLight,

@@ -5,7 +5,7 @@ import {
   VERTEX_FLOATS,
   type LodEntry,
   type MeshEntry,
-} from '@webworld/format';
+} from '@web-world-engine/format';
 
 /**
  * Cooked mesh 的解碼。

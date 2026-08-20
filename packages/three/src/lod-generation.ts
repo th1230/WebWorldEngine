@@ -1,5 +1,5 @@
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
-import { maxSurfaceDeviation } from '@webworld/format';
+import { maxSurfaceDeviation } from '@web-world-engine/format';
 
 /**
  * 執行期產生 LOD 鏈。

@@ -126,7 +126,7 @@ export default tseslint.config(
           patterns: [
             THREE_BAN,
             {
-              group: ['@ww/*', '@webworld/*'],
+              group: ['@ww/*', '@web-world-engine/*'],
               message:
                 '這個目錄還沒有在 eslint.config.js 裡宣告依賴方向。' +
                 '先加一條 layer()，把它允許依賴的東西寫下來 —— ' +
@@ -152,7 +152,7 @@ export default tseslint.config(
   layerAt('packages/format', [
     {
       group: [
-        '@webworld/cook',
+        '@web-world-engine/cook',
         '@ww/assets-runtime',
         '@ww/ecs',
         '@ww/engine',
@@ -161,7 +161,7 @@ export default tseslint.config(
         '@ww/render-core',
         '@ww/render-three',
       ],
-      message: UPWARD('@webworld/format', '@ww/core'),
+      message: UPWARD('@web-world-engine/format', '@ww/core'),
     },
   ]),
 
@@ -170,7 +170,7 @@ export default tseslint.config(
   layerAt('packages/cook', [
     {
       group: ['@ww/render-core', '@ww/render-three', '@ww/engine', '@ww/ecs', '@ww/platform-web'],
-      message: UPWARD('@webworld/cook', '@ww/core、@webworld/format'),
+      message: UPWARD('@web-world-engine/cook', '@ww/core、@web-world-engine/format'),
     },
   ]),
 
@@ -178,8 +178,8 @@ export default tseslint.config(
   // 把它打包進 runtime 會多出好幾 MB 的相依）。
   layer('assets-runtime', [
     {
-      group: ['@webworld/cook', '@ww/render-three', '@ww/engine'],
-      message: UPWARD('@ww/assets-runtime', '@ww/core、@webworld/format'),
+      group: ['@web-world-engine/cook', '@ww/render-three', '@ww/engine'],
+      message: UPWARD('@ww/assets-runtime', '@ww/core、@web-world-engine/format'),
     },
   ]),
 
@@ -261,10 +261,10 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['@ww/render-three', '@ww/render-core', '@webworld/cook'],
+              group: ['@ww/render-three', '@ww/render-core', '@web-world-engine/cook'],
               message: UPWARD(
-                '@webworld/three',
-                '@ww/core、@ww/engine、@ww/assets-runtime、@webworld/format、three',
+                '@web-world-engine/three',
+                '@ww/core、@ww/engine、@ww/assets-runtime、@web-world-engine/format、three',
               ),
             },
           ],

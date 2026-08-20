@@ -1,4 +1,4 @@
-import type { AssetId } from '@webworld/format';
+import type { AssetId } from '@web-world-engine/format';
 import type { FrameId } from '@ww/core';
 
 /**

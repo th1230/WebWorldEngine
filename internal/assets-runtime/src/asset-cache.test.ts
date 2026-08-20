@@ -6,7 +6,7 @@ import {
   VERTEX_STRIDE_BYTES,
   type AssetManifest,
   type MeshEntry,
-} from '@webworld/format';
+} from '@web-world-engine/format';
 
 import { describe, expect, it, vi } from 'vitest';
 import { AssetCache } from './asset-cache.ts';

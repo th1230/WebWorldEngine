@@ -1,4 +1,4 @@
-import { VERTEX_FLOATS } from '@webworld/format';
+import { VERTEX_FLOATS } from '@web-world-engine/format';
 import { describe, expect, it } from 'vitest';
 import {
   computeBounds,

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import * as WW from '@webworld/three';
+import * as WW from '@web-world-engine/three';
 
 /**
  * 反射的證明場景：一面鏡子，照到一個**不在畫面上**的紅箱子。

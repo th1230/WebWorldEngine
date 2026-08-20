@@ -1,4 +1,4 @@
-import type { MeshEntry, TextureEntry } from '@webworld/format';
+import type { MeshEntry, TextureEntry } from '@web-world-engine/format';
 import { decodeMesh, decodeTexture } from '@ww/assets-runtime';
 
 /**

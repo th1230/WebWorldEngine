@@ -3,8 +3,8 @@ declare const BRAND: unique symbol;
 /**
  * 資產識別字。
  *
- * 刻意在這裡自己定義而不是從內部套件匯入 —— 這個套件是 `@webworld/three`
- * 與 `@webworld/cook` 之間的**契約**，契約裡的每一個型別都必須是使用者
+ * 刻意在這裡自己定義而不是從內部套件匯入 —— 這個套件是 `@web-world-engine/three`
+ * 與 `@web-world-engine/cook` 之間的**契約**，契約裡的每一個型別都必須是使用者
  * 裝得到的東西。
  */
 export type AssetId = string & { readonly [BRAND]: 'AssetId' };

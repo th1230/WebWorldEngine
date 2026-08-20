@@ -1,4 +1,4 @@
-import { load, loadMaterial } from '@webworld/three';
+import { load, loadMaterial } from '@web-world-engine/three';
 import {
   AmbientLight,
   DirectionalLight,

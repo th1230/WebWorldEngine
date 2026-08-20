@@ -45,7 +45,7 @@ export default defineConfig({
     target: 'esnext',
     // ## Source map 會跟著發布出去
     //
-    // 那不是省下來的東西：`@webworld/three` 的 map 有 1,400 kB，比 JS 的
+    // 那不是省下來的東西：`@web-world-engine/three` 的 map 有 1,400 kB，比 JS 的
     // 662 kB 還大，而且內嵌完整的 TypeScript 原始碼（`sourcesContent`）。
     //
     // 留著是因為**它不進使用者的網站**：瀏覽器只有在開發者工具打開時才

@@ -5,7 +5,7 @@
  * 需要認識 entity、cell、ECS 這些字。
  *
  * ```js
- * import * as WW from '@webworld/three';
+ * import * as WW from '@web-world-engine/three';
  *
  * const rocks = new WW.InstancedMesh(geometry, material, 10000);
  * for (let i = 0; i < 10000; i++) rocks.setMatrixAt(i, m);
@@ -109,7 +109,7 @@ export { LOD_FADE_CAPACITY } from './lod-fade.ts';
 export { VolumetricFog, type VolumetricFogOptions } from './volumetric-fog.ts';
 export { VirtualShadowMap, type VirtualShadowMapOptions } from './virtual-shadow-map.ts';
 
-// ## 從 `@webworld/format` 借過來的那幾個型別，這裡再匯出一次
+// ## 從 `@web-world-engine/format` 借過來的那幾個型別，這裡再匯出一次
 //
 // 它們出現在**這個套件的公開簽名上** —— `load` 回傳 `AssetManifest`、
 // `splitGeometry` 吃 `SplitOptions`、`VirtualTexture` 吃 `VirtualTextureLayout`。
@@ -124,6 +124,6 @@ export type {
   SplitOptions,
   SurfaceCache,
   VirtualTextureLayout,
-} from '@webworld/format';
+} from '@web-world-engine/format';
 // `PageTable` 是類別（有 runtime 的值），所以走值的匯出。
-export { PageTable } from '@webworld/format';
+export { PageTable } from '@web-world-engine/format';

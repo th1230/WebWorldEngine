@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import * as WW from '@webworld/three';
+import * as WW from '@web-world-engine/three';
 
 /**
  * 天空的證明場景。

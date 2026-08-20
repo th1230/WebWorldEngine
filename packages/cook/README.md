@@ -1,10 +1,10 @@
-# @webworld/cook
+# @web-world-engine/cook
 
-把 glTF 烘焙成 [`@webworld/three`](https://www.npmjs.com/package/@webworld/three)
+把 glTF 烘焙成 [`@web-world-engine/three`](https://www.npmjs.com/package/@web-world-engine/three)
 吃的格式：LOD 鏈、MikkTSpace 切線、BC 壓縮貼圖。
 
 ```bash
-npm i -D @webworld/cook
+npm i -D @web-world-engine/cook
 npx ww-cook ./assets --out ./public/cooked
 ```
 
@@ -15,7 +15,7 @@ scene.add(new WW.InstancedMesh(rock, material, 10000));
 
 ## cook 是選配的加速，不是門檻
 
-不 cook 也能用 —— `@webworld/three` 會在 worker 裡自動產生 LOD 鏈，鏈的
+不 cook 也能用 —— `@web-world-engine/three` 會在 worker 裡自動產生 LOD 鏈，鏈的
 形狀跟這裡產出的**完全一樣**（預設參數是對齊的）。差別在成本：
 
 | | cook 過的 | 執行期自動產生 |
@@ -70,8 +70,8 @@ public/cooked/
 
 ## 相容性
 
-`@webworld/cook` 與 `@webworld/three` 透過 [`@webworld/format`](https://www.npmjs.com/package/@webworld/format)
-共用格式定義。兩者解析到的 `@webworld/format` 必須是同一個 major ——
+`@web-world-engine/cook` 與 `@web-world-engine/three` 透過 [`@web-world-engine/format`](https://www.npmjs.com/package/@web-world-engine/format)
+共用格式定義。兩者解析到的 `@web-world-engine/format` 必須是同一個 major ——
 版本分岔的症狀是「cook 完載不進去」，而錯誤訊息會指向 schema 版本。
 
 ## 範圍
