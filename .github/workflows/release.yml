@@ -28,7 +28,26 @@ jobs:
     permissions:
       # 發完之後要打 tag，所以是 write。CI 那個只讀。
       contents: write
-      # npm 的 trusted publishing 要它；用 NPM_TOKEN 的話沒有影響。
+      # ## Trusted Publishing（OIDC）用的
+      #
+      # pnpm 每次發布都會**先試 OIDC**，失敗才退回 `NODE_AUTH_TOKEN`。
+      # 0.1.0 那一次的 log 是：
+      #
+      #   Skipped OIDC: ERR_PNPM_AUTH_TOKEN_EXCHANGE:
+      #   Failed token exchange request ... (status code 404)
+      #
+      # 404 是因為 npmjs.com 上還沒替這三個套件設定 Trusted Publishing。
+      # 設定之後 OIDC 那條路會通，而**provenance 是跟著它來的** ——
+      # 那份 sigstore 簽章把 tarball 綁到確切的 commit 與 workflow run，
+      # 擋的是「有人拿到 token 之後從自己的機器發一版」。
+      #
+      # 設定之後 `NPM_TOKEN` 那個 secret 就可以刪掉了。
+      #
+      # **0.1.0 沒有 provenance。** 第一版發的時候我在這裡設了
+      # `NPM_CONFIG_PROVENANCE: "true"`，而 `pnpm publish` 根本不讀那個
+      # 環境變數（它的 `--help` 裡沒有 provenance 這個旗標）。發布成功、
+      # workflow 全綠、而那件事沒有發生 —— 一個沒有量過的機制描述，
+      # doctrine 第 21 條。已經拿掉，改成寫真正的路。
       id-token: write
     steps:
       - uses: actions/checkout@v7
@@ -127,17 +146,6 @@ jobs:
           done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          # ## Provenance
-          #
-          # 讓 npm 產生一份 sigstore 簽章，把這個 tarball 綁到**確切的
-          # commit 與 workflow run**。npm 頁面上會出現一個可驗證的來源標記。
-          #
-          # 這件事擋的是「有人拿到 token 之後從自己的機器發一個版本」——
-          # 那種攻擊在 npm 上完全看不出來，而供應鏈上游被換掉是這幾年
-          # 最貴的一類事故。
-          #
-          # 需要 id-token: write（上面已經有）與從 GitHub Actions 發布。
-          NPM_CONFIG_PROVENANCE: "true"
 
       # ## 發完之後補上 tag
       #
