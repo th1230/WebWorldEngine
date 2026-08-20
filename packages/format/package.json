@@ -1,6 +1,6 @@
 {
   "name": "@web-world-engine/format",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "@web-world-engine/three 與 @web-world-engine/cook 之間的資產格式契約：型別、常數，以及「誤差」這個數字的定義。",
   "keywords": [
     "three",

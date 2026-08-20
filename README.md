@@ -1,10 +1,14 @@
 # WebWorld Engine
 
-> **Three.js 做得到 UE 做的那些事，但要開發者自己刻。這個專案把那一整套補上。**
+[![CI](https://github.com/th1230/WebWorldEngine/actions/workflows/ci.yml/badge.svg)](https://github.com/th1230/WebWorldEngine/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@web-world-engine/three.svg)](https://www.npmjs.com/package/@web-world-engine/three)
+[![授權](https://img.shields.io/npm/l/@web-world-engine/three.svg)](LICENSE)
 
-用這個套件寫 Three.js，像遊戲開發者用 UE：不必鑽進底層優化，因為套件已經
-做好了。它**不取代 Three.js** —— 原本的 `Scene`、`Mesh`、`Material`、loader、
-controls、後處理全部照樣能用，隨時可以換回去。
+Three.js 的大世界工具集：螢幕誤差 LOD、空間分割剔除、內容串流，以及陰影、
+間接光、反射、地形與水的實作。
+
+不取代 Three.js —— `Scene`、`Mesh`、`Material`、loader、controls 與後處理
+全部照常使用，可隨時換回原生類別。
 
 ```diff
 - const rocks = new THREE.InstancedMesh(geometry, material, 10000);
@@ -13,65 +17,162 @@ controls、後處理全部照樣能用，隨時可以換回去。
   scene.add(rocks);
 ```
 
-換掉的那一行帶來螢幕誤差 LOD 與空間分割剔除。沒有初始化、沒有 `update()`、
-沒有自己的 render loop。
+換掉的這一行帶來螢幕誤差 LOD 與空間分割剔除，不需要初始化、`update()`
+或自訂的 render loop。
 
-套件本身的用法見 [`packages/three/README.md`](packages/three/README.md)。
-這一份講的是**這個 repo**。
+## 套件
 
-## 能力
-
-| | 開發者能做到 | |
+| | | |
 | --- | --- | --- |
-| W1 | 換一個字，物件數 ×10 而幀時間不變 | ✅ |
-| W2 | 手上只有一份 `BufferGeometry` 也有完整 LOD 鏈 | ✅ |
-| W3 | 世界比記憶體大：只回答「這一格裡有什麼」 | ✅ |
-| W4 | CPU 與 GPU 各自到硬體極限 | 遠景合併完成；繪製合併與遮擋剔除量過後否決 |
-| W5 | 網站的指標（首次可見、下載量、分頁記憶體） | 四項都量到了 |
+| [`@web-world-engine/three`](packages/three) | runtime，裝進使用者的 Three.js 專案 | [![npm](https://img.shields.io/npm/v/@web-world-engine/three.svg)](https://www.npmjs.com/package/@web-world-engine/three) |
+| [`@web-world-engine/cook`](packages/cook) | 離線 CLI（Node），把 glTF 烘焙成 `.wwm` | [![npm](https://img.shields.io/npm/v/@web-world-engine/cook.svg)](https://www.npmjs.com/package/@web-world-engine/cook) |
+| [`@web-world-engine/format`](packages/format) | 兩者共用的格式契約與純演算法 | [![npm](https://img.shields.io/npm/v/@web-world-engine/format.svg)](https://www.npmjs.com/package/@web-world-engine/format) |
 
-通過條件與每一項的實測數字見 [`specs/roadmap.md`](specs/roadmap.md)。
+API 說明見 [`packages/three/README.md`](packages/three/README.md)。以下是這個
+repo 本身的說明。
 
 ## 目錄
 
+- [開發](#開發) · [驗證](#驗證) · [Benchmark](#benchmark)
+- [儲存庫結構](#儲存庫結構) · [依賴方向](#依賴方向)
+- [分支與發布](#分支與發布) · [版本規則](#版本規則)
+- [文件](#文件) · [範圍](#範圍) · [慣例](#慣例)
+
+## 開發
+
+需要 Node.js ≥ 22.12、pnpm 11，以及支援 WebGPU 的桌機瀏覽器。
+
+```bash
+pnpm install
+```
+
+| 指令 | 說明 |
+| --- | --- |
+| `pnpm verify` | typecheck、lint、格式、單元測試，加上五道不需瀏覽器的關卡 |
+| `pnpm verify:all` | 上者加上二十二道需要瀏覽器的關卡 |
+| `pnpm example` | 範例 app，<http://localhost:5174/> |
+| `pnpm dev` | benchmark app，<http://localhost:5173/> |
+| `pnpm build:pkg` | 建置三個發布套件的 `dist` |
+| `pnpm format` | 以 Prettier 寫回（不含 `.md`，spec 的表格是手排的） |
+
+日常在 `develop` 上開發，經 PR 合併回 `main`；合併到 `main` 即觸發發布。
+
+## 驗證
+
+```bash
+pnpm verify:all
+```
+
+這個專案的主要風險不是「會不會壞」，而是壞掉時沒有訊號：一個沒接上的效果
+不會報錯，幀時間反而更好看；一個少剔除的參數不會報錯，只是慢；一個靜態
+import 不會報錯，只是每個使用者多下載一包。二十七道關卡各自守住一項不會
+自己顯現的事實。
+
+### 不需瀏覽器
+
+| | 擋什麼 |
+| --- | --- |
+| `pnpm metadata-check` | npm 頁面上的欄位：description、repository、進入點指向 `dist` |
+| `pnpm docs-check` | README 寫的 API 真的存在，且每個公開功能都寫到了 |
+| `pnpm bundle-check` | 只用 WebGL 的專案不應下載 WebGPU 的部分 |
+| `pnpm publish-check` | 發布出去的形狀（publint + are-the-types-wrong） |
+| `pnpm ci-check` | workflow 的語法、script 名稱，以及職責是否重疊 |
+
+### 需要瀏覽器
+
+| | 擋什麼 |
+| --- | --- |
+| `pnpm package-check` | 打包 → 裝進乾淨專案 → 實際使用一次 |
+| `pnpm site-check` | 首次可見、下載量、分頁記憶體、與頁面共存、看不見時停止 |
+| `pnpm visual-check` | 與原生 Three.js 的畫面差異，七個模式各掃八個角度 |
+| `pnpm gpu-check` | 實際 GPU 時間與原生版的比較，兩種內容 |
+| `pnpm webgpu-check` | 頂點動畫在 WebGPU 的 node 材質上確實在動 |
+| `pnpm physics-check` | 物件踩在畫出來的地面上、浮在畫出來的水面上 |
+| `pnpm gi-check` | 背光面的光確實來自紅牆的反彈，兩個後端都驗 |
+| `pnpm ssgi-check` | 螢幕空間間接光確實產生作用 |
+| `pnpm impostor-check` | Impostor 對真幾何的效能與相似度 |
+| `pnpm vt-check` | 虛擬貼圖畫的是正確的那一頁 |
+| `pnpm daynight-check` | 太陽移動的代價：整份探針重烘的時間 |
+| `pnpm contact-check` | 接觸陰影落在接縫上，而非整片變暗 |
+| `pnpm df-shadow-check` | 距離場陰影在遠處仍有形狀 |
+| `pnpm reflect-check` | 反射涵蓋畫面外的物件 |
+| `pnpm sky-check` | 天空的顏色是積分結果，且會餵給間接光 |
+| `pnpm lod-fade-check` | 換階抖動不在畫面上開洞 |
+| `pnpm fog-check` | 光柱被遮蔽物擋住，不穿牆 |
+| `pnpm vsm-check` | 虛擬陰影圖的等效解析度確實大於圖集 |
+| `pnpm shadow-lod-check` | 陰影 pass 自行剔除與選階 |
+| `pnpm reflprobe-check` | 反射中有實際拍到的內容，且隨串流更新 |
+| `pnpm water-look-check` | 水的每一項外觀都由水深推導 |
+| `pnpm cross-check` | 同一效果在兩個後端算出同一組數字 |
+
+每道關卡執行前先檢查產物是否過期（原始碼比 `dist` 新即中止）。過期的產物
+會給出有信心的錯誤答案，比沒有關卡更糟。
+
+判準的訂定方式見 [`specs/doctrine.md`](specs/doctrine.md)。
+
+## Benchmark
+
+```bash
+pnpm dev             # 互動式，http://localhost:5173/?scene=instancing
+pnpm cook:real       # 烘焙 assets/source/props，ab-*-real 場景需要
+pnpm cook:sponza     # 烘焙 Sponza，occlusion-sponza 場景需要
+pnpm bench           # 真實 GPU 執行所有場景（每場景 3 次取中位數）
+pnpm bench:baseline  # 存為這台機器的基準
+pnpm bench:compare   # 與基準比對，退步超過門檻即非零離開
+pnpm bench:variance  # 由歷次執行推導雜訊水準與建議門檻
+pnpm bench:smoke     # 無頭 + SwiftShader，僅驗證可執行
+```
+
+門檻由 `bench:variance` 從實測雜訊推導，不要手動估計 —— 過緊的門檻會天天
+誤報而後被忽略。`bench:smoke` 的效能數字不具意義。
+
+`ab-*-real` 使用真實資產，需先將 `.glb` 放入 `assets/source/props/` 再執行
+`pnpm cook:real`。合成內容在兩個方向上都不具代表性：非索引幾何讓幾何成本
+看起來高 3.35 倍，缺少貼圖讓材質看起來免費（真實 PBR 為 1.72 倍）。
+
+場景定義與量測協定見 [`specs/benchmark.md`](specs/benchmark.md)。
+
+## 儲存庫結構
+
 ```text
-packages/             會發布到 npm
-  three/                @web-world-engine/three —— runtime，裝進使用者的 Three.js 專案
-  cook/                 @web-world-engine/cook —— 離線 CLI（Node），把 glTF 烘焙成 .wwm
-  format/               @web-world-engine/format —— 兩者共用的那一層：格式契約與純演算法
-internal/             不發布：上面那些的實作，build 時內聯進 dist
-  core/                 零依賴：型別、assert、RingBuffer、統計、矩陣
+packages/             發布到 npm
+  three/                runtime
+  cook/                 離線 CLI
+  format/               格式契約與純演算法
+internal/             不發布，build 時內聯進 dist
+  core/                 零相依：型別、assert、RingBuffer、統計、矩陣
   assets-runtime/       manifest 載入、.wwm 解碼、快取與參考計數
   engine/               世界 cell 串流排程、視錐與 cell 剔除
-  platform-web/         WebGPU capability 探測、Tier 分級
+  platform-web/         WebGPU capability 探測與分級
   diagnostics/          Profiler、幀歷史、報告、overlay
-  render-core/          backend-agnostic 的 renderer 介面與 RenderFrame
+  render-core/          與後端無關的 renderer 介面與 RenderFrame
   render-three/         benchmark 的 Three.js adapter
 apps/
-  example/              一個普通的 Three.js 專案，只換一個字
+  example/              一般的 Three.js 專案，只換一個字
   benchmark/            量測用的 Vite app 與所有場景
 tools/
-  lib/                  關卡共用的那幾件事：伺服器、瀏覽器、報告、產物新舊
-  gpu-check/            大部分的畫面關卡都在這裡（一個效果一支）
+  lib/                  關卡共用的伺服器、瀏覽器、報告、產物新舊檢查
+  gpu-check/            多數畫面關卡（一個效果一支）
   benchmark-runner/     Playwright 跑分與回歸比對
-  package-check/        打包 → 裝進乾淨專案 → import；另有 npm 欄位檢查
-  visual-check/         畫面比對：強化版 vs 原生，掃相機角度
+  package-check/        打包 → 裝進乾淨專案 → import
+  visual-check/         畫面比對：本套件對原生，掃相機角度
   site-check/           網站指標：首次可見、下載量、記憶體、與頁面共存
-  bundle-check/         只用 WebGL 的人不該下載 WebGPU 那一半
-  docs-check/           README 寫的 API 真的存在，訊息認得出是誰講的
-  gi-check/  physics-check/   間接光、物理各自的證明場景
+  bundle-check/         WebGL 專案不應下載 WebGPU 的部分
+  docs-check/           README 的 API 存在性與訊息前綴
+  gi-check/  physics-check/   間接光與物理的證明場景
 benchmarks/baselines/ 各機器的效能基準（進版控）
 specs/                準則、里程碑、契約與 ADR
 ```
 
 `packages/` 與 `internal/` 的分界是「會不會出現在使用者的 `node_modules`
-裡」。`internal/*` 全部 `private: true`，build 時被內聯 —— 一起發布的話
-使用者會看到一堆 `@ww/*`，而那些是實作細節不是介面。
+裡」。`internal/*` 全部 `private: true`，build 時內聯 —— 一併發布會讓使用者
+看到一批 `@ww/*`，而那些是實作細節。
 
-三個發布的套件分工是刻意的：`cook` 的相依（sharp、gltf-transform）**絕不能
-出現在瀏覽器的 bundle 裡**，而同一個套件同時提供 runtime 與 cook 就得靠
-tree-shaking 保證那件事 —— 那是一個壞掉時完全沒有徵兆的保證。
+三個發布套件的分工是刻意的：`cook` 的相依（sharp、gltf-transform）不能出現
+在瀏覽器的 bundle 裡。同一個套件同時提供 runtime 與 cook 就得靠 tree-shaking
+保證這件事，而那是一個失效時沒有訊號的保證。
 
-`apps/` 兩個都不是產品：`example` 是證明，`benchmark` 是儀器。
+`apps/` 兩者都不是產品：`example` 是證明，`benchmark` 是儀器。
 
 ## 依賴方向
 
@@ -85,240 +186,115 @@ apps/benchmark  →  three
 cook（Node，離線）→  format  →  （無）
 ```
 
-**Three.js 只能出現在 `packages/three`、`internal/render-three` 與 `apps/*`。**
-這條規則由 `eslint.config.js` 強制。想確認它有效，在 `internal/core` 任一
-檔案加上 `import * as THREE from 'three'`，`pnpm lint` 必須報錯。
+Three.js 只能出現在 `packages/three`、`internal/render-three` 與 `apps/*`，
+由 `eslint.config.js` 強制。在 `internal/core` 任一檔案加上
+`import * as THREE from 'three'`，`pnpm lint` 必須報錯。
 
-引擎核心與 renderer 解耦是**內部**規則（資料才排得成 SoA）。對外介面反而
-必須講 Three.js 的話 —— 使用者給 `BufferGeometry` 與 `Material`，套件回傳
+引擎核心與 renderer 解耦是內部規則，資料才排得成 SoA。對外介面則必須使用
+Three.js 的型別：使用者提供 `BufferGeometry` 與 `Material`，套件回傳
 `Object3D` 的子類。見 [ADR 0001](specs/adr/0001-three-as-adapter.md) 與
 [`specs/api.md`](specs/api.md)。
-
-## 開發
-
-在 `develop` 上做事。`main` 只收合併，而合併到 `main` 會觸發發布 ——
-見[分支與發布](#分支與發布)。
-
-```bash
-pnpm install
-pnpm verify       # typecheck + lint + format + 818 個單元測試，加上四道不用瀏覽器的關卡
-pnpm verify:all   # 上面那個，加上二十二道要瀏覽器的關卡
-pnpm example      # 範例 app，http://localhost:5174/
-pnpm dev          # benchmark app，http://localhost:5173/
-pnpm build:pkg    # 建置三個發布套件的 dist
-pnpm format       # prettier 寫回去（.md 不在範圍內，spec 的表格是手排的）
-```
-
-## 一個指令，二十八道關卡
-
-```bash
-pnpm verify:all
-```
-
-這個專案的核心問題不是「會不會壞」，是**壞掉的時候看不出來**。一個沒接上的
-效果不報錯、幀時間還特別好看；一個少剔除的旋鈕不報錯、只是慢；一個靜態
-import 不報錯、只是每個使用者多下載一包。所以每一道關卡守的都是**一句沒有
-人會去量的話**。
-
-### 不用瀏覽器
-
-| | 擋什麼 |
-| --- | --- |
-| `pnpm verify` | 型別、lint、格式、807 個單元測試 |
-| `pnpm metadata-check` | npm 頁面上看得到的欄位（description、repository、進入點在 dist） |
-| `pnpm docs-check` | README 裡寫的 API 真的存在，而且每個公開功能都寫到了 |
-| `pnpm bundle-check` | 只用 WebGL 的人不該下載 WebGPU 那一半 |
-| `pnpm publish-check` | 發布出去的形狀（publint + are-the-types-wrong） |
-| `pnpm ci-check` | workflow 是**沒被執行過的程式碼** —— 語法、script 名字、發布前有沒有驗過 |
-
-### 要瀏覽器
-
-| | 擋什麼 |
-| --- | --- |
-| `pnpm package-check` | 打包 → 裝進乾淨專案 → 真的用一次 |
-| `pnpm site-check` | 首次可見、下載量、分頁記憶體、與頁面共存、看不見要停 |
-| `pnpm visual-check` | 畫面與原生版的差異，七個模式各掃八個角度 |
-| `pnpm gpu-check` | **真的 GPU 時間**與原生版的比較，兩種內容 |
-| `pnpm webgpu-check` | 頂點動畫在 WebGPU／node 材質上有沒有真的在動 |
-| `pnpm physics-check` | 東西真的踩在畫出來的地面上、浮在畫出來的水面上 |
-| `pnpm gi-check` | 背光面的光**是從紅牆反彈過來的**，兩個後端都要 |
-| `pnpm ssgi-check` | 螢幕空間間接光到底有沒有在做事 |
-| `pnpm impostor-check` | Impostor 對真幾何：快多少，以及像不像 |
-| `pnpm vt-check` | 虛擬貼圖畫的是**對的那一頁**嗎 |
-| `pnpm daynight-check` | 太陽移動的代價：整份探針重烘要多久 |
-| `pnpm contact-check` | 接觸陰影暗的地方在接縫上，不是整片 |
-| `pnpm df-shadow-check` | 距離場陰影遠處也要有形狀 |
-| `pnpm reflect-check` | 反射照得到**畫面外**的東西 |
-| `pnpm sky-check` | 天空的顏色是積分出來的，而且會餵給間接光 |
-| `pnpm lod-fade-check` | 換階抖動不可以在畫面上開洞 |
-| `pnpm fog-check` | 光柱要被擋住，不可以穿牆 |
-| `pnpm vsm-check` | 虛擬陰影圖的解析度要真的比圖集大 |
-| `pnpm shadow-lod-check` | 陰影 pass 自己剔除、自己選階 |
-| `pnpm reflprobe-check` | 反射裡要有**實際拍到的東西**，而且跟著串流更新 |
-| `pnpm water-look-check` | 水的每一項都從「有多深」推得出來 |
-| `pnpm cross-check` | **同一個效果，兩個後端，必須算出同一組數字** |
-
-### 四件學到的事
-
-**一、有量、沒有人擋，等於沒量。** 這一輪最嚴重的兩個 bug —— 分頁記憶體漲到
-1 GB、畫面比對從來沒被跑過 —— 兩個都有工具量得出來，只是沒有人跑。所以現在
-只有一個入口。
-
-**二、關卡吃的是產物，產物過期就全部無效。** 每一道都先 `assertDistFresh`：
-原始碼比 `dist` 新就**直接停**，不是警告。舊產物給的是有信心的錯誤答案，
-那比沒有關卡更糟。
-
-**三、關卡自己也會壞，而且壞得看不出來。** 一道關卡可能結構上就看不到它
-名字裡那件事 —— 比對上游而 bug 在下游、用一個天生免疫的指標、測試場景
-分不出兩種成因。這一輪有五個上線中的 bug 是先**重寫量測**才找出來的。
-判準怎麼訂見 [`specs/doctrine.md`](specs/doctrine.md)。
-
-**四、複製出去的那幾份會各自漂走。** 44 個關卡本來各自帶一份靜態伺服器、
-一份瀏覽器啟動、一份報告格式。重複不是問題，**它們早就不一樣了**才是：
-37 份 mime 表裡只有 15 份認得 `.wasm`，44 次瀏覽器啟動裡只有 8 次找不到
-Chrome 時講得出人話，38 台伺服器裡只有 1 台擋得住路徑穿越。沒有人決定過
-那些差異。收進 `tools/lib/` 之後淨少 1,235 行，而且一個地方補的東西全部
-都補到了。
 
 ## 分支與發布
 
 ```text
-develop  ──●──●──●──────●──          平常在這裡做事，CI 每次都跑
+develop  ──●──●──●──────●──          日常開發，PR 觸發 CI
                          ╲
-main     ────────────────●──         合併就是「發布」這個決定
+main     ────────────────●──         合併即為「發布」這個決定
                          │
-                         └─ release.yml：完整驗證 → npm → 打 v0.2.0
+                         └─ release.yml：npm publish → 打 v0.2.0
 ```
 
-要發一版的時候，在 `develop` 上：
+發版流程，在 `develop` 上：
 
 ```bash
 pnpm version:set 0.2.0        # 三個 package.json 一起改
-#  寫 CHANGELOG.md
+#  更新 CHANGELOG.md
 git commit -am "release: v0.2.0"
 ```
 
-然後開 PR 合併回 `main`。合併之後 `.github/workflows/release.yml` 會跑完整
-驗證（含 `package-check`：打包 → 裝進乾淨專案 → 真的用一次）再發布，最後
-補上 `v0.2.0` 這個 tag —— npm 上的版本因此對得回一個 commit。
+然後開 PR 合併回 `main`。
 
-**合併本身不會重複發布。** 發布那一步會先問 registry 有沒有這個版本，有就
-跳過。所以合併十次而版本沒動，就是十次什麼都不發 —— 真正決定發不發的是
-`package.json` 裡的版本號有沒有變。
+驗證與發布的職責是分開的。PR 的 CI 測試的是**合併預覽樹**，也就是合併之後
+的結果；合併本身不產生新的程式碼狀態，因此 `release.yml` 不重複驗證。它只
+負責發布：npm publish，成功後補上 `v0.2.0` 這個 tag，使 npm 上的版本對得回
+一個 commit。
 
-**齊步是刻意的。** `@web-world-engine/format` 是另外兩個之間的格式契約，而契約
-裡最重要的東西不是型別，是**意思** —— 兩邊解析到不同版本的話型別全部符合，
-只是意思不一樣，症狀是「cook 過的資產比 runtime 產生的糊」而且沒有錯誤訊息。
-所以有時候會發一個「這個套件什麼都沒改」的版本，那個代價是刻意付的。
+合併不會重複發布：發布前先查詢 registry 是否已有該版本，有則跳過。版本號
+沒動的合併不會發布任何東西。
 
-`release.yml` 的第一步是**比對 tag 與 `package.json`**。不一致就停 ——
-發錯版本號這件事事後無法修正，npm 上的版本號拿不回來。
+三個套件齊步發布。`@web-world-engine/format` 是另外兩者之間的格式契約，而
+契約的重點不在型別而在語意：兩端解析到不同版本時型別全部相符，只是語意
+不同，結果是 cook 過的資產比 runtime 產生的糊，且不會出現錯誤訊息。因此
+有時會發出一個內容未變的版本。
 
-> 這個 workflow 需要 repo 的 `NPM_TOKEN` secret。沒設的話最後一步會失敗，
-> 前面的驗證照跑 —— 不會誤發。
+> `release.yml` 需要 repo 的 `NPM_TOKEN` secret。
 
-### Provenance 還沒開
+### Provenance
 
-pnpm 每次發布都會**先試 OIDC**（Trusted Publishing），失敗才退回 token。
-0.1.0 那一次退回了，因為 npmjs.com 上還沒替這三個套件設定 —— 所以
-**0.1.0 沒有 provenance**。
+pnpm 每次發布都會先嘗試 OIDC（Trusted Publishing），失敗才退回 token。
+0.1.0 退回了 token，因此沒有 provenance —— npmjs.com 上尚未替這三個套件
+設定。
 
-在 npmjs.com 上把這三個套件設成 Trusted Publishing（指向這個 repo 與
-`release.yml`）之後，OIDC 那條路會通，而 sigstore 簽章是跟著它來的 ——
-它把 tarball 綁到確切的 commit 與 workflow run，擋的是「有人拿到 token
-之後從自己的機器發一版」。設定完 `NPM_TOKEN` 那個 secret 就可以刪掉。
+設定完成後 OIDC 會通過，sigstore 簽章隨之產生，將 tarball 綁定到確切的
+commit 與 workflow run。屆時 `NPM_TOKEN` 可以移除。版本不可變，0.1.0 無法
+補上。
 
-版本是不可變的，所以 0.1.0 補不上去 —— 下一版才會有。
-
-### 版本號的規則
+### 版本規則
 
 | | |
 | --- | --- |
-| 三個套件**永遠同版本** | `metadata-check` 守著；`version:set` 一次改三個 |
-| tag 必須等於 `package.json` | `release.yml` 的第一步就比對，不一致直接停 |
-| 預發布走 dist-tag | `v1.0.0-beta.1` → `beta`，不會變成 `latest` |
-| 重跑同一個 tag 是安全的 | 已經在 registry 上的跳過，只補沒發成的那幾個 |
+| 三個套件永遠同版本 | `metadata-check` 守著；`version:set` 一次改三個 |
+| tag 由發布結果產生 | 發布成功才打 tag，未發布時不打 |
+| 預發布走 dist-tag | `0.2.0-beta.1` → `beta`，不會覆蓋 `latest` |
+| 重跑是安全的 | registry 上已有的跳過，只補未發成的 |
 
-`npm publish` **不看版本號裡有沒有 prerelease 標記** —— 沒給 `--tag` 一律
-寫進 `latest`。而 `version:set` 是收 `0.2.0-beta.1` 的，所以那條路真的
-走得到：推一個 beta，全世界 `npm i` 的預設就變成它。dist-tag 是從 tag 推
-出來的，不靠人記得加參數。
+`npm publish` 不看版本號中的 prerelease 標記，未指定 `--tag` 一律寫入
+`latest`。dist-tag 由版本號推導，不依賴人工加參數。
 
 ### `three` 的版本鎖
 
-`packages/three` 把 `three` 的 peer 鎖在**一個 minor**。那不是保守 ——
-`three-internals.ts` 碰 `THREE.BatchedMesh` 的私有欄位，因為官方沒有公開的
+`packages/three` 將 `three` 的 peer 範圍鎖在單一 minor。原因是
+`three-internals.ts` 使用 `THREE.BatchedMesh` 的私有欄位 —— 官方沒有公開的
 替代路徑。
 
-結構改了會**大聲報錯**（`assertBatchedMeshInternals` 在建構時就跑）。上界擋的
-是另一種：**欄位名字與型別都沒變、意思變了** —— 那種事沒有任何自動檢查
-抓得到，唯一的驗證是那 25 道拿原生 Three 當對照組的關卡，而它們只跑過
-一個版本。
+結構改變會在建構時報錯（`assertBatchedMeshInternals`）。上界擋的是另一種
+情況：欄位名稱與型別都沒變、意思變了。那種變動沒有自動檢查抓得到，唯一的
+驗證是以原生 Three.js 作為對照組的那批關卡，而它們只跑過一個版本。
 
-代價是 Three 每出一個 minor 就要發一版。那是碰私有欄位的誠實價格。
+代價是 Three.js 每出一個 minor 就要發一版。上游變動由
+[Dependabot](.github/dependabot.yml) 偵測：新版落在範圍外時開 PR，而該 PR
+的 CI 就是「這一版還能不能用」的答案。
 
-「上游動了」由 **Dependabot** 偵測（`.github/dependabot.yml`）：新版落在
-範圍外時它開 PR，而**那個 PR 的 CI** 就是「這一版還能不能用」的答案。
-
-> 曾經以為排程跑一次 CI 也算第二個偵測器。**不算** —— CI 跑的是
-> `--frozen-lockfile`，相依鎖死，每週跑出同一個結果。已經拿掉。
-
-## Benchmark
-
-```bash
-pnpm dev             # 互動式，http://localhost:5173/?scene=instancing
-pnpm cook:real       # 烘 assets/source/props，ab-*-real 場景需要
-pnpm cook:sponza     # 烘 Sponza，occlusion-sponza 場景需要
-pnpm bench           # 真實 GPU 跑完所有場景（每場景 3 次取中位數）
-pnpm bench:baseline  # 存成這台機器的基準
-pnpm bench:compare   # 與基準比對，退步超過門檻就非零離開
-pnpm bench:variance  # 從歷次執行推導雜訊水準與建議門檻
-pnpm bench:smoke     # 無頭 + SwiftShader，只驗證跑不跑得起來
-```
-
-門檻由 `bench:variance` 從實測雜訊推導，不要手動猜 —— 猜太緊會天天誤報
-然後被忽略，那比沒有門檻更糟。`bench:smoke` 的效能數字無意義。
-
-`ab-*-real` 用的是真實資產，需要先把 `.glb` 放進 `assets/source/props/`
-再跑 `pnpm cook:real`。合成內容在兩個方向上都不具代表性 —— 非索引幾何讓
-幾何看起來貴 3.35 倍，沒有貼圖讓材質看起來免費（真實 PBR 是 1.72 倍）——
-所以只用它量出來的 CPU/GPU 佔比會把後續每一個決策帶往錯的方向。
-
-場景定義與量測協定見 [`specs/benchmark.md`](specs/benchmark.md)。
-
-## 先讀哪一份
+## 文件
 
 | | |
 | --- | --- |
-| [`specs/doctrine.md`](specs/doctrine.md) | **判斷一件事該不該做、做完了沒有。動手之前先讀。** |
+| [`specs/doctrine.md`](specs/doctrine.md) | 判斷一件事該不該做、做完了沒有。動手之前先讀 |
 | [`specs/roadmap.md`](specs/roadmap.md) | 里程碑、通過條件與實測數字 |
 | [`specs/api.md`](specs/api.md) | 使用者實際會寫的程式碼 |
-| [`packages/three/README.md`](packages/three/README.md) | **對外的那一份** —— 套件裡有什麼、怎麼用 |
-| [`CHANGELOG.md`](CHANGELOG.md) | 每一版改了什麼，破壞性變更怎麼遷移 |
+| [`packages/three/README.md`](packages/three/README.md) | 對外的 API 說明 |
+| [`CHANGELOG.md`](CHANGELOG.md) | 每一版的變更與遷移方式 |
 | [`specs/benchmark.md`](specs/benchmark.md) | 場景與量測協定 |
 
 ## 範圍
 
-桌機瀏覽器的 WebGPU，WebGL2 作為 fallback。**行動裝置不在範圍內** ——
-不是「還沒做」，是無法驗證：ETC2／ASTC 沒有任何桌機能解碼，寫出來的編碼器
-只能用自己的解碼器驗，那證明不了任何事。重新納入的前提是先有一台能跑 CI
-的實機。
+桌機瀏覽器的 WebGPU，WebGL2 作為 fallback。
+
+行動裝置不在範圍內，原因是無法驗證：ETC2 與 ASTC 沒有任何桌機能解碼，寫出
+來的編碼器只能用自己的解碼器驗證。重新納入的前提是先有一台能跑 CI 的實機。
 
 ## 慣例
 
-- 文件、ADR、註解用**繁體中文**；程式碼識別字、型別、API 命名、commit 用**英文**
+- 文件、ADR、註解用繁體中文；程式碼識別字、型別、API 命名與 commit 用英文
 - 內部 package 不做 build step，`exports` 直指 `src/index.ts`（[ADR 0003](specs/adr/0003-source-only-packages.md)）
-- TypeScript 開到很嚴：`strict`、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes`
-- 效能報告以 p50 / p95 / p99 為主，不用平均值 —— 平均值會把 stutter 藏起來
-- 量不到的數值回報 `null`，不要回報 `0`
+- TypeScript：`strict`、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes`
+- 效能報告以 p50 / p95 / p99 為主，不用平均值 —— 平均值會掩蓋 stutter
+- 量不到的數值回報 `null`，不回報 `0`
 - 效能結論必須註明用什麼內容量的
-- 驗證正確性的場景要提供 `verdict()`，讓 runner 自動判定
+- 驗證正確性的場景要提供 `verdict()`，供 runner 自動判定
 - 涵蓋不到不等於通過：驗不到的路徑要明說「未驗證」
 
-## 環境需求
-
-Node.js ≥ 22.12、pnpm 11、支援 WebGPU 的桌機瀏覽器。
-
-`pnpm bench` 若找不到瀏覽器：`pnpm exec playwright install chromium`
+找不到瀏覽器時：`pnpm exec playwright install chromium`
 
 MIT

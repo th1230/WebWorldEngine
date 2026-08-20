@@ -1,6 +1,6 @@
 {
   "name": "@web-world-engine/three",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Three.js 的強化層：換一個字就有螢幕誤差 LOD、空間分割剔除與世界串流。",
   "keywords": [
     "three",

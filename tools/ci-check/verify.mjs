@@ -173,13 +173,14 @@ check(
 const ci = parsed.get('.github/workflows/ci.yml');
 const ciBranches = ci?.on?.push?.branches ?? [];
 
-// ## CI 不在 `main` 上重跑
+// ## CI 只在 PR 上跑
 //
-// PR 那一次測的就是合併後的樹，而合併之後 `release.yml` 又會從頭驗一遍。
-// 掛在 `main` 上等於同一棵樹跑第三次，而且與 release 同時開兩個 job。
+// `pull_request` 事件測的是合併後的樹，所以那一次就是「這棵樹能不能合併」
+// 的答案。push 事件一個都不掛：`develop` 是工作中的狀態，而 `main` 上
+// 合併之後 `release.yml` 會接手。
 check(
-  ciBranches.includes('develop') && !ciBranches.includes('main'),
-  'CI 在 develop 上跑，不在 main 上重跑',
+  ciBranches.length === 0,
+  'CI 不掛在任何 push 上',
   `push branches = ${JSON.stringify(ciBranches)}`,
 );
 check(
