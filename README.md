@@ -106,7 +106,7 @@ pnpm build:pkg    # 建置三個發布套件的 dist
 pnpm format       # prettier 寫回去（.md 不在範圍內，spec 的表格是手排的）
 ```
 
-## 一個指令，二十六道關卡
+## 一個指令，二十七道關卡
 
 ```bash
 pnpm verify:all
@@ -125,6 +125,7 @@ import 不報錯、只是每個使用者多下載一包。所以每一道關卡�
 | `pnpm metadata-check` | npm 頁面上看得到的欄位（description、repository、進入點在 dist） |
 | `pnpm docs-check` | README 裡寫的 API 真的存在，而且每個公開功能都寫到了 |
 | `pnpm bundle-check` | 只用 WebGL 的人不該下載 WebGPU 那一半 |
+| `pnpm publish-check` | 發布出去的形狀（publint + are-the-types-wrong） |
 
 ### 要瀏覽器
 
@@ -199,6 +200,10 @@ tag 推上去之後 `.github/workflows/release.yml` 會跑完整驗證（含
 
 > 這個 workflow 需要 repo 的 `NPM_TOKEN` secret。沒設的話最後一步會失敗，
 > 前面的驗證照跑 —— 不會誤發。
+
+發布時會產生 **npm provenance**（sigstore 簽章），把 tarball 綁到確切的
+commit 與 workflow run。它擋的是「有人拿到 token 之後從自己的機器發一個
+版本」—— 那種事在 npm 頁面上完全看不出來。
 
 ## Benchmark
 

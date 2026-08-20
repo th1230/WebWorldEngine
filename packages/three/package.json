@@ -11,7 +11,11 @@
     "culling",
     "instancing",
     "streaming",
-    "open-world"
+    "open-world",
+    "batchedmesh",
+    "impostor",
+    "global-illumination",
+    "virtual-texture"
   ],
   "license": "MIT",
   "author": "thomasYeh",
@@ -37,7 +41,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "vite build && node tools/flatten-types.mjs",
+    "build": "vite build && node ../../tools/build/flatten-types.mjs",
     "prepack": "pnpm run build"
   },
   "publishConfig": {

@@ -34,7 +34,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "vite build && node tools/flatten-types.mjs",
+    "build": "vite build && node ../../tools/build/flatten-types.mjs",
     "prepack": "pnpm run build"
   },
   "publishConfig": {

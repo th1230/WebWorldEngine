@@ -55,6 +55,11 @@ jobs:
       - run: pnpm build:pkg
 
       # 只用 WebGL 的人不該下載 WebGPU 那一半。
+      # 生態系自己的兩把尺：publint 驗 package.json 與 tarball，
+      # attw 驗型別在四種解析模式下找不找得到。它們第一次跑就抓到
+      # @webworld/cook 的型別整個是斷的 —— 而這裡沒有任何東西看得見。
+      - run: pnpm publish-check
+
       - run: pnpm bundle-check
 
       # 打包 → 裝進乾淨專案 → 真的用一次。發布前最後一道，也是唯一一道
@@ -70,3 +75,14 @@ jobs:
           done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # ## Provenance
+          #
+          # 讓 npm 產生一份 sigstore 簽章，把這個 tarball 綁到**確切的
+          # commit 與 workflow run**。npm 頁面上會出現一個可驗證的來源標記。
+          #
+          # 這件事擋的是「有人拿到 token 之後從自己的機器發一個版本」——
+          # 那種攻擊在 npm 上完全看不出來，而供應鏈上游被換掉是這幾年
+          # 最貴的一類事故。
+          #
+          # 需要 id-token: write（上面已經有）與從 GitHub Actions 發布。
+          NPM_CONFIG_PROVENANCE: "true"

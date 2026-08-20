@@ -15,6 +15,8 @@ import dts from 'vite-plugin-dts';
 export default defineConfig({
   build: {
     target: 'esnext',
+    // Source map 會發布出去。理由與量到的大小寫在
+    // `packages/three/vite.config.ts` —— 三個套件同一個決定。
     sourcemap: true,
     minify: false,
     lib: {

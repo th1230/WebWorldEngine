@@ -57,6 +57,11 @@ jobs:
       # 動態 import」，而在這道關卡之前**沒有任何東西守著那句話** —— 改成
       # 靜態 import 的話 typecheck、lint、單元測試、所有畫面關卡全部照樣綠，
       # 因為畫面完全正確，只是每個使用者多背一整包 TSL。
+      # 生態系自己的兩把尺：publint 驗 package.json 與 tarball，
+      # attw 驗型別在四種解析模式下找不找得到。它們第一次跑就抓到
+      # @webworld/cook 的型別整個是斷的 —— 而這裡沒有任何東西看得見。
+      - run: pnpm publish-check
+
       - run: pnpm bundle-check
 
       # package-check 的最後一段會把套件打包成一個網站並在瀏覽器裡跑，

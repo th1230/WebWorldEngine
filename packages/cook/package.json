@@ -35,7 +35,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "vite build && node tools/flatten-types.mjs",
+    "build": "vite build && node ../../tools/build/flatten-types.mjs",
     "prepack": "pnpm run build"
   },
   "publishConfig": {
@@ -46,11 +46,18 @@
         "default": "./dist/index.js"
       },
       "./texture": {
-        "types": "./dist/texture.d.ts",
+        "types": "./dist/texture/index.d.ts",
         "default": "./dist/texture.js"
       }
     },
-    "types": "./dist/index.d.ts"
+    "types": "./dist/index.d.ts",
+    "typesVersions": {
+      "*": {
+        "texture": [
+          "./dist/texture/index.d.ts"
+        ]
+      }
+    }
   },
   "dependencies": {
     "@gltf-transform/core": "^4.4.2",

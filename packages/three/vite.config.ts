@@ -43,6 +43,16 @@ export default defineConfig({
     // 而且看起來就像正常產物，沒有任何徵兆說它是上一版的。
     emptyOutDir: true,
     target: 'esnext',
+    // ## Source map 會跟著發布出去
+    //
+    // 那不是省下來的東西：`@webworld/three` 的 map 有 1,400 kB，比 JS 的
+    // 662 kB 還大，而且內嵌完整的 TypeScript 原始碼（`sourcesContent`）。
+    //
+    // 留著是因為**它不進使用者的網站**：瀏覽器只有在開發者工具打開時才
+    // 去抓 `.map`，一般訪客一個位元組都不會下載。付的是 npm 安裝時的磁碟，
+    // 換到的是「這個套件替你做的那些複雜的事，出問題時你踩得進去看」。
+    //
+    // 對一個賣點就是「幫你處理底層」的套件，那個交換是划算的。
     sourcemap: true,
     minify: false,
     lib: {
