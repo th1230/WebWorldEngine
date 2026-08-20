@@ -126,7 +126,7 @@ jobs:
       # **不會**被 CI 覆蓋，只能靠開發機的 `pnpm bench` 驗證。
       - run: pnpm bench:smoke
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: benchmark-smoke-results
