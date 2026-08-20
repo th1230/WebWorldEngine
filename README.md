@@ -101,7 +101,7 @@ pnpm build:pkg    # 建置三個發布套件的 dist
 pnpm format       # prettier 寫回去（.md 不在範圍內，spec 的表格是手排的）
 ```
 
-## 一個指令，二十七道關卡
+## 一個指令，二十六道關卡
 
 ```bash
 pnpm verify:all
