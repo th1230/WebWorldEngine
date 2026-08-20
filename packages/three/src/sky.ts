@@ -9,7 +9,8 @@ import {
   Vector3,
   WebGLCubeRenderTarget,
 } from 'three';
-import type { CubeTexture, WebGLRenderer } from 'three';
+import type { CubeTexture, Texture, WebGLRenderer } from 'three';
+import { createSkyNodeMaterial, type SkyNodeHandle } from './sky-node.ts';
 
 /**
  * 大氣散射的天空。
@@ -63,12 +64,28 @@ export class SkyAtmosphere {
   readonly target: WebGLCubeRenderTarget;
   private readonly material: ShaderMaterial;
   private readonly scene = new Scene();
+  /** node 那條路自己的場景 —— 兩條路的 dome 用的是不同的材質類別。 */
+  private readonly nodeScene = new Scene();
   private readonly camera: CubeCamera;
   private readonly options: Required<SkyAtmosphereOptions>;
   private readonly lastSun = new Vector3(0, 0, 0);
   private baked = false;
   /** 診斷：重烘了幾次。太陽沒動卻一直漲代表門檻設得太小。 */
   bakes = 0;
+
+  /**
+   * WebGPU 那條路的一整組（render target、相機、node 材質）。
+   *
+   * 惰性建立：只用 WebGL 的人不該為了它下載 `three/tsl`，也不該多配一份
+   * cubemap 的記憶體。
+   */
+  private node: {
+    target: { texture: Texture; dispose: () => void };
+    camera: { update: (renderer: unknown, scene: unknown) => void };
+    handle: SkyNodeHandle;
+  } | null = null;
+  private nodePending: Promise<void> | null = null;
+  private nodeFailed = false;
 
   constructor(options: SkyAtmosphereOptions = {}) {
     this.options = {
@@ -99,9 +116,24 @@ export class SkyAtmosphere {
     this.scene.add(dome);
   }
 
-  /** 烘好的天空。設成 `scene.background`，探針就會自動吃到它。 */
+  /**
+   * 烘好的天空。設成 `scene.background`，探針就會自動吃到它。
+   *
+   * WebGPU 上回傳的是 node 那條路的那一張 —— 兩條路各有自己的 cubemap，
+   * 而呼叫端不必知道自己在哪一條上。
+   */
   get texture(): CubeTexture {
-    return this.target.texture;
+    return (this.node?.target.texture ?? this.target.texture) as CubeTexture;
+  }
+
+  /**
+   * 現在真正在用的那個 render target。
+   *
+   * 兩條路各有一張 cubemap，而要讀回像素的人（關卡、除錯）必須讀對那一張。
+   * 讀錯的症狀是「WebGPU 上天空全黑」—— 而那與「天空沒接上」看起來一樣。
+   */
+  get activeTarget(): { width: number } {
+    return (this.node?.target ?? this.target) as unknown as { width: number };
   }
 
   /**
@@ -112,6 +144,14 @@ export class SkyAtmosphere {
    * @returns 這一次有沒有重烘。
    */
   update(renderer: WebGLRenderer, sunDirection: Vector3): boolean {
+    // ## 認得出自己在哪一條路上
+    //
+    // `WebGPURenderer` 不吃 `ShaderMaterial` —— 丟給它會在 NodeBuilder 裡
+    // 直接報錯，整個場景畫不出來。所以這裡分流，而不是讓呼叫端自己選。
+    if ((renderer as { isWebGPURenderer?: boolean }).isWebGPURenderer === true) {
+      return this.updateNode(renderer as unknown as WebGPULikeRenderer, sunDirection);
+    }
+
     if (this.baked && this.lastSun.angleTo(sunDirection) < this.options.threshold) return false;
     this.lastSun.copy(sunDirection).normalize();
     (this.material.uniforms.uSunDirection!.value as Vector3).copy(this.lastSun);
@@ -124,10 +164,80 @@ export class SkyAtmosphere {
     return true;
   }
 
+  /**
+   * WebGPU 那條路。第一次呼叫會啟動非同步的建立，並回傳 `false` ——
+   * 還沒好就先不烘，下一幀再來。
+   *
+   * 要等它的話用 `skyNodeReady()`（關卡與測試需要一個確定的時點）。
+   */
+  private updateNode(renderer: WebGPULikeRenderer, sunDirection: Vector3): boolean {
+    if (this.nodeFailed) return false;
+    if (this.node === null) {
+      this.nodePending ??= this.buildNode();
+      return false;
+    }
+    if (this.baked && this.lastSun.angleTo(sunDirection) < this.options.threshold) return false;
+    this.lastSun.copy(sunDirection).normalize();
+    this.node.handle.setSun(this.lastSun);
+
+    const previous = renderer.getRenderTarget();
+    this.node.camera.update(renderer, this.nodeScene);
+    renderer.setRenderTarget(previous);
+    this.baked = true;
+    this.bakes++;
+    return true;
+  }
+
+  private async buildNode(): Promise<void> {
+    try {
+      const webgpu = (await import("three/webgpu")) as unknown as {
+        CubeRenderTarget: new (
+          size: number,
+          options?: unknown,
+        ) => { texture: Texture; dispose: () => void };
+        HalfFloatType: number;
+      };
+      const handle = await createSkyNodeMaterial({
+        intensity: this.options.intensity,
+        mieDirectional: this.options.mieDirectional,
+      });
+      const target = new webgpu.CubeRenderTarget(this.options.resolution, {
+        type: webgpu.HalfFloatType,
+      });
+      const camera = new CubeCamera(0.1, 10, target as never);
+      const dome = new Mesh(new BoxGeometry(2, 2, 2), handle.material as never);
+      dome.frustumCulled = false;
+      this.nodeScene.add(dome);
+      this.node = { target, camera: camera as never, handle };
+    } catch (error) {
+      this.nodeFailed = true;
+      // 大聲說出來。靜靜失敗的症狀是「WebGPU 上天空是黑的」，而那看起來
+      // 像場景沒設定好，不像功能沒接上。
+      console.error("WW.SkyAtmosphere: node 材質那條路建不起來，WebGPU 上不會有天空。", error);
+    }
+  }
+
   dispose(): void {
     this.target.dispose();
     this.material.dispose();
+    this.node?.target.dispose();
   }
+}
+
+/** `WebGPURenderer` 用得到的那幾個方法，不靜態相依 `three/webgpu`。 */
+interface WebGPULikeRenderer {
+  getRenderTarget: () => unknown;
+  setRenderTarget: (target: unknown) => void;
+}
+
+/**
+ * 等 WebGPU 那條路建好。WebGL 上立刻返回。
+ *
+ * 存在的理由與 `irradianceNodeReady` 一樣：`three/tsl` 是動態載入的，而
+ * 關卡需要一個「現在可以量了」的確定時點。
+ */
+export async function skyNodeReady(sky: SkyAtmosphere): Promise<void> {
+  await (sky as unknown as { nodePending: Promise<void> | null }).nodePending;
 }
 
 const VERTEX = /* glsl */ `

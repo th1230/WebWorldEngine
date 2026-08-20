@@ -1973,6 +1973,10 @@ Object.assign(window, {
         : {
             setSun: (elevation: number): boolean => skyScene.setSun(elevation, renderer),
             sampleFace: (face: number): [number, number, number] => skyScene.sampleFace(renderer, face),
+            // 跨後端比對要走同一支 —— 兩邊各用各的讀法，量到的差異會混著
+            // 「讀法不同」與「實作不同」，而那分不開。
+            sampleFaceAsync: (face: number): Promise<[number, number, number]> =>
+              skyScene.sampleFaceAsync(renderer, face),
             bakes: (): number => skyScene.bakes(),
             bakeProbes: (): Promise<number> => skyScene.bakeProbes(renderer),
             probeAt: (p: [number, number, number]): [number, number, number] => skyScene.probeAt(p),

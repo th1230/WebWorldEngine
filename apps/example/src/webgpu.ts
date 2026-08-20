@@ -3,6 +3,7 @@ import { MeshStandardNodeMaterial, PerspectiveCamera, Scene, WebGPURenderer } fr
 import { HemisphereLight, DirectionalLight, Color, Matrix4, Vector3 } from 'three/webgpu';
 import { makeSkinnedRig } from './skinned.ts';
 import { makeGiScene, type GiScene } from './gi-scene.ts';
+import { makeSkyScene, type SkyScene } from './sky-scene.ts';
 
 /**
  * `WW.AnimatedInstancedMesh` 在 **WebGPU** 上的驗證頁。
@@ -41,6 +42,13 @@ const GI = params.get('gi') === '1';
  * 同一組相機、同一份著色器，只有那個常數不同。
  */
 const GI_OFF = params.get('giOff') === '1';
+/**
+ * `?sky=1` 換成天空的驗證場景。
+ *
+ * 與 WebGL 那頁**共用同一個 `makeSkyScene`** —— 場景一模一樣，只有 renderer
+ * 不同。跨後端比對的前提就是這個：量到的差異只能來自實作，不能來自佈置。
+ */
+const SKY = params.get('sky') === '1';
 
 const renderer = new WebGPURenderer({ canvas, antialias: true });
 renderer.setSize(innerWidth, innerHeight, false);
@@ -72,6 +80,16 @@ if (GI) {
 
 }
 
+let skyScene: SkyScene | null = null;
+if (SKY) {
+  scene.remove(...scene.children.filter((o) => (o as { isLight?: boolean }).isLight === true));
+  skyScene = makeSkyScene();
+  scene.add(skyScene.root);
+  // node 那條路是非同步建起來的。不等的話前幾幀還沒有天空，而量測會剛好
+  // 落在那幾幀裡 —— 讀到全黑，看起來像「WebGPU 上沒有天空」。
+  await skyScene.nodeReady(renderer);
+}
+
 const rig = makeSkinnedRig(8);
 const baked = WW.bakeVertexAnimation(rig.mesh, rig.clip, { frames: 32 });
 // **node 材質** —— 這正是 WebGL 那條路碰不到的東西。
@@ -89,7 +107,7 @@ for (let i = 0; i < COUNT; i++) {
   m.makeTranslation((rand() - 0.5) * 120, 0, (rand() - 0.5) * 120);
   mesh.setMatrixAt(i, m);
 }
-if (giScene === null) scene.add(mesh);
+if (giScene === null && skyScene === null) scene.add(mesh);
 
 let frames = 0;
 function step(t: number): void {
@@ -114,6 +132,16 @@ renderer.setAnimationLoop(() => {
 
 Object.assign(window, {
   __wwgpu: {
+    sky:
+      skyScene === null
+        ? null
+        : {
+            setSun: (elevation: number): boolean =>
+              skyScene.setSun(elevation, renderer as never),
+            sampleFaceAsync: (face: number): Promise<[number, number, number]> =>
+              skyScene.sampleFaceAsync(renderer, face),
+            bakes: (): number => skyScene.bakes(),
+          },
     renderer,
     mesh,
     frames: (): number => frames,
