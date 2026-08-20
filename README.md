@@ -217,9 +217,18 @@ git commit -am "release: v0.2.0"
 > 這個 workflow 需要 repo 的 `NPM_TOKEN` secret。沒設的話最後一步會失敗，
 > 前面的驗證照跑 —— 不會誤發。
 
-發布時會產生 **npm provenance**（sigstore 簽章），把 tarball 綁到確切的
-commit 與 workflow run。它擋的是「有人拿到 token 之後從自己的機器發一個
-版本」—— 那種事在 npm 頁面上完全看不出來。
+### Provenance 還沒開
+
+pnpm 每次發布都會**先試 OIDC**（Trusted Publishing），失敗才退回 token。
+0.1.0 那一次退回了，因為 npmjs.com 上還沒替這三個套件設定 —— 所以
+**0.1.0 沒有 provenance**。
+
+在 npmjs.com 上把這三個套件設成 Trusted Publishing（指向這個 repo 與
+`release.yml`）之後，OIDC 那條路會通，而 sigstore 簽章是跟著它來的 ——
+它把 tarball 綁到確切的 commit 與 workflow run，擋的是「有人拿到 token
+之後從自己的機器發一版」。設定完 `NPM_TOKEN` 那個 secret 就可以刪掉。
+
+版本是不可變的，所以 0.1.0 補不上去 —— 下一版才會有。
 
 ### 版本號的規則
 
