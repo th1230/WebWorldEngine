@@ -1,6 +1,6 @@
 {
   "name": "@web-world-engine/cook",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "把 glTF 烘焙成 @web-world-engine/three 吃的格式：LOD 鏈、切線、BC 壓縮貼圖。",
   "keywords": [
     "gltf",
