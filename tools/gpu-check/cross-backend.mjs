@@ -112,6 +112,95 @@ const EFFECTS = [
     },
   },
   {
+    name: 'Impostor 看板',
+    key: 'impostorLook',
+    glUrl: '/?impostorlook=1&verify=1',
+    gpuUrl: '/webgpu.html?impostorlook=1',
+    labels: [
+      'a0 覆蓋', 'a0 R', 'a0 G', 'a0 B',
+      'a45 覆蓋', 'a45 R', 'a45 G', 'a45 B',
+      'a90 覆蓋', 'a90 R', 'a90 G', 'a90 B',
+      'a135 覆蓋', 'a135 R', 'a135 G', 'a135 B',
+      'a180 覆蓋', 'a180 R', 'a180 G', 'a180 B',
+      'a225 覆蓋', 'a225 R', 'a225 G', 'a225 B',
+      'a270 覆蓋', 'a270 R', 'a270 G', 'a270 B',
+      'a315 覆蓋', 'a315 R', 'a315 G', 'a315 B',
+      '格0 alpha', '格1 alpha', '格2 alpha', '格3 alpha',
+      '格4 alpha', '格5 alpha', '格6 alpha', '格7 alpha',
+      '格8 alpha', '格9 alpha', '格10 alpha', '格11 alpha',
+      '格12 alpha', '格13 alpha', '格14 alpha', '格15 alpha',
+    ],
+    floor: 1 / 255,
+    /**
+     * ## 繞一圈，因為 impostor 只在方位角上會錯
+     *
+     * 看板本身要嘛正對相機要嘛不對，而不對的話畫面上是一條線，一眼看得出來。
+     * 真正會靜靜錯掉的是**挑哪一格**：圖集裡有 16 個角度，挑錯的症狀是「這棵
+     * 樹從側面看變成另一棵樹」，而覆蓋率幾乎不動。所以八個方位角各量一次，
+     * 而且量顏色不只量覆蓋率 —— 樹幹是棕的、樹冠是綠的，挑錯格時比例會變。
+     *
+     * ## 而圖集本身要直接讀
+     *
+     * 從畫面查過去那條路上疊著挑格、uv、alphaTest，每一站都會把症狀變成
+     * 「就是黑的」。這一項第一次跑的時候量到的是：某些方位角整片空 —— 而
+     * 原因既不是看板也不是挑格，是**烘出來的圖集裡十六格只有中間八格有東西**
+     * （一棵樹被拉寬十六倍的形狀）。只有直接讀圖集分得出來（doctrine 27）。
+     *
+     * ## 看板在區域空間張開，不是視空間
+     *
+     * GLSL 那份直接把 `(x, y, 0) * radius` 加在視空間的中心上。TSL 那份不能
+     * 那樣做（`positionNode` 回傳的是區域座標），所以改成在世界空間用相機的
+     * right／up 張開再換回去。兩者等價，而「等價」正是這一項在量的。
+     */
+    tolerance: 0.02,
+    measure: async (api) => {
+      const out = [];
+      // 第一幀畫不出東西（貼圖還沒上傳），而 WebGPU 那頁在等 node 材質時已經
+      // 先畫過幾十幀 —— 不暖機的話兩邊比的是不同的暖機程度。
+      for (let i = 0; i < 10; i++) api.render(0);
+      for (let i = 0; i < 8; i++) {
+        api.render((i * Math.PI) / 4);
+        out.push(...(await api.statsAsync()));
+      }
+      // 圖集的十六格，直接讀。
+      for (let cell = 0; cell < 16; cell++) out.push((await api.atlasCellAsync(cell))[3]);
+      return out;
+    },
+    /**
+     * 兩份一起錯的話「兩邊一致」照樣是綠的。這裡問三件不看對方的事：
+     *
+     * 一、**圖集十六格都有東西**。這一條抓到過真的：`setRenderTarget` 是在綁定
+     * 那一刻把 viewport 抄走的，而綁定在迴圈外面 —— 十六個視角全部用同一組，
+     * 圖集裡只剩一棵拉寬十六倍的樹。
+     *
+     * 二、**畫面上真的有樹**。看板停在原點的話幾萬棵疊在一個點，覆蓋率幾乎是
+     * 0 —— 而那個症狀配上「繪製次數少」看起來像大獲全勝。
+     *
+     * 三、**繞一圈的覆蓋率不會忽大忽小**。看板沒有朝向相機的話某些角度會變成
+     * 一條線，覆蓋率就塌了。
+     */
+    absolute: (get) => {
+      const cover = [0, 45, 90, 135, 180, 225, 270, 315].map((a) => get(`a${a} 覆蓋`));
+      const cells = Array.from({ length: 16 }, (_, i) => get(`格${i} alpha`));
+      const lo = Math.min(...cover);
+      const hi = Math.max(...cover);
+      const cellLo = Math.min(...cells);
+      const cellHi = Math.max(...cells);
+      return [
+        [
+          cellLo > 0.05 && cellHi / cellLo < 1.3,
+          `圖集十六格都有東西 —— alpha ${cellLo.toFixed(3)} 到 ${cellHi.toFixed(3)}`,
+        ],
+        [lo > 0.05, `畫面上真的有樹 —— 最少的那個角度覆蓋 ${(lo * 100).toFixed(1)}%`],
+        [
+          hi / Math.max(lo, 1e-6) < 1.6,
+          `繞一圈覆蓋率穩定 —— ${(lo * 100).toFixed(1)}% 到 ${(hi * 100).toFixed(1)}%`,
+        ],
+      ];
+    },
+
+  },
+  {
     name: '換階淡入',
     key: 'lodFade',
     glUrl: '/?lodfade=1&verify=1',

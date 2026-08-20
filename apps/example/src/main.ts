@@ -471,9 +471,19 @@ if (physicsScene !== null) {
   rocks.visible = false;
 }
 
+/**
+ * `?impostorlook=1` 是**跨後端比對**用的模式，與 `?trees=` 那個效能量測不同。
+ *
+ * 差別在這個模式下場景**不加進頁面的 scene** —— 它有自己的相機與 render
+ * target，兩個後端才量得到同一塊畫面。加進去的話 root 會被搬走，私有的那個
+ * scene 就空了。
+ */
+const IMPOSTOR_LOOK = params.get('impostorlook') === '1';
 const impostorScene: ImpostorScene | null =
-  TREES > 0 ? makeImpostorScene(renderer, TREES, SPREAD, USE_IMPOSTOR) : null;
-if (impostorScene !== null) {
+  TREES > 0 || IMPOSTOR_LOOK
+    ? makeImpostorScene(renderer, IMPOSTOR_LOOK ? 300 : TREES, IMPOSTOR_LOOK ? 300 : SPREAD, IMPOSTOR_LOOK ? true : USE_IMPOSTOR)
+    : null;
+if (impostorScene !== null && !IMPOSTOR_LOOK) {
   scene.add(impostorScene.root);
   rocks.visible = false;
 }
@@ -1899,6 +1909,21 @@ Object.assign(window, {
               height?: number,
             ): Promise<number[]> => lodFadeScene.windowAsync(renderer, u, v, width, height),
             statsAsync: (): Promise<number[]> => lodFadeScene.statsAsync(renderer),
+          },
+    impostorLook:
+      impostorScene === null || !IMPOSTOR_LOOK
+        ? null
+        : {
+            render: (azimuth: number): void => impostorScene.render(renderer, azimuth),
+            statsAsync: (): Promise<number[]> => impostorScene.statsAsync(renderer),
+            atlasCellAsync: (cell: number): Promise<number[]> =>
+              impostorScene.atlasCellAsync(renderer, cell),
+            windowAsync: (
+              u: number,
+              v: number,
+              width: number,
+              height?: number,
+            ): Promise<number[]> => impostorScene.windowAsync(renderer, u, v, width, height),
           },
     vsm:
       vsmScene === null
