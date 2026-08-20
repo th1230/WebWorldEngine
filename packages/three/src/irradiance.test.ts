@@ -368,17 +368,34 @@ describe('接到材質上', () => {
     expect(material.onBeforeCompile).toBe(before);
   });
 
-  it('接了 node 材質之後改 intensity 會警告 —— 那條路改不動', () => {
-    // node 那條路的強度是編譯期常數。實測過三種讓它變成可改的做法都沒用：
-    // TSL 的 uniform（值傳到了但不上傳）、重接一份新的節點圖、
-    // needsUpdate 強制重編。所以這裡的選擇是**講清楚**，不是假裝有效。
+  /**
+   * ## 改 intensity 要同時改到兩條路
+   *
+   * WebGL 讀的是 uniform，node 那條路讀的是一張 1×1 的貼圖 —— 那個節點底下
+   * 的 uniform 只在第一次繪製時上傳（四種試過的做法記在 `irradiance-node.ts`）。
+   *
+   * 漏掉貼圖那一半的症狀是「這個公開屬性在 WebGPU 上靜靜地沒有作用」。
+   */
+  it('建構時給的 intensity 也要進那張貼圖', () => {
+    // 初值寫死的話 `new IrradianceVolume({ intensity: 0 })` 在 node 那條路上
+    // 照樣全亮 —— setter 從來沒跑過。關卡抓到過：關掉時該是 0，讀到 134.9。
+    const volume = new IrradianceVolume({
+      min: new Vector3(0, 0, 0),
+      size: new Vector3(10, 10, 10),
+      resolution: [2, 2, 2],
+      intensity: 0.25,
+    });
+    expect((volume.intensityTexture.image.data as Float32Array)[0]).toBe(0.25);
+  });
+
+  it('改 intensity 會同時改到 uniform 與那張貼圖', () => {
     const volume = unit();
-    volume.markNodeMaterial();
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const version = volume.intensityTexture.version;
     volume.intensity = 0.5;
-    expect(warn).toHaveBeenCalled();
-    expect(String(warn.mock.calls[0]?.[0])).toContain('編譯期常數');
-    warn.mockRestore();
+    expect(volume.intensity).toBe(0.5);
+    expect((volume.intensityTexture.image.data as Float32Array)[0]).toBe(0.5);
+    // `needsUpdate` 在 Three 上只有 setter（它加 `version`），讀回來是 undefined。
+    expect(volume.intensityTexture.version).toBeGreaterThan(version);
   });
 
   it('沒有 node 材質的時候改 intensity 不會亂吼', () => {

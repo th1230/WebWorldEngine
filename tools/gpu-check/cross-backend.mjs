@@ -794,7 +794,7 @@ const EFFECTS = [
     key: 'gi',
     glUrl: '/?gi=1&verify=1',
     gpuUrl: '/webgpu.html?gi=1',
-    labels: ['朝 −x−z', '朝 +x+z', '朝上', '朝下', '畫面 中 R', '畫面 中 G', '畫面 中 B', '畫面 右 R', '畫面 右 G', '畫面 右 B', '畫面 下 R', '畫面 下 G', '畫面 下 B'],
+    labels: ['朝 −x−z', '朝 +x+z', '朝上', '朝下', '畫面 中 R', '畫面 中 G', '畫面 中 B', '畫面 右 R', '畫面 右 G', '畫面 右 B', '畫面 下 R', '畫面 下 G', '畫面 下 B', '開著', '關掉', '再開', '搬之前 藍', '搬之後 藍', '藍漲了'],
     floor: 0.005,
     /**
      * ## 這一項的容差比別的鬆，而那是有理由的
@@ -823,10 +823,34 @@ const EFFECTS = [
      *
      * 每個量的門檻都是量到的差的兩倍上下：
      */
+    /**
+     * ## 單邊的主張：這兩件事「兩邊一致」證明不了
+     *
+     * 一、**強度真的改得動**。它在 node 那條路上曾經靜靜地沒有作用，而兩邊
+     * 一起沒作用的話比對照樣是綠的。
+     *
+     * 二、**東西搬動之後附近的探針記得到**。整條路靠的是四張 SH 貼圖被重新
+     * 上傳之後著色器讀得到新的值 —— 而同一個節點裡的 uniform 是不更新的，
+     * 所以「貼圖會不會也一樣」必須量，不能推。
+     */
+    absolute: (get) => [
+      [
+        get('關掉') < get('開著') * 0.95 && Math.abs(get('再開') - get('開著')) < 0.005,
+        `強度改得動 —— ${get('開著').toFixed(4)} → ${get('關掉').toFixed(4)} → ${get('再開').toFixed(4)}`,
+      ],
+      [
+        get('藍漲了') > 0.01,
+        `搬過去之後附近的探針記到了 —— 藍漲 ${get('藍漲了').toFixed(4)}`,
+      ],
+    ],
     tolerance: {
       '朝 +x+z': 0.2, // 量到 14.1%
       朝: 0.12, // 另外三個方向量到 0–6.6%
       畫面: 0.08, // 量到 0–5.1%
+      開著: 0.08,
+      關掉: 0.08,
+      再開: 0.08,
+      藍: 0.08,
       default: 0.08,
     },
     measure: async (api) => {
@@ -859,6 +883,32 @@ const EFFECTS = [
         [0.5, 0.7],
       ];
       for (const [u, v] of RENDER_WINDOWS) out.push(...(await api.renderedWindowAsync(u, v, 64)));
+
+      // ## 動態重烘：搬一塊藍板子過去，附近的探針要記到它
+      //
+      // 這一段驗的是**貼圖更新有沒有傳到著色器**。intensity 那個 uniform 在
+      // 同一個 lighting node 底下只上傳一次（見 irradiance-node.ts），而四張
+      // SH 貼圖會不會也一樣，先前沒有人問過。
+      //
+      // 藍色在這個場景裡沒有別的來源，所以它是乾淨的訊號。
+      // ## 強度的開關 A/B
+      //
+      // 這個公開屬性在 node 那條路上曾經**靜靜地沒有作用** —— 那條路的強度
+      // 掛在 lighting context 底下，而那一組的 uniform 只在第一次繪製時上傳。
+      // 現在它讀的是一張 1×1 的貼圖（同一個節點裡的貼圖會更新，那是下面那
+      // 段動態重烘量出來的）。
+      const lit = (await api.renderedWindowAsync(0.5, 0.4, 64))[0];
+      api.setEnabled(false);
+      const dark = (await api.renderedWindowAsync(0.5, 0.4, 64))[0];
+      api.setEnabled(true);
+      const relit = (await api.renderedWindowAsync(0.5, 0.4, 64))[0];
+      out.push(lit, dark, relit);
+
+      const before = await api.renderedWindowAsync(0.5, 0.4, 64);
+      api.moveBlocker(-6, 6, -6);
+      await api.bakeStale();
+      const after = await api.renderedWindowAsync(0.5, 0.4, 64);
+      out.push(before[2], after[2], after[2] - before[2]);
       return out;
     },
   },

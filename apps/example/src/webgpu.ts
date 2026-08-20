@@ -425,6 +425,16 @@ Object.assign(window, {
             // 畫出來的像素 —— SH 對得上不代表著色端也對得上。
             renderedWindowAsync: (u: number, v: number, size: number): Promise<number[]> =>
               giScene.renderedWindowAsync(renderer as never, scene as never, u, v, size),
+            // ## 動態重烘在這條路上從來沒有被量過
+            //
+            // 「東西搬動 → 附近的探針過期 → 重烘 → 畫面變色」整條，靠的是
+            // 那四張 3D 貼圖被重新上傳之後著色器讀得到新的值。而 intensity
+            // 那個 uniform 在同一個 lighting node 底下**只上傳一次** ——
+            // 貼圖會不會也一樣，沒有人問過。
+            moveBlocker: (x: number, y: number, z: number): number =>
+              giScene.moveBlocker(x, y, z),
+            bakeStale: (): Promise<number> =>
+              giScene.bakeStale(renderer as never, scene as never),
             sample: (x: number, y: number, w: number, h: number) => {
               const flat = document.createElement('canvas');
               flat.width = canvas.width;

@@ -1,7 +1,9 @@
 import {
   ClampToEdgeWrapping,
   Data3DTexture,
+  DataTexture,
   DataUtils,
+  FloatType,
   HalfFloatType,
   LinearFilter,
   RGBAFormat,
@@ -107,9 +109,6 @@ export class IrradianceVolume {
   /** 每顆探針 4 個係數 × RGB，攤平。 */
   private readonly sh: Float32Array;
   private readonly _textures: Data3DTexture[] = [];
-  /** 有沒有接過 node 材質。有的話 intensity 就改不動了 —— 見 setter。 */
-  private _hasNodeMaterial = false;
-  private _warnedIntensity = false;
   private _warnedRadius = false;
   private readonly data: Uint16Array[] = [];
   private _baked = 0;
@@ -174,6 +173,13 @@ export class IrradianceVolume {
       wwIrrInvSize: { value: new Vector3(1 / this.size.x, 1 / this.size.y, 1 / this.size.z) },
       wwIrrIntensity: { value: options.intensity ?? 1 },
     };
+    // ## 那張貼圖也要吃建構時給的值
+    //
+    // 它的初值寫死成 1 的話，`new IrradianceVolume({ intensity: 0 })` 在 node
+    // 那條路上**照樣全亮** —— setter 從來沒跑過。關卡抓到的就是這個：
+    // 「關掉時 R 應該是 0」讀到 134.9。
+    (this.intensityTexture.image.data as Float32Array)[0] = options.intensity ?? 1;
+    this.intensityTexture.needsUpdate = true;
   }
 
   /**
@@ -186,35 +192,36 @@ export class IrradianceVolume {
     return this._uniforms.wwIrrIntensity!.value as number;
   }
 
+  /**
+   * 強度也放一張 1×1 的貼圖。
+   *
+   * ## 為什麼是貼圖不是 uniform
+   *
+   * node 那條路上這個值掛在 lighting context 底下，而**那一組的 uniform 只
+   * 在第一次繪製時上傳**（見 `irradiance-node.ts` 裡量到的四種做法）。
+   *
+   * 而同一個節點裡的**貼圖**是會更新的 —— 那是量出來的：搬一塊藍板子過去、
+   * 重烘附近的探針，WebGPU 上畫面裡的藍從 0.0244 漲到 0.0601，與 WebGL 的
+   * 0.0244 → 0.0602 逐位元相同。四張 SH 貼圖就在同一個節點裡。
+   *
+   * 所以強度改走同一條路。代價是那條路上每個 fragment 多一次 1×1 的取樣 ——
+   * 換掉的是「這個公開屬性在一個後端上靜靜地沒有作用」。
+   */
+  readonly intensityTexture: DataTexture = (() => {
+    const texture = new DataTexture(new Float32Array([1, 0, 0, 0]), 1, 1, RGBAFormat, FloatType);
+    texture.needsUpdate = true;
+    return texture;
+  })();
+
   set intensity(value: number) {
     if (this._uniforms.wwIrrIntensity!.value === value) return;
     this._uniforms.wwIrrIntensity!.value = value;
+    // node 那條路讀的是這張貼圖 —— uniform 那邊它收不到。
+    (this.intensityTexture.image.data as Float32Array)[0] = value;
+    this.intensityTexture.needsUpdate = true;
 
-    // ## node 材質那條路改不動，所以要吼出來
-    //
-    // WebGL 那邊 intensity 是 uniform，每幀上傳，改了立刻生效。node 那邊
-    // 它是**編譯期常數**（原因見 irradiance-node.ts），改了之後畫面一個
-    // 位元都不會動。
-    //
-    // 靜靜地沒反應是這個專案最怕的形狀，所以這裡明講。試過的替代方案：
-    // 做成 TSL 的 uniform（值傳到了但不上傳）、重接一份新的節點圖、
-    // `needsUpdate = true` 強制重編 —— 三個都沒有讓畫面改變。
-    if (this._hasNodeMaterial && !this._warnedIntensity) {
-      this._warnedIntensity = true;
-      console.warn(
-        [
-          'WW.IrradianceVolume: 接上 node 材質（WebGPU）之後改 intensity 不會有效果。',
-          '那條路的強度是編譯期常數 —— WebGL 上會變，WebGPU 上不會，而且兩邊都不報錯。',
-          '要改的話在 new IrradianceVolume({ intensity }) 的時候就給定。',
-        ].join('\n'),
-      );
-    }
   }
 
-  /** `applyIrradianceNode` 接上之後回報一聲，讓 intensity 的 setter 知道要吼。 */
-  markNodeMaterial(): void {
-    this._hasNodeMaterial = true;
-  }
 
   /**
    * 探針貼圖。node 材質那條路要直接拿去做 `texture3D`。
