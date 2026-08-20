@@ -1,66 +1,83 @@
 # 變更紀錄
 
-三個套件（`@web-world-engine/three`、`@web-world-engine/format`、`@web-world-engine/cook`）**齊步發布**，
-版本永遠相同 —— 理由見 [`tools/release/version.mjs`](tools/release/version.mjs)。
-所以有時候會有一個「這個套件什麼都沒改」的版本。
+三個套件（`@web-world-engine/three`、`@web-world-engine/format`、
+`@web-world-engine/cook`）**齊步發布**，版本永遠相同 —— 理由見
+[`tools/release/version.mjs`](tools/release/version.mjs)。所以有時候會有一個
+「這個套件什麼都沒改」的版本。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，
 版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)。
 
-## [未發布]
+## [0.1.0] — 2026-08-20
 
-目前 `package.json` 上是 `0.1.0`，而**還沒有發布過任何版本** —— 下面全部
-都會落在第一個發出去的版本裡。「破壞性變更」是相對於 repo 上一個狀態說的，
-對使用者來說還不存在。
+第一版。
 
-### 破壞性變更
+**你只需要裝一個**：`npm i @web-world-engine/three`。`format` 是它的相依，
+npm 會自己帶進來；`cook` 是選配的離線工具，不裝也完全能用（LOD 鏈會在
+worker 裡自動產生，形狀跟 cook 出來的一樣）。
 
-- **螢幕空間的效果統一成同一個形狀**：`render(renderer, scene, camera, options)`。
-  受影響的是 `ContactShadows`、`DistanceFieldShadows`、`VolumetricFog`、
-  `TracedReflections`、`ScreenSpaceGI`，以及改名的 `VirtualShadowMap.resolve`
-  → `.render`。
+### 換一個字
 
-  共用的深度法線圖不再由呼叫端建立與傳入 —— 效果自己去 `worldFor(scene)` 拿。
-  每幀開頭要呼叫一次 `worldFor(scene).beginFrame()`。
+```diff
+- const rocks = new THREE.InstancedMesh(geometry, material, 10000);
++ const rocks = new WW.InstancedMesh(geometry, material, 10000);
+```
 
-  ```diff
-  - const gbuffer = new WW.SceneDepthNormals({ scale: 1 });
-    function frame() {
-  -   gbuffer.update(renderer, scene, camera);
-  -   contact.render(renderer, camera, gbuffer, lightDirection);
-  +   WW.worldFor(scene).beginFrame();
-  +   contact.render(renderer, scene, camera, { lightDirection });
-    }
-  ```
+換來螢幕誤差 LOD 與空間分割剔除。沒有初始化、沒有 `update()`、沒有自己的
+render loop —— 它是一個 `Object3D`，加進場景就開始運作。
 
-- `terrainHeightfield()` 改名為 `buildHeightfield()`，與 `buildTerrain()` 成對。
+### 這一版裡有的
 
-- 刪掉 `SceneDepthNormals.isFresh()`。有了 `beginFrame()` 之後「新不新」是
-  確定的，那個 `<= 8` 幀的猜測沒有存在的理由。
+| | |
+| --- | --- |
+| **放東西進世界** | `InstancedMesh`、`MultiMesh`、`splitWithLods`、`scatter`、遠景合併（HLOD）、遮蔽剔除、換階淡入、`ImpostorBatch`、`AnimatedInstancedMesh`（VAT）、`VirtualTexture` |
+| **世界比記憶體大** | `worldFor(scene).stream()`、`OriginRebase` |
+| **光** | CSM（`applyShadows`）、`VirtualShadowMap`、`ContactShadows`、`DistanceFieldShadows`、`IrradianceVolume`、`ScreenSpaceGI`、`ReflectionProbes`、`TracedReflections`、`VolumetricFog`、`GlobalDistanceField`、`SkyAtmosphere` |
+| **地形、水、物理** | `buildTerrain` / `buildHeightfield`、`Water` / `WaterSurface` / `computeBuoyancy`、`PhysicsScheduler` |
+| **資產** | `load` / `loadMaterial` / `loadTexture`，以及 `ww-cook` 這支 CLI |
 
-### 新增
+每一項的實測數字與使用方式見
+[`packages/three/README.md`](packages/three/README.md)。
 
-- `World.beginFrame()`：告訴套件新的一幀開始了，共用的中間結果一幀只算一次。
-- `World.depthNormals(renderer, camera)`：拿那張共用的深度法線圖。
-- `World.setDepthNormals(options)`：調它的解析度（預設半解析度）。
-- `loadMaterial(url, id, { MaterialClass })`：WebGPU 上給 node 材質類別。
-- `pnpm metadata-check`：守 npm 頁面上看得到的那些欄位。
-- `pnpm bundle-check`：守「只用 WebGL 的人不該下載 WebGPU 那一半」。
+### 兩個後端
 
-### 改進
+WebGL2 與 WebGPU 都支援，同一份程式碼。每一個會往材質上加東西的功能都有
+GLSL 與 TSL 兩份實作，而「兩份算出同一組數字」由 `pnpm cross-check` 逐項量。
 
-- `ScreenSpaceGI` 不再自己重畫一次深度法線，改用共用的那一張 —— 每幀少一次
-  完整的場景繪製。
-- `IrradianceVolume.intensity` 在 WebGPU 上真的會生效了。先前那個值掛在
-  lighting context 底下的 uniform 上，而那一組**只在第一次繪製時上傳**，
-  所以改了沒有作用而且沒有任何徵兆。
+WebGPU 上要接那幾個著色功能的話，材質必須是 node 材質：
 
----
+```js
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+const material = await WW.loadMaterial(url, id, { MaterialClass: MeshStandardNodeMaterial });
+```
 
-## 這個套件是什麼
+`three/tsl` 與 `three/webgpu` 是動態載入的 —— 只用 WebGL 的人不會下載那一半，
+而那件事由 `pnpm bundle-check` 守著。
 
-`WW.InstancedMesh` 換掉 `THREE.InstancedMesh` 就有螢幕誤差 LOD 與空間分割
-剔除；世界串流、遠景合併、間接光、陰影、反射、霧、水、地形、物理調度、
-虛擬貼圖、虛擬陰影圖，WebGL2 與 WebGPU 兩條路。
+### 每幀的形狀
 
-完整清單見 [`packages/three/README.md`](packages/three/README.md)。
+螢幕空間的那幾個效果共用同一張深度法線圖，所以每幀開頭要講一聲：
+
+```js
+const world = WW.worldFor(scene);
+
+function frame() {
+  world.beginFrame();
+  const shadow = contact.render(renderer, scene, camera, { lightDirection });
+  renderer.render(scene, camera);
+}
+```
+
+漏了也不會壞，只是同一張圖一幀畫了好幾次 —— 套件會在主控台講一次。
+
+### 已知的範圍
+
+- **桌機瀏覽器。行動裝置不在範圍內** —— 不是「還沒做」，是無法驗證：
+  ETC2／ASTC 沒有任何桌機能解碼，寫出來的編碼器只能用自己的解碼器驗，
+  那證明不了任何事。
+- **`three` 的 peer 鎖在一個 minor**（`>=0.185.0 <0.186.0`）。這個套件碰
+  `THREE.BatchedMesh` 的私有欄位，因為官方沒有公開的替代路徑；而那 25 道拿
+  原生 Three 當對照組的關卡只跑過那一個版本。結構改了會在建構時大聲報錯，
+  鎖擋的是「名字與型別都沒變、意思變了」那一種。Three 出新版時 Dependabot
+  會開 PR，跑過 `pnpm verify:all` 之後才放寬。
+- **純 ESM。** CommonJS 的使用者要用動態 import。
