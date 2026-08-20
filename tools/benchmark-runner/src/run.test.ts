@@ -59,6 +59,9 @@ describe('DEFAULT_RUNS', () => {
     // 每一筆的理由都必須是**在那個 profile 上無法執行**，不是比較慢或
     // 比較容易失敗。新增之前先分清楚那到底是哪一種。
     //
+    // - device-loss-soak：驗的是「device 遺失之後恢復得回來」。SwiftShader
+    //   落到 WebGL2，強制遺失之後停在 `reacquiring` —— 那條路在那個
+    //   adapter 上不存在，不是這個引擎壞掉。
     // - texture-conformance：SwiftShader 拿不到 WebGPU adapter，
     //   沒有硬體解碼器就沒有裁判。
     // - ab-native-real / ab-ww-real / streaming-move / occlusion-sponza：需要 cook 過的
@@ -68,6 +71,7 @@ describe('DEFAULT_RUNS', () => {
       (run) => run.profiles !== undefined && !run.profiles.includes('smoke'),
     ).map((run) => run.label ?? run.id);
     expect(excluded).toEqual([
+      'device-loss-soak',
       'ab-native-real',
       'ab-ww-real',
       'streaming-move',
