@@ -12,7 +12,7 @@
     "@ww/diagnostics": "workspace:*",
     "@ww/platform-web": "workspace:*",
     "@ww/render-core": "workspace:*",
-    "three": "^0.185.1",
+    "three": "^0.186.1",
     "@ww/assets-runtime": "workspace:*"
   },
   "devDependencies": {

@@ -16,7 +16,7 @@
     "@ww/assets-runtime": "workspace:*",
     "@ww/engine": "workspace:*",
     "@ww/render-three": "workspace:*",
-    "three": "^0.185.1",
+    "three": "^0.186.1",
     "@web-world-engine/cook": "workspace:*",
     "@web-world-engine/three": "workspace:*",
     "@web-world-engine/format": "workspace:*"
